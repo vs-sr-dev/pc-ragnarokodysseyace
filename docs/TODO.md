@@ -5,45 +5,14 @@
 
 ---
 
-# Next session — name the rest of the AI terms, then `.par`
+# Next session — `.PTP`, then the native functions
 
-The AI tables are open: `ProbList.dat` and the two decision scripts read, 0
-unreadable, checked against the six monsters that also ship their AI as
-Squirrel. See [`format_ai.md`](format_ai.md). What is left in `ai.pac` is the
-`.par` half and two thirds of the condition vocabulary.
+`ai.pac` is finished: the tables, the rules, the vocabulary and the six `.par`
+all read, and an action id resolves to a named motion. See
+[`format_ai.md`](format_ai.md). What is left of the AI is ten terms the disc
+has no oracle for, and they are listed there rather than here.
 
-### 1. The 67 unnamed condition terms.
-
-Ten of the 77 are proven and cover 19,435 of the 29,100 instructions. The
-commonest unnamed ones are `0x07` (795 uses), `0x15` (719), `0xdc` (661),
-`0x6d` (606), `0xd2` (496), `0xd5` (481), `0x12` (479).
-
-**The method is the one that named the ten**: take a monster with both a
-`.cnut` and a `SelectScript.dat`, decompile with `psq.py src`, and align rule
-by rule — `AI_B01_OrcKing`'s first 56 rules already line up with the table's.
-The vocabulary is known from the scripts' own local names (`AIT_TGT_DOWN`,
-`AIT_BOSS_TIME`, `AIT_OTHER_BOSS`, six `ACT_TIME` slots and the rest), so this
-is matching a known list against a known list, not guessing.
-
-Also open: the `0x2000` and `0x4000` instruction flags, 434 uses between them.
-
-### 2. `.par` — the other half of `ai.pac`. 438 files.
-
-Five or six per monster: `<name>.par`, `_act`, `_cmb`, `_coop`, `_dfa`,
-`_prowl`. No magic, records that look 64 bytes wide. `check_term_param` and
-`checkRangeParam` are named in the `.cnut` and unread on this side, and the
-`_act`/`_cmb`/`_dfa` split matches the modes the decision scripts switch
-between.
-
-### 3. Tie an action id to a motion.
-
-A `ProbList` group's items are ids like 1, 4, 100 to 110, 200 to 205, and the
-script prints `select_actid:` beside them. `.anmcmd` names a motion by a
-three-digit id in its filename and `CNOM` by name, so if an action id resolves
-to one of those the AI joins the animation layer, and the last gap between
-"the monster decides" and "the monster moves" closes.
-
-### 4. `.PTP` — the effect ids.
+### 1. `.PTP` — the effect ids.
 
 Opcode 10's `+0x02` in `.anmcmd` runs 10001 to 39547 and the same values are
 used by unrelated monsters, so it is a **global** effect id, not an index into
@@ -54,36 +23,55 @@ assets in the clear — `ef_I_as_hit_zan001.ctex`, `anm_ef_I_fire_tubu001.txx`.
 is wanted is a field further in or a separate table; `eff_hitlevel_tbl` in
 `ELBN` is the place to look first.
 
-### 5. The 289 native script functions.
+### 2. The 289 native script functions.
 
 `psq.py api` gives each one a name and an arity histogram, and the call sites
 give the argument values. That is enough to write down what most of them do
-without a disassembler. The ones a stage needs to run first:
-`cfSetEnableEmGen`, `cfSetEnableHitArea`, `cfSetEnableBorderline`, `cfMapJump`,
-`cfStartPieceLock`, `cfGetGlobalFlag`, `cfSetGlobalFlag`, `chrSetMotion`.
+without a disassembler. Session 12 added a second, sharper source: the AI's
+term dispatch names **forty-odd predicates over monster state** —
+`getHpRate`, `getTargetRange`, `getAngleTypeAtTarget`, `isTargetJump`,
+`getActiveSameKindCount`, `checkRangeParam` and the rest — and every one of
+them is a small function over state the engine has to keep anyway. Writing
+those down is the shortest route to *"a monster fights"*. The ones a **stage**
+needs first are still `cfSetEnableEmGen`, `cfSetEnableHitArea`,
+`cfSetEnableBorderline`, `cfMapJump`, `cfStartPieceLock`, `cfGetGlobalFlag`,
+`cfSetGlobalFlag`, `chrSetMotion`.
+
+### 3. The mercenary AI — a second system, with its own oracle.
+
+`mercenary.cpk/<class>.pac` holds `select_action.bin`, `select_target.bin`,
+`command_data.bin`, `target_data.bin` **and** `consider_action.cnut`, thirteen
+classes of each. `select_action.bin` is an `ELBN` whose names are `act_cmd_00`
+through `act_cmd_22` — so the container is already open and the parameters are
+already named. The same method that opened the monster AI applies verbatim:
+decompile the `.cnut`, and read the tables against it.
+
+### 4. The rest of the `.anmcmd` opcodes.
+
+Thirty of the fifty-two have no correlation. The positional method is close to
+exhausted; what would move it further is the geometry — pose the skeleton,
+draw the hit capsule — which is also item 5. One new lever: an `.anmcmd` is
+now known to be *named by the motion id an AI action picks*, so a command list
+can be read against the rule that fires it.
 
 ### Then
 
-6. **The rest of the `.anmcmd` opcodes.** Thirty of the fifty-two have no
-   correlation. The positional method is close to exhausted; what would move
-   it further is the geometry — pose the skeleton, draw the hit capsule — which
-   is also item 7.
-7. **Which vector is which** in the hit record. Three signed vec3s; the natural
+5. **Which vector is which** in the hit record. Three signed vec3s; the natural
    readings are an offset, an end point and a direction. `cmdl.py gait` already
    does the forward kinematics that needs.
-8. **The `ELBN` records, field by field.** The container is solved and 318
+6. **The `ELBN` records, field by field.** The container is solved and 318
    names are addressable; not one record is described. `job.cpk/<class>/
    objbin.bin` is the best target, because it is the same territory as the
    JSON in [`params.md`](params.md).
-9. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
+7. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
    small, well-posed instances with known consumers: the `.psq` calls name
    their rows, so the columns can be read against the script that uses them.
    The `CCLS` surface codes 1 to 13 are the other one.
-10. **The minimap transform.** 137 `.map` images, each visibly the silhouette
-    of its own stage's collision. A small job that gives the UI layer a map.
-11. **Structure the `.psq` control flow.** `psq.py src` prints labels and
-    `goto`. Rebuilding `if`/`while`/`switch` is ordinary work and nobody needs
-    it yet.
+8. **The minimap transform.** 137 `.map` images, each visibly the silhouette
+   of its own stage's collision. A small job that gives the UI layer a map.
+9. **Structure the `.psq` control flow.** `psq.py src` prints labels and
+   `goto`. Rebuilding `if`/`while`/`switch` is ordinary work and nobody needs
+   it yet.
 
 ---
 ## Deferred, with reasons
@@ -129,10 +117,12 @@ without a disassembler. The ones a stage needs to run first:
   [`format_psq.md`](format_psq.md).
 - `.PTP` (70) and `.mkc` (2,690) — the second of these sit beside the `CNOM`
   files and may be what the unmatched `.anmcmd` lists key through.
-- The AI's own leftovers: 67 of the 77 condition terms; the `0x2000` and
-  `0x4000` instruction flags; what an action id names; the five `ProbList`
-  files whose group ids repeat rather than ascend; and the eight
-  `EventTable.dat` and `MotStream.dat`. See [`format_ai.md`](format_ai.md).
+- The AI's own leftovers: ten of the 76 condition terms, which the six
+  `.cnut` predate and so cannot name; what the `2xx` action block means, given
+  that its ids resolve to the same motions as the `1xx`; the `kind` byte of
+  `<name>.par` and the 1000-band ids in `_coop.par`; the five `ProbList` files
+  whose group ids repeat rather than ascend; and the eight `EventTable.dat`
+  and `MotStream.dat`. See [`format_ai.md`](format_ai.md).
 - The stage layout's own leftovers: the polyline's third word, 0 to 5; whether
   a fence is a closed loop; the 45 markers named `HTA*`; and what places the
   object a `obj*` marker marks.
@@ -142,6 +132,53 @@ without a disassembler. The ones a stage needs to run first:
 ---
 
 # Log
+
+## Session 12 — 2026-08-22
+
+- **`ai.pac` closes.** See [`format_ai.md`](format_ai.md) and `ai.py`. The
+  vocabulary, the flags, the six `.par` and the join to the animation layer.
+  **66 of the 76 condition terms named, 27,862 of the 29,100 instructions;
+  438 `.par` read, 0 unreadable, every sentinel exact; 1,109 of 1,423 action
+  ids resolving to a named motion.** Findings worth carrying:
+  - **the term table was a function in the file, not a puzzle.**
+    `check_converted_xml_term(term, param, cond)` in the six `.cnut` is a
+    switch on exactly the ids the binary tables use, and it names the host
+    call for every one. It sits at `.ppcut` line 1174 in all six, so it is a
+    shared include. Its name says what it is: the AI was authored as XML,
+    converted to numeric terms, and this is the reference implementation of
+    the converted form. That is the third time this project has found the
+    answer written out in the clear — after `ELBN`'s parameter names and
+    `.psq`'s `SQ_BYTECODE_STREAM_TAG` — and the shape is identical: read the
+    file rather than reason about it;
+  - **the shipped tables are newer than the scripts that document them.**
+    `b19_00` carries both, and its `SelectScript.dat` uses term 1066 while its
+    own dispatch stops at 1063 — but its `active_script` calls
+    `checkB19Term(1066, 0)` beside a debug line, so even the term the dispatch
+    forgot has a name. That asymmetry is the honest explanation for the ten
+    that stay open, and it is worth remembering the next time an oracle and its
+    data disagree: the oracle can be the older artefact;
+  - **two flags read off the data alone.** `0x2000` opens a rule: of the
+    22,428 instructions without `0x1000`, exactly the 22 that carry `0x2000`
+    have a non-zero `a`, and all 22 are valid group ids. `0x4000` is an OR, and
+    the proof is by contradiction — the terms in a run are mutually exclusive
+    (`angle_at == 217 or == 218`, `range_band == 0 or == 2`), so an AND reading
+    would make 421 instructions dead;
+  - **an action id names a motion, and the constant is 401.** A `.CNOM` names
+    itself — `z11.pac/z11501at1.CNOM` — and action 100 is motion 501 `at1`,
+    101 is 502 `at2`, in exact order. The `0xx` block is `+200` and lands on
+    `wait_*`, the `2xx` block is `+301` and lands on the same `at*`. This is
+    the last gap the previous TODO named, and it closes the loop *decide →
+    pick → play*;
+  - **the `.par` are six kinds, four of them arrays with an exact sentinel**
+    — `0x7FFFFFFF`, `0x00000000`, `0x00000000`, `0xFFFFFFFF` on 308 files with
+    no exceptions. `_act.par` gives every action a range and a facing angle,
+    and the OrcKing's own debug print calls it `ct_act`, which is what ties it
+    to the `act_time` terms. `<name>.par` is addressed `0x2000 + 0x10*k`, and
+    on 74 of the 82 monsters the slots are one per 1xx action in the same
+    monster's `_act.par`;
+  - **the giants share a motion set**: `z18.pac` ships `z19*.CNOM`, so a
+    motion has to be indexed under the directory as well as the filename, or
+    three monsters look motionless.
 
 ## Session 11 — 2026-08-22
 

@@ -24,8 +24,12 @@ numbers are dimensional at last.
 **`.psq` is Squirrel 2.2 bytecode**, debug tables and all, so the cutscenes,
 the quest logic and six bosses' AI decompile with the authors' own variable
 names and source lines. Those six scripts are the oracle that opened **every
-monster's AI**: the weighted action tables and the rules that pick one of them
-now read as conditions on HP, range, anger and the last action taken.
+monster's AI**: the weighted action tables, the rules that pick one of them and
+the parameters the chosen action runs with. The rules read as conditions on HP,
+range, anger, the target's stance and sixty-odd other terms, because one
+function in those scripts turned out to be the game's own dispatch for the
+whole vocabulary. **And an action id names a motion** - add 401 and it is the
+`atN.CNOM` the monster plays - so the AI and the animation layer are joined.
 
 ```
 ISO (UDF 2.50)   ->      109 files, 5.4 GB      tools/iso.py
@@ -49,8 +53,11 @@ ATIH + fences    ->      163 stages, 5,934 marks tools/stage.py 0 errors
 ELBN parameters  ->      707 files, 318 names   tools/elbn.py   0 errors
 Squirrel script  ->    3,011 files, 315k insns tools/psq.py    0 errors
   engine API     ->      289 native functions  named and counted
-monster AI       ->      228 files, 6,528 rules tools/ai.py     0 errors
+monster AI       ->      228 files, 6,550 rules tools/ai.py     0 errors
   action tables  ->    3,269 groups, 19,707 weighted actions
+  condition terms->       66 of 77 named, 27,862 of 29,100 instructions
+  AI parameters  ->      438 .par, 4 record kinds, every sentinel exact
+  action -> motion->   1,109 of 1,423 ids name a motion in their own pac
 ```
 
 Formats are documented in [`docs/`](docs): [the disc
@@ -65,11 +72,11 @@ parameters](docs/params.md). The plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
 
-The 438 `.par` AI parameter files and 67 of the AI's 77 condition
-terms are unread, the `ELBN` records are
-addressable by name but not described field by field, and thirty of the
-fifty-two `.anmcmd` opcodes still have no correlation — though the two
-commonest are now read, and they are the hitbox.
+Ten of the AI's 76 condition terms are unread — the tables turned out to be
+newer than the scripts that document them — the `ELBN` records are addressable
+by name but not described field by field, and thirty of the fifty-two
+`.anmcmd` opcodes still have no correlation, though the two commonest are now
+read and they are the hitbox.
 
 `.map`, listed here for six sessions as the world layout, turned out to be the
 minimap; the layout is `hta.bin`, `borderline.bin` and `trigger.trg`.
@@ -165,6 +172,18 @@ python tools/anmcmd.py census <dir>          every opcode, with its size
 python tools/anmcmd.py list|dump <dir> <name>  one list, frame by frame
 python tools/anmcmd.py hits <dir> <name>     the hit records, with bone names
 python tools/anmcmd.py bones <dir>           how many hits name a real bone
+
+python tools/psq.py check|list <dir>          the Squirrel bytecode
+python tools/psq.py dump|src <dir> <name>    one file, disassembled or as
+                                             reconstructed statements
+python tools/psq.py api|xref <dir>           the 289 host functions, and
+                                             whether a called name resolves
+
+python tools/ai.py check|list <dir>          the monster AI
+python tools/ai.py probs|rules <dir> <name>  the action tables, and the rules
+python tools/ai.py par <dir> <name>          the six `.par` of one monster
+python tools/ai.py acts <dir>                every action id, and its motion
+python tools/ai.py terms|ops <dir>           the condition vocabulary
 
 python tools/params.py census|tiers <dir>     the actor parameters
 python tools/params.py classes <dir>          the six player classes compared

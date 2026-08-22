@@ -1,6 +1,6 @@
 # PC-ROA — strategy
 
-*Aligned to the end of session 11 (2026-08-22). Detail and priorities live in
+*Aligned to the end of session 12 (2026-08-22). Detail and priorities live in
 [`TODO.md`](TODO.md); this document is the frame.*
 
 Goal: a **native PC reimplementation** of *Ragnarok Odyssey ACE*, the PS3
@@ -90,8 +90,8 @@ Phase 3.
 | `.mkc` | 2,690 | medium | |
 | `.CTXT` | 1,151 | ✅ **solved** | plain text: hit capsules and springs, bound to a bone through the model's locator table; see [`format_cmdl.md`](format_cmdl.md) |
 | `.PTP` effects | 70 | medium | `PTCP` + `PTB`; the `.anmcmd` effect ids point somewhere here |
-| AI tables | 228 | ✅ **read** | [`format_ai.md`](format_ai.md) — `ProbList.dat` and the decision scripts; 10 of 77 terms named |
-| `.par` AI | 438 | high | the other half of `ai.pac`; no magic, records that look 64 bytes wide |
+| AI tables | 228 | ✅ **solved** | [`format_ai.md`](format_ai.md) — `ProbList.dat` and the decision scripts; 66 of 77 terms named off the game's own dispatch |
+| `.par` AI | 438 | ✅ **solved** | [`format_ai.md`](format_ai.md) — four record kinds and two structs, every sentinel exact |
 | CRI Atom audio | 274 | ✅ **read** | `@UTF` tables; `cpk.py` opens them, and `common.acb` names the hit record's sound |
 | PAMF video | 46 | low | ffmpeg territory |
 | `.otf` font | 1 | ✅ **free** | ordinary OpenType |
@@ -163,3 +163,12 @@ decompiles, its triggers name functions that are in it, and the calls those
 functions make name the markers the stage already declared. The second
 milestone — *"a stage runs"* — needs a Squirrel VM, the 289 native functions
 stubbed, and nothing else that is not already read.
+
+**As of session 12 it has a monster that can act.** The AI's condition
+vocabulary, its action tables and its parameters are read, and an action id
+resolves to a named motion, so the loop *decide → pick → play* is describable
+end to end from the disc. The third milestone — *"a monster fights"* — now
+needs the 40-odd host predicates the terms call (`getHpRate`, `getTargetRange`,
+`isTargetJump` and the rest), which are small functions over state the engine
+would have anyway, plus the motion playback that `CNOM` and `.anmcmd` already
+describe.
