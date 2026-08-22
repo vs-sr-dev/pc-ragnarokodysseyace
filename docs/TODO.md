@@ -5,86 +5,52 @@
 
 ---
 
-# Next session — `CMDL`
+# Next session — motion, and the rest of a frame
 
-1,127 files, the geometry, and the last thing between the project and a frame
-on screen. The textures now decode ([`format_ctex.md`](format_ctex.md)), so a
-mesh with a material reference is a picture.
+`CMDL` is read ([`format_cmdl.md`](format_cmdl.md)) and a model draws with its
+own textures on it. Three things stand between that and a scene.
 
-**Session 4 reconnoitred the container shell.** Start from these facts rather
-than from the top; all of them hold on all 1,127 files unless noted.
+### 1. `CNOM` — motion. 3,043 files.
 
-### What is already known
+The most valuable, because the actor parameters from session 3 describe
+movement that has nowhere to happen. `CNOM` sits beside `CMDL` under
+`*.mot.pac/`, so start by checking whether it opens with the same shell:
+`'CNOM'`, `u32` payload size, `0x00010005`, zero, and a `POF0` relocation table
+at the end. If it does — and `CTEX`, `CMDL` and `CMTM` all do — then the
+section directory and the name tables are probably the same shape too, and the
+work is naming sections rather than finding them.
 
-- **`CMDL` uses the same outer shell as `CTEX`**: `'CMDL'`, `u32` payload size,
-  `u32 0x00010005`, `u32` zero. Then `u32 0x10002000` at `0x10`, where `CTEX`
-  has `0x1000` and its width. Everything is big-endian.
-- **`size + 16` is *not* the file length here** — unlike `CTEX`, where it was on
-  every file. The excess is always a multiple of 16 and always at the end
-  (`0x40` on 606 files, then `0x70`, `0x80`, `0x50`, …, 36 distinct values).
-  File lengths are all 16-aligned. Establish what that tail is before trusting
-  any section to end where the directory says: it may be alignment padding, or
-  it may be a section the header does not index.
-- `0x40` is a **scale vector**: three floats `1.0, 1.0, 1.0` then zero, on all
-  1,127.
-- `0x50` is a **bounding sphere**: centre `x, y, z` then radius, the radius
-  positive on 1,125. One file reads `0, 0, 0, 28.284` — `20 * sqrt(2)`, the
-  circumscribed radius of a 40-unit square, which is the kind of number that
-  does not arrive by accident.
-- `0x60` is **eight `u16` counts**. The first is 7 on every file and the last is
-  0 on every file; the middle six vary together and look like per-section
-  element counts — `(7, 1, 2, 1, 1, 2, 2, 0)` on 195 files, `(7, 3, 28, 3, 3,
-  3, 11, 0)` on 80.
-- `0x70` is a float `1.0`, and then at **`0x74` there is an 11-entry `u32`
-  section directory**, offsets counted from `0x10` as `CTEX`'s are. The
-  eleventh entry equals the payload size on all 1,127 files, so it is the end
-  marker and there are ten sections. Entry 0 is `0xb0` on 1,125.
-- `0xb0` is a **32-byte NUL-padded name**, printable ASCII on all 1,127 — the
-  same field `CTEX` carries at the same offset.
-- After the name, 8-byte records of `u16` quads, ascending in their first
-  field: `(5,2,3,1) (7,2,5,1) (11,2,9,1) (3,1,1,1) (4,1,2,1) …`.
+**Use `POF0` first.** It says which words are pointers, which is the single
+thing that made `CMDL` fall open in an afternoon. Decode it, list the
+relocations, look at what they point at, and the structure draws itself.
 
-### What to do, in order
+The bone names are already in hand: `CMDL`'s `S5` names every node, and a
+motion track has to key on those.
 
-1. **Close the arithmetic first.** Walk the ten sections, check that each ends
-   where the next begins, and account for the trailing bytes. Keep the "0
-   failures out of 1,127" discipline; it is what has caught every wrong
-   assumption so far, including one this session.
-2. **Find the vertex buffer by its statistics, not by guessing.** A float
-   stream of positions has a signature: values in the range of the bounding
-   sphere at `0x50`, a stride that divides the section length exactly, and
-   consecutive triples that are close together. Test candidate strides against
-   the sphere — a wrong stride puts vertices outside a radius the file itself
-   declares.
-3. **Then the index buffer**, which is easier: `u16` values all under the vertex
-   count, in a section whose length is a multiple of 6 for triangle lists or
-   close to `n + 2` for strips.
-4. **Then the material link.** The `CTEX` name field at `0x30` is what a
-   material would reference, and both formats carry names in the same place.
-   `stage.cpk/*/model.pac/ground.pac/` holds a `ground.CMDL` beside the `CTEX`
-   files it must be naming; that pairing is the cheapest way in.
-5. **Do not skip the eyeball test.** Export an OBJ and look at it. A vertex
-   decoder that produces the right count and the wrong stride passes every
-   arithmetic check — this session's swapped width and height passed 11,530
-   size checks and still drew a comb.
+### 2. Skinning, which finishes `CMDL`.
 
-### After `CMDL`
+Bits 8 and 9 of the vertex type mark two four-byte attributes on the character
+bodies — bone indices and weights, 931 meshes. Rigid models already draw
+correctly, so this only matters once there is motion to drive it, but it is
+cheap: four bytes of indices into the node table and four of weights, and the
+weights should sum to one, which is a test the file will either pass or fail.
 
-6. **`.map` and `CCLS`** — world layout and collision, 137 + 155 files. With
-   `CMDL` and `CTEX` this is the first frame, and it is what the "the numbers
-   are real" milestone is waiting on: the movement parameters are known, there
-   is just nowhere to move.
+### 3. `CCLS` and `.map` — collision and world layout. 155 + 137 files.
 
-7. **`CNOM` motion** (3,043), **`CMTM`** (91) and **`.anmcmd`** (2,053).
-   `CNOM` sits beside `CMDL` under `*.mot.pac/`, so the skeleton is probably in
-   the model.
+`CCLS` files are named `<stage>.col` and sit in `param.pac` beside `hta.bin`
+(`ATIH`, most likely hit areas). With ground geometry decoded, collision is
+what turns a drawn stage into a stage that can be stood on.
 
-8. **`.psq`** — `FA FA 'SQIR'` then `PART` chunks; the payload names its own
-   source as `*.psq.ppcut`. 3,011 files. Big, and probably slow.
+### Then
 
-9. **Name the `ECH` columns.** The types are inferred and the tool reports
+4. **`.psq`** — `FA FA 'SQIR'` then `PART` chunks, the compiled cutscene
+   language, 3,011 files. Big, and probably slow.
+5. **`.anmcmd`** (2,053) and **`.mkc`** (2,690).
+6. **Name the `ECH` columns.** The types are inferred and the tool reports
    them; the *meanings* are the work. `enemy_gen.bin` shows this can often be
-   done from the string pool alone, with no EBOOT.
+   done from the string pool alone, with no EBOOT. The AI filenames
+   ([`RECON.md` §7b](RECON.md)) give every monster an English name for free,
+   which makes a monster table readable without one.
 
 ---
 
@@ -101,6 +67,10 @@ than from the top; all of them hold on all 1,127 files unless noted.
 
 - `CTEX`: the `0x28` stamp and bit 0 of `0x1D`. Both are described in
   [`format_ctex.md`](format_ctex.md); neither affects the decode.
+- `CMDL`: skinning; the four-byte attribute at layout byte 2; the middle byte
+  of the mesh descriptor's first word; `S8` and `S9` and the 16-byte digests;
+  the eight stage grounds whose texture index runs one past their name list.
+  All in [`format_cmdl.md`](format_cmdl.md).
 - `ECH`: what the header word at `0x08` is for (zero on all 4,941 files, so the
   disc offers no evidence either way); the one-byte row width; column
   semantics.
@@ -120,6 +90,34 @@ than from the top; all of them hold on all 1,127 files unless noted.
 
 # Log
 
+## Session 5 — 2026-08-22
+
+- `tools/cmdl.py` — the geometry format. **1,127 models, 15,833 meshes,
+  6,127,335 vertices, 5,591,558 triangles, 0 unreadable**, every arithmetic
+  check closing on every file. See [`format_cmdl.md`](format_cmdl.md).
+  Findings worth carrying:
+  - **the tail after the payload is a `POF0` relocation table**, and it lists
+    every word in the file that holds a pointer. That is what made the format
+    fall open: *these* words are offsets and no others, so nothing had to be
+    guessed. 76,423 relocations, all valid. `CTEX`, `CMTM` and probably `CNOM`
+    share the shell, so the same trick should work again;
+  - its 22-bit delta is **three bytes, not four** — the four-byte reading
+    decodes 751 of 1,127 files and walks off the end of the rest;
+  - **`S0` is the draw list**: `(node, material, mesh)` triples, every index in
+    range on the whole disc. `S7` names the textures and they are `CTEX` names
+    sitting in the same `.pac`, so model → material → texture resolves by name
+    inside one container;
+  - **vertices are already in model space** — the node hierarchy is a skeleton,
+    not a placement scheme;
+  - every vertex type appears at two strides twelve apart, the wider one being
+    the same layout with a normal inserted. That is what identifies the normal
+    without guessing, and the position offset is confirmed on all 15,833 meshes
+    against each mesh's own declared bounding sphere.
+- **A textured render of `monster.cpk/b17_00`** from the draw list, its own
+  seven `CTEX` textures sampled through the decoded UVs. First frame.
+- The disc names its own monsters: `ai.pac/AI_B17_Loki.par`. See
+  [`RECON.md` §7b](RECON.md).
+
 ## Session 4 — 2026-08-22
 
 - `tools/ctex.py` — the texture format, solved. **11,536 files, 11,530 closing
@@ -137,7 +135,7 @@ than from the top; all of them hold on all 1,127 files unless noted.
   - **width comes before height**, which reverses what session 3 recorded.
     Nothing in the size arithmetic notices, because every formula is symmetric
     in the two. 11,530 files passed `check` with the axes swapped.
-- `CMDL` reconnaissance (above).
+- `CMDL` reconnaissance, which session 5 built on.
 - Removed the relative links to the sister project's tree from the docs; the
   repository is public and that one is not.
 

@@ -263,6 +263,15 @@ backwards on a big-endian read, while the CPK header packets keep their sizes
 in little-endian even though the `@UTF` payloads are big-endian. Worth
 remembering before declaring a field "wrong".
 
+## 7b. The AI filenames name the monsters
+
+`monster.cpk/<id>/ai.pac/` holds `.par` behaviour scripts whose filenames carry
+the creature's English name: `AI_B17_Loki`, `AI_Z27_YamiGiant`,
+`AI_Z24_Gagapu`, `AI_Z21_Nfdeadkafra`. The model directories are numbered
+(`b17_00`, `z27_01`) and the `ECH` tables key on ids, so this is the cheapest
+bridge from a model to a name - no EBOOT, no table join. It is the same lesson
+the strategy note keeps repeating: ask whether the disc already says it.
+
 ## 8. Open questions
 
 - `ECH` column descriptors: the per-column bytes read as zero in both samples,
