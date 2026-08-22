@@ -147,12 +147,46 @@ multiplication per influence — see [the skinning section of
 `format_cmdl.md`](format_cmdl.md). Note what the animated path does *not* touch:
 the node table's Euler angles. Every rotation from here is a quaternion.
 
+## `CMTM` is this file with scalars instead of bones
+
+**Status: solved.** 91 files, 231 tracks, 254 channels, 1,388 keys, 0
+unreadable. Reader: [`../tools/cmtm.py`](../tools/cmtm.py), which is this
+reader with one magic word changed — `Cmtm` subclasses `Cnom` and overrides
+nothing but the magic and how a value is read.
+
+`CMTM` sits beside `CNOM` under `*.mot.pac/`, and in the same `.pac` as the
+model it belongs to. Shell, header, track table, name table, channel record and
+key blocks are all the same, down to the constant `1000.0` at `0x4C`. What
+differs follows entirely from what it animates — materials, not bones:
+
+- **a track names a material.** 227 of the 231 track names are material names
+  of a `CMDL` sitting beside the file; the other four are the model's own name.
+  `CNOM` binds to `S5`, the node names; this binds to `S6`;
+- **a track has one to three channels**, not always three: 208 have one, 17 two,
+  4 three, 2 none. There is no fixed translation-rotation-scale triple to fill;
+- **every key is four bytes**, all 1,388 of them.
+
+Five channel kinds, `0x40` to `0x44`. **`0x40` and `0x41` are not floats** —
+read as floats they come out around -4e37, which is the tell; read as four
+bytes they are `80808000`, `05050b00`, `00000000`, the same packed RGBA the
+`CMDL` material table writes at `+0x08`. So two of the five animate the
+material's colours, and on this disc the two always carry the same values as
+each other. `0x42` (1,084 keys), `0x43` (28) and `0x44` (148) are floats in
+small ranges — 0 to 1, -1 to 0.75, -0.5 to 2 — and which is alpha and which
+are texture coordinates is not settled.
+
+Two files key past their own declared length, `menu.cpk/animeicon_00` and
+`animeicon_20`, both ending at frame 60 against headers saying 31 and 51.
+`CNOM` has no such case in 3,043 files.
+
 ## Still open
 
 - The `u8` at `+0x04` of a channel — `0x0f` on the twelve-byte channels and
   `0x10` on the sixteen, so it tracks the size and adds nothing. Probably an
   interpolation or component-count code.
 - The constant `1000.0` at `0x4C`, and the `u16 1` at `0x12`.
+- Which of `CMTM`'s float kinds is alpha and which are texture coordinates, and
+  why two channels carry the same colour.
 - Whether frames are 30 or 60 to the second. Nothing in the file says, and the
   actor parameters in [`params.md`](params.md) are the place to settle it —
   they carry durations that these animations have to match.

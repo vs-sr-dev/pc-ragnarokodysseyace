@@ -115,9 +115,12 @@ class Channel:
 
 
 class Cnom:
+    MAGIC = MAGIC
+
     def __init__(self, buf: bytes, label: str = ''):
-        if buf[:4] != MAGIC:
-            raise ValueError(f'{label}: not a CNOM ({buf[:4]!r})')
+        if buf[:4] != self.MAGIC:
+            raise ValueError(f'{label}: not a {self.MAGIC.decode()} '
+                             f'({buf[:4]!r})')
         self.label = label
         self.buf = buf
         self.size, self.version, spare = struct.unpack_from('>III', buf, 4)

@@ -31,13 +31,14 @@ CTEX textures    ->   11,536 files, 5 formats   tools/ctex.py   0 errors
 CMDL geometry    ->    1,127 files, 5.6M tris   tools/cmdl.py   0 errors
 CNOM motion      ->    3,043 files, 3.0M keys   tools/cnom.py   0 errors
 CCLS collision   ->      155 files, 107k tris   tools/ccls.py   0 errors
+CMTM material   ->       91 files, 1,388 keys  tools/cmtm.py   0 errors
 .anmcmd events   ->    2,053 files, 10,175 cmds tools/anmcmd.py 0 errors
 ```
 
 Formats are documented in [`docs/`](docs): [the disc
 survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 [`TXT`](docs/format_rmsg.md), [`CTEX`](docs/format_ctex.md),
-[`CMDL`](docs/format_cmdl.md), [`CNOM`](docs/format_cnom.md),
+[`CMDL`](docs/format_cmdl.md), [`CNOM` and `CMTM`](docs/format_cnom.md),
 [`CCLS`](docs/format_ccls.md), [`.anmcmd`](docs/format_anmcmd.md), [the actor
 parameters](docs/params.md). The plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
@@ -110,6 +111,10 @@ python tools/cnom.py check|survey <dir>       the motion
 python tools/cnom.py info <dir> <name>       one animation, per bone
 python tools/cnom.py track <dir> <name> <bone>
 python tools/cnom.py pose <dir> <name> <frame>
+
+python tools/cmtm.py check|survey <dir>      the material animation
+python tools/cmtm.py info <dir> <name>       one file, per material
+python tools/cmtm.py track <dir> <name> <material>
 
 python tools/ccls.py check|survey <dir>      the stage collision
 python tools/ccls.py info|dump <dir> <name>  one stage

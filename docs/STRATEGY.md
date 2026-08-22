@@ -66,15 +66,16 @@ Phase 3.
 | `ECH` tables | 4,941 | ✅ **solved** | [`format_ech.md`](format_ech.md) — 58,534 rows, string pools, inferred column types |
 | `TXT` text | 76 | ✅ **solved** | [`format_rmsg.md`](format_rmsg.md) — 25,288 messages, pairs positionally with the tables |
 | `.json` params | 89 | ✅ **read** | [`params.md`](params.md) — 1,069 records; the stagger model, the difficulty tiers, and one movement model shared by all six classes |
-| `CTEX` texture | 11,061 | **highest** | the largest population on the disc; nothing renders without them |
-| `CMDL` model | 1,127 | high | geometry |
-| `CCLS` collision | 155 | done | the walkable ground, one welded triangle mesh per stage |
-| `.map` | 137 | high | world layout |
-| `CNOM` motion | 3,043 | high | |
+| `CTEX` texture | 11,536 | ✅ **solved** | [`format_ctex.md`](format_ctex.md) — five pixel formats, mip chains, Morton swizzle |
+| `CMDL` model | 1,127 | ✅ **solved** | [`format_cmdl.md`](format_cmdl.md) — geometry, materials, the draw list and the skinning |
+| `CCLS` collision | 155 | ✅ **solved** | [`format_ccls.md`](format_ccls.md) — the walkable ground, one welded triangle mesh per stage |
+| `.map` | 137 | **highest** | world layout — what places a stage's props and spawns |
+| `CNOM` motion | 3,043 | ✅ **solved** | [`format_cnom.md`](format_cnom.md) — 3.0M keys, quaternion rotations, bound to skeletons by name |
+| `CMTM` material | 91 | ✅ **solved** | [`format_cnom.md`](format_cnom.md) — `CNOM` with scalars; animates material colour |
 | `.psq` sequence | 2,992 | high | the cutscene language; `SQIR` + `PART` chunks |
-| `.anmcmd` | 2,053 | done | the event lists; container read, opcodes unnamed |
+| `.anmcmd` | 2,053 | ✅ **read** | [`format_anmcmd.md`](format_anmcmd.md) — the event lists; container solved, the 52 opcodes unnamed |
 | `.mkc` | 2,690 | medium | |
-| `.CTXT` | 1,151 | done | plain text: hit capsules and springs, bound to a bone through the model's locator table |
+| `.CTXT` | 1,151 | ✅ **solved** | plain text: hit capsules and springs, bound to a bone through the model's locator table; see [`format_cmdl.md`](format_cmdl.md) |
 | `ELBN` | 379 | low | unidentified, no consumer waiting |
 | `.PTP` effects | 18 | low | |
 | CRI Atom audio | 274 | low | `.acb`/`.awb`, well-documented format |

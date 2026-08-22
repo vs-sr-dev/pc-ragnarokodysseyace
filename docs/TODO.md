@@ -26,7 +26,7 @@ out to have — and remember what `CCLS` taught, that a plausible record boundar
 can be twelve bytes wrong and still divide the payload exactly. Find an
 identity that only the right reading satisfies before believing any of it.
 
-### 2. Name the `.anmcmd` opcodes, and read `CMTM` (91).
+### 2. Name the `.anmcmd` opcodes.
 
 The event lists themselves now read — 2,053 files, 6,802 blocks, 10,175
 commands, see [`format_anmcmd.md`](format_anmcmd.md) — but all 52 opcodes are
@@ -41,8 +41,8 @@ opcode that appears only in `_at` animations is an attack thing; one that
 appears in every animation at frame 0 is a setup thing; one whose 116-byte
 record holds a locator id names a bone.
 
-`CMTM` sits beside `CNOM` under `*.mot.pac/` and shares the shell, `POF0` and
-all, so it should open in an hour.
+(`CMTM` is done — it turned out to be `CNOM` with scalars; see
+[`format_cnom.md`](format_cnom.md).)
 
 ### 3. The frame rate, and it can be settled now.
 
@@ -111,6 +111,15 @@ describe. Two independent ways to the same number, and both readable.
 
 ## Session 7 — 2026-08-22
 
+- `tools/cmtm.py` — material animation. **91 files, 231 tracks, 254 channels,
+  1,388 keys, 0 unreadable.** It is `CNOM` with one magic word changed: same
+  shell, same header, same track, channel and key layout, so `Cmtm` subclasses
+  `Cnom` and overrides only the magic and how a value is read. What differs
+  follows from what it animates — **a track names a material, not a bone** (227
+  of 231 are `S6` names), a track carries one to three channels rather than
+  always three, and every key is four bytes. Two of the five channel kinds are
+  **packed RGBA, not floats**; read as floats they come out around -4e37, which
+  is how you notice.
 - `tools/anmcmd.py` — the animation event lists. **2,053 files, 6,802 blocks,
   10,175 commands, 0 unreadable**, every check closing. See
   [`format_anmcmd.md`](format_anmcmd.md). Findings worth carrying:
