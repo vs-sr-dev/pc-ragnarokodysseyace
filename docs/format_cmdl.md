@@ -188,8 +188,9 @@ layout with a normal inserted in front of the position:
 Byte 3 is the offset of the **texture coordinates**, two floats, present when
 bit 4 of the vertex type is set. Bits 5 and 6 add a second and third set, eight
 bytes each, stacked in front of the first; bits 8 and 9 add the four-byte pair
-a skinned mesh needs, which is why the `0x03__` types are the character bodies
-and the `0x00__` types the rigid attachments. Byte 2 is the offset of a
+a skinned mesh needs — weights at offset 0 and bone indices at `stride - 4` —
+which is why the `0x03__` types are the character bodies and the `0x00__` types
+the rigid attachments. Byte 2 is the offset of a
 four-byte attribute sitting between the coordinates and the normal.
 
 **Vertices are already in model space**, not in node space. No transform has to
@@ -212,8 +213,13 @@ gives every model an English name for free.
 
 ## Still open
 
-- **Skinning.** Bits 8 and 9 of the vertex type mark four-byte bone-index and
-  weight attributes; neither is decoded, and nothing animates until `CNOM` is.
+- **Skinning — the attributes read, the pose does not yet.** On all 931 skinned
+  meshes and 473,193 vertices, the first four bytes of a vertex are four `u8`
+  weights summing to exactly 255, and the last four bytes of the stride are
+  four `u8` bone indices, every one inside the model's node table. No
+  exceptions. What is not yet done is applying them: the weight-to-index
+  pairing is unconfirmed and the bind-pose inverse is not written. See
+  [`TODO.md`](TODO.md).
 - The four-byte attribute at layout byte 2 — colour is the obvious guess and
   the obvious guess has been wrong twice on this disc.
 - The middle byte of the mesh descriptor's first word, and `+0x04`, constant at

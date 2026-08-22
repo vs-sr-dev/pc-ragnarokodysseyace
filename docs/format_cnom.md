@@ -143,9 +143,11 @@ in a T. A wrong quaternion order or a wrong key stride does not produce that.
 
 ## Still open
 
-- **Skinning**, which is `CMDL`'s half of the job: bits 8 and 9 of the vertex
-  type mark four-byte bone-index and weight attributes on 931 meshes. Until
-  those are read, the skeleton animates and the mesh does not follow it.
+- **Skinning**, which is `CMDL`'s half of the job. The attributes themselves now
+  read — four `u8` weights summing to 255 at the head of every skinned vertex,
+  four `u8` bone indices at the tail, on all 473,193 of them — but nothing has
+  been posed with them yet. Until it is, the skeleton animates and the mesh
+  does not follow it.
 - The `u8` at `+0x04` of a channel — `0x0f` on the twelve-byte channels and
   `0x10` on the sixteen, so it tracks the size and adds nothing. Probably an
   interpolation or component-count code.

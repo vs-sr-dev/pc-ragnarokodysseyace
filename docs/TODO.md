@@ -8,27 +8,50 @@
 # Next session — skinning, then collision
 
 `CNOM` is read ([`format_cnom.md`](format_cnom.md)) and a skeleton poses from
-the game's own animations. What is missing is the one link that makes the mesh
-follow the skeleton.
+the game's own animations. The one link that makes the *mesh* follow the
+skeleton is now reconnoitred too, and it reads cleanly — see below. Putting it
+together is the next session's first hour, not its whole day.
 
-### 1. Skinning. It finishes both `CMDL` and `CNOM` at once.
+### 1. Skinning — reconnoitred, and it reads
 
-Bits 8 and 9 of the `CMDL` vertex type mark two four-byte attributes on 931
-meshes — the character bodies. Everything needed to test a reading is already
-in hand:
+Session 6 found the attributes and validated them, so start from these facts
+rather than from the top. They hold on **all 931 skinned meshes, 473,193
+vertices, with no exception**:
 
-- **weights should sum to one.** Four bytes is most likely four `u8` weights,
-  or two `u8` indices and two `u8` weights; either way the sum is a test the
-  file passes or fails, and it costs one pass over 931 meshes to run.
-- **indices must be in range.** They index the node table, whose size the file
-  declares, so a wrong reading walks out of the skeleton immediately.
-- **the layout bytes locate them.** `+0x14` byte 2 is the offset of a four-byte
-  attribute, and the `0x03__` vertex types have a second one at the end of the
-  stride; the strides in
-  [`format_cmdl.md`](format_cmdl.md) account for both.
+- The skinned vertex types are the ones with bits 8 or 9 set: `0x0313` (794
+  meshes, stride 40), `0x0317` (136, strides 32 and 44), `0x0337` (1, stride
+  52).
+- **The first four bytes of a vertex are four `u8` weights, and they sum to
+  exactly 255.** 473,193 of 473,193, and the sum takes no other value anywhere
+  on the disc.
+- **The last four bytes of the stride are four `u8` bone indices**, and every
+  one of them is inside its model's node table.
+- So on `mzzh` mesh 4, vertex 0 reads `229 26 0 0` and `0 5 0 0`: 229/255 to
+  node 0 and 26/255 to node 5.
 
-Once it reads, a character mesh can be posed by a `CNOM` and the result is a
-frame of the actual game.
+The layout bytes at `+0x14` do *not* point at either — byte 3 is the texture
+coordinates and byte 2 is the normal, as on the rigid types. The two skin slots
+sit at offset 0 and at `stride - 4`, which is what the strides in
+[`format_cmdl.md`](format_cmdl.md) leave over once position, normal and
+coordinates are placed.
+
+**What is left is only the pose, not the parse:**
+
+1. **Confirm the pairing.** Weight `k` almost certainly goes with index `k`,
+   but "almost certainly" has been wrong twice on this disc. Render it and
+   look.
+2. **The bind-pose inverse.** `CMDL` vertices are in model space, so skinning
+   is `world_anim(bone) * inverse(world_bind(bone))` per influence, weighted.
+   Both matrices are already available: the bind pose from the `CMDL` node
+   transforms, the animated one from `CNOM`'s `pose()`. Nothing else is needed.
+3. **Then draw it.** A character mesh posed by a `CNOM`, with its own textures
+   on it, is a frame of the actual game — and it is the "the numbers are real"
+   milestone this project has been walking towards since session 3.
+
+Guard against the obvious failure: a wrong pairing or a missing inverse does
+not crash, it produces a figure that is *almost* right, with limbs stretched
+towards the origin. Compare against the model's declared bounding sphere, which
+the animated mesh should still roughly fill.
 
 ### 2. `CCLS` and `.map` — collision and world layout. 155 + 137 files.
 
@@ -127,6 +150,9 @@ turns an attack animation into a hitbox at a frame.
 - Proved by posing `fas2.CMDL` with `fas211walk.CNOM`: a walk cycle in profile,
   legs scissoring through contact and passing, arms counter-swinging, and the
   bind pose standing in a T.
+- **Skinning reconnaissance** (above): four `u8` weights summing to 255 at the
+  head of every skinned vertex, four `u8` bone indices at the tail, on all 931
+  meshes and 473,193 vertices with no exception.
 
 ## Session 5 — 2026-08-22
 
