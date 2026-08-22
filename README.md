@@ -12,9 +12,10 @@ own copy of the disc.
 
 Sessions 1-7 (2026-08-22): the container stack is open end to end, the game's
 database, text and actor parameters are readable, and the textures, geometry,
-skinning, motion and stage collision decode. A character can be drawn with
-its own textures on it, posed by the game's own animations and with the mesh
-following the skeleton, and a stage's walkable ground reads as a floor plan.
+skinning, motion, stage collision and the animation event lists decode. A
+character can be drawn with its own textures on it, posed by the game's own
+animations and with the mesh following the skeleton, and a stage's walkable
+ground reads as a floor plan.
 
 ```
 ISO (UDF 2.50)   ->      109 files, 5.4 GB      tools/iso.py
@@ -30,18 +31,20 @@ CTEX textures    ->   11,536 files, 5 formats   tools/ctex.py   0 errors
 CMDL geometry    ->    1,127 files, 5.6M tris   tools/cmdl.py   0 errors
 CNOM motion      ->    3,043 files, 3.0M keys   tools/cnom.py   0 errors
 CCLS collision   ->      155 files, 107k tris   tools/ccls.py   0 errors
+.anmcmd events   ->    2,053 files, 10,175 cmds tools/anmcmd.py 0 errors
 ```
 
 Formats are documented in [`docs/`](docs): [the disc
 survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 [`TXT`](docs/format_rmsg.md), [`CTEX`](docs/format_ctex.md),
 [`CMDL`](docs/format_cmdl.md), [`CNOM`](docs/format_cnom.md),
-[`CCLS`](docs/format_ccls.md), [the actor parameters](docs/params.md). The
-plan is in [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
+[`CCLS`](docs/format_ccls.md), [`.anmcmd`](docs/format_anmcmd.md), [the actor
+parameters](docs/params.md). The plan is in
+[`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
 
-The compiled cutscene language (`.psq`) and the world layout (`.map`) are
-untouched.
+The world layout (`.map`) and the compiled cutscene language (`.psq`) are
+untouched, and the `.anmcmd` opcodes are read but not named.
 
 ## BYOA
 
@@ -111,6 +114,10 @@ python tools/cnom.py pose <dir> <name> <frame>
 python tools/ccls.py check|survey <dir>      the stage collision
 python tools/ccls.py info|dump <dir> <name>  one stage
 python tools/ccls.py obj <dir> <name> <out>  export the ground as OBJ
+
+python tools/anmcmd.py check|survey <dir>    the animation commands
+python tools/anmcmd.py census <dir>          every opcode, with its size
+python tools/anmcmd.py list|dump <dir> <name>  one list, frame by frame
 
 python tools/params.py census|tiers <dir>     the actor parameters
 python tools/params.py classes <dir>          the six player classes compared

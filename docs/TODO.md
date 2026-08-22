@@ -26,13 +26,20 @@ out to have — and remember what `CCLS` taught, that a plausible record boundar
 can be twelve bytes wrong and still divide the payload exactly. Find an
 identity that only the right reading satisfies before believing any of it.
 
-### 2. `.anmcmd` (2,053) and `CMTM` (91).
+### 2. Name the `.anmcmd` opcodes, and read `CMTM` (91).
 
-`.anmcmd` is plainly animation *commands* — the events a motion fires, which is
-what turns an attack animation into a hitbox at a frame. It is now much better
-placed than it was: the hitboxes it would arm are the `collision_*.CTXT`
-capsules found this session, bound to bones through the model's locator table,
-and the frames it would fire on are `CNOM` frames. Both ends exist.
+The event lists themselves now read — 2,053 files, 6,802 blocks, 10,175
+commands, see [`format_anmcmd.md`](format_anmcmd.md) — but all 52 opcodes are
+unnamed. Start at opcode 0: the commonest at 2,508 uses, the only
+variable-length one, and a list of fixed 116-byte records, which is the shape a
+hitbox set has. The other end of that guess is already in hand, since the
+capsules a hit would arm are the `collision_*.CTXT` files bound to bones
+through the model's locator table.
+
+The method that will work is the one that worked on `params`: correlate. An
+opcode that appears only in `_at` animations is an attack thing; one that
+appears in every animation at frame 0 is a setup thing; one whose 116-byte
+record holds a locator id names a bone.
 
 `CMTM` sits beside `CNOM` under `*.mot.pac/` and shares the shell, `POF0` and
 all, so it should open in an hour.
@@ -41,8 +48,8 @@ all, so it should open in an hour.
 
 Nothing in `CNOM` says whether a frame is 1/30 or 1/60 of a second. The actor
 parameters in [`params.md`](params.md) carry durations the animations have to
-match — and `.anmcmd`, once read, will carry frame numbers for events whose
-timing the parameters also describe. Two independent ways to the same number.
+match, and `.anmcmd` now carries event frames for moves those same parameters
+describe. Two independent ways to the same number, and both readable.
 
 ### Then
 
@@ -91,7 +98,10 @@ timing the parameters also describe. Two independent ways to the same number.
   for "Fever" found nothing. Also the four unexplained elements of the `ab_*`
   status vectors.
 - `ELBN`.
-- `.PTP` (67), `.trg` (163), `.mkc` (2,690).
+- `.anmcmd`: all 52 opcodes; why 554 of the 2,053 name no motion. See
+  [`format_anmcmd.md`](format_anmcmd.md).
+- `.PTP` (67), `.trg` (163), `.mkc` (2,690) — the last of these sit beside the
+  `CNOM` files and may be what the unmatched `.anmcmd` lists key through.
 - What the 14 empty `.cpk.patch` stubs would have overlaid, and whether a
   shipped title update exists that fills them.
 
@@ -101,6 +111,24 @@ timing the parameters also describe. Two independent ways to the same number.
 
 ## Session 7 — 2026-08-22
 
+- `tools/anmcmd.py` — the animation event lists. **2,053 files, 6,802 blocks,
+  10,175 commands, 0 unreadable**, every check closing. See
+  [`format_anmcmd.md`](format_anmcmd.md). Findings worth carrying:
+  - **three nested tables and nothing else** — no magic, no version, no `POF0`.
+    A block table keyed by frame, a command count, and commands that declare
+    their own size;
+  - **the commands fill their block exactly**, 6,802 of 6,802, which is the
+    only thing in the file that confirms the reading — nothing else declares a
+    length;
+  - **51 of the 52 opcodes have one fixed size**. The exception is opcode 0,
+    the commonest, always `12 + 116 * n`, so it is a list of records;
+  - **the name is the link to the motion**: class prefix plus a three-digit
+    motion id. 1,499 of 2,053 resolve to a `CNOM`, and 1,473 of those have
+    every command frame inside the motion's length — which is what proves
+    these numbers are `CNOM` frames;
+  - opcodes 1000, 1002, 1004 and 10000 look like locator ids and are not: 1002
+    and 1004 are locator ids on no model on the disc. A minute of checking
+    against a plausible wrong answer.
 - **Skinning.** The mesh follows the skeleton. See [the skinning section of
   `format_cmdl.md`](format_cmdl.md). Findings worth carrying:
   - **the four `u8` at the tail of a vertex are not node indices.** They index
