@@ -75,7 +75,7 @@ Phase 3.
 | `CNOM` motion | 3,043 | ✅ **solved** | [`format_cnom.md`](format_cnom.md) — 3.0M keys, quaternion rotations, bound to skeletons by name |
 | `CMTM` material | 91 | ✅ **solved** | [`format_cnom.md`](format_cnom.md) — `CNOM` with scalars; animates material colour |
 | `.psq` sequence | 2,992 | high | the cutscene language; `SQIR` + `PART` chunks |
-| `.anmcmd` | 2,053 | ✅ **read** | [`format_anmcmd.md`](format_anmcmd.md) — the event lists; container solved, the 52 opcodes unnamed |
+| `.anmcmd` | 2,053 | ✅ **read** | [`format_anmcmd.md`](format_anmcmd.md) — the event lists; the hit record read and bound to the skeleton, 22 of 52 opcodes correlated |
 | `.mkc` | 2,690 | medium | |
 | `.CTXT` | 1,151 | ✅ **solved** | plain text: hit capsules and springs, bound to a bone through the model's locator table; see [`format_cmdl.md`](format_cmdl.md) |
 | `.PTP` effects | 18 | low | |

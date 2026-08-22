@@ -5,51 +5,55 @@
 
 ---
 
-# Next session — the opcodes, then the cutscenes
+# Next session — the cutscene language
 
-The world layout is done, and it came with two formats nobody had asked for:
-`ELBN`, which turns out to carry the engine's own parameter vocabulary, and
-`trigger.trg`, which turns out to be script source. What is left between the
-data and a running loop is behaviour.
+The hit record is read and bound to the skeleton, so what an attack *does* is
+now legible frame by frame. What is left between the data and a running loop is
+the script layer.
 
-### 1. Name the `.anmcmd` opcodes. Carried over, and now better armed.
+### 1. `.psq` — the cutscene language. 3,011 files.
 
-Still the same 52 unnamed opcodes over 10,175 commands, and still the same
-starting point: opcode 0, the commonest at 2,508 uses, the only
-variable-length one, `12 + 116 * n`, which is the shape a hitbox set has.
+`FA FA 'SQIR'` then `PART` chunks. It is clear what calls it: `trigger.trg`
+runs `callQuestScript("sfEnmGenStart()")`, naming another script by string, and
+every stage carries its own `<stage>.psq` beside the trigger list. So `.psq` is
+where a named script's body is, and the trigger vocabulary — 20-odd function
+names in [`format_stage.md`](format_stage.md) — is the entry-point list to
+check any decoding against.
 
-What is new since the item was written is the other end of the correlation.
-`ELBN` now hands over `se_hitlevel_tbl` and `eff_hitlevel_tbl` (76 files each),
-`s_combo_finish_inf` and `s_combo_graph` per player class, and
-`enemy_state_sound_param`; the `.CTXT` capsules were already bound to bones
-through the model's locator table. An opcode that arms a hit has all three of
-those waiting for it, and an opcode whose 116-byte record holds a locator id
-names a bone outright.
+### 2. The two id spaces the hit record points at.
 
-### 2. `.psq` — the cutscene language. 3,011 files.
+1091 to 1106 inside the hit record, 10200 to 12130 in opcodes 10 and 22.
+Neither occurs in any of the 4,941 `ECH` tables, so they are the sound banks or
+the `.PTP` effects. **274 CRI Atom `.acb`/`.awb`** is a documented format and
+opening it would name the first space outright; `.PTP` is 67 files and
+unexamined. This is the cheapest remaining naming job on the disc.
 
-`FA FA 'SQIR'` then `PART` chunks. It is now clear what calls it:
-`trigger.trg` runs `callQuestScript("sfEnmGenStart()")`, naming another script
-by string, and every stage carries its own `<stage>.psq` beside the trigger
-list. So `.psq` is where a named script's body is, and the trigger vocabulary
-— 20-odd function names — is the entry point list to check any decoding
-against.
+### 3. The rest of the `.anmcmd` opcodes.
+
+Thirty of the fifty-two have no correlation yet, most of them rare. The method
+that worked on the twenty-two that do is positional — where in the list an
+opcode falls, what it co-occurs with, whether it is exclusive with another —
+and it is close to exhausted. What would move it further is the geometry: pose
+the skeleton, draw the hit capsule, and the three vectors of the record become
+readable, which is also item 4.
 
 ### Then
 
-3. **The `ELBN` records, field by field.** The container is solved and 318
+4. **Which vector is which** in the hit record. Three signed vec3s; the natural
+   readings are an offset, an end point and a direction. Posing the skeleton
+   and drawing the capsule settles it, and `cmdl.py gait` already does the
+   forward kinematics that needs.
+5. **The `ELBN` records, field by field.** The container is solved and 318
    names are addressable; not one record is described. `job.cpk/<class>/
    objbin.bin` is the best target, because it is the same territory as the
    JSON in [`params.md`](params.md) and the two can be compared against each
    other rather than guessed at.
-4. **Name the `ECH` columns.** Unchanged. The `CCLS` surface codes 1 to 13 are
-   still the small well-posed instance, and the `ATIH` marker names now give a
-   second vocabulary to correlate against — 272 `jump_*` markers name the
-   stage they lead to, which is a stage graph that the stage table in `ECH`
-   must also encode.
-5. **The minimap transform.** 137 `.map` images, each visibly the silhouette
-   of its own stage's collision. Fitting the transform is a small job and
-   gives the UI layer a working map for free.
+6. **Name the `ECH` columns.** The `CCLS` surface codes 1 to 13 are still the
+   small well-posed instance, and the `ATIH` marker names give a second
+   vocabulary — 272 `jump_*` markers name the stage they lead to, which is a
+   stage graph the stage table in `ECH` must also encode.
+7. **The minimap transform.** 137 `.map` images, each visibly the silhouette of
+   its own stage's collision. A small job that gives the UI layer a working map.
 
 ---
 ## Deferred, with reasons
@@ -84,8 +88,9 @@ against.
   buffed state but the disc never names it, and a search of all 25,288 messages
   for "Fever" found nothing. Also the four unexplained elements of the `ab_*`
   status vectors.
-- `.anmcmd`: all 52 opcodes; why 554 of the 2,053 name no motion. See
-  [`format_anmcmd.md`](format_anmcmd.md).
+- `.anmcmd`: thirty of the fifty-two opcodes; which of the hit record's three
+  vectors is which; the unit of `+0x35`; why 554 of the 2,053 name no motion.
+  See [`format_anmcmd.md`](format_anmcmd.md).
 - `.PTP` (67) and `.mkc` (2,690) — the second of these sit beside the `CNOM`
   files and may be what the unmatched `.anmcmd` lists key through. (`.trg` is
   now [`format_stage.md`](format_stage.md).)
@@ -98,6 +103,52 @@ against.
 ---
 
 # Log
+
+## Session 9 — 2026-08-22
+
+- **The `.anmcmd` hit record.** See [`format_anmcmd.md`](format_anmcmd.md) and
+  `anmcmd.py hits` / `bones`. Findings worth carrying:
+  - **opcode 27's payload is 116 bytes, which is one of opcode 0's records.**
+    The two are a single and a list of the same thing, 6,193 of them, and that
+    is the observation the rest hangs off. Opcode 0's head declares the count
+    and it equals `(size - 12) / 116` on all 2,508 — two fields written by
+    different parts of an exporter, never disagreeing;
+  - **opcode 0 declares the set, opcode 27 updates one slot of it**: on all 185
+    files carrying both, the first 0 precedes the first 27;
+  - **the record names a bone and all 4,768 references resolve.** The field
+    addresses two spaces at once and the value says which, because **locator
+    ids start at 1000 and no model has more than 149 nodes** — so there is no
+    ambiguous case. Players use locator ids (433 of 436), monsters node indices
+    (3,983 of 4,332);
+  - **the names settle what the record is**: `node_head` 429, `node_r_weapon`
+    266, `node_r_hand` 236, `node_jaw` 201, `node_r_toe` 76, `b19_00_shield`
+    72. A monster's hitboxes are on its jaw, its head, its hands and its
+    weapon. `b01_00_507` puts one on the left hand at frame 46 and one on the
+    right at 54 — a one-two — and the sword's charged swing hangs its hit on
+    `locator 4000`, `node_r_weapon`;
+  - **the byte at `+0x35` scales with the strength of the hit**, twice over: it
+    decays 95 → 45 → 15 across the three frames of `sw383cge_l3` as the capsule
+    shrinks 2.70 → 1.50, and it rises 50 → 70 → 95 across the sword's three
+    charge levels as the capsule grows 1.12 → 2.70;
+  - **the same locator table serves hit and hurt.** `S4` is what the
+    `collision_*.CTXT` capsules bind through, and it is what this binds
+    through. One door.
+- **Twenty-two opcodes correlated by position**, which is the only method
+  available without an oracle:
+  - **13 opens a window and 5 closes it** — both payloadless, both once per
+    file, 13 before 5 on 356 of 366;
+  - **24, 50, 41, 52 and 39 are exclusive terminators**, each once per file at
+    the last frame as the last command, and a file carrying one carries no
+    other;
+  - **10 emits and never appears in what it emits**: not one of the 229
+    `*bullet*` files carries it, while 197 of those carry a hit record instead.
+    The bow carries it most, and the fully charged shot issues it ten times;
+  - 17 is a boolean; 8, 9, 11, 14 are the same field almost always set; 1, 2
+    and 35 carry a small index; 22 carries a scale and three angles in degrees;
+    40 and 53 are frame-0 setup, 53 on all 231 of its uses.
+- Searched all 4,941 `ECH` tables for the two id spaces the record points at —
+  1091..1106 and 10200..12130 — and **none of them occurs anywhere**, so they
+  belong to the sound banks or the effects. That is now TODO item 2.
 
 ## Session 8 — 2026-08-22
 

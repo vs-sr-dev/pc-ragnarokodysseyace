@@ -1,13 +1,14 @@
 # `.anmcmd` — the animation command lists
 
-**Status: container solved, opcodes open.** 2,053 files, **6,802 blocks, 10,175
-commands, 0 unreadable**, and every arithmetic check closing on every file.
-Reader: [`../tools/anmcmd.py`](../tools/anmcmd.py).
+**Status: container solved, the hit record read, the opcodes partly named.**
+2,053 files, **6,802 blocks, 10,175 commands, 0 unreadable**, and every
+arithmetic check closing on every file. Reader:
+[`../tools/anmcmd.py`](../tools/anmcmd.py).
 
 This is what turns an animation into an event. A [`CNOM`](format_cnom.md) moves
-the bones; one of these says what happens on which frame of it — and the things
-it would arm, the `collision_*.CTXT` capsules bound to bones through a model's
-locator table, are described in [`format_cmdl.md`](format_cmdl.md).
+the bones; one of these says what happens on which frame of it — and the two
+commonest opcodes turn out to be **the hitbox**, bound to the skeleton through
+the same locator table the `collision_*.CTXT` capsules use.
 
 ## Three nested tables and nothing else
 
@@ -47,25 +48,6 @@ what says the reading is right rather than merely possible. The twelve files
 whose frames step backwards once are all monster lists — something a
 hand-authored event track may do and a corrupt table may not.
 
-## The opcodes
-
-52 of them, and **51 have one fixed size wherever they appear**, from 4 bytes —
-an opcode with no payload at all — up to 120.
-
-The exception is opcode 0, the commonest at 2,508 uses, whose size is always
-`12 + 116 * n`: twelve bytes of head and then one to sixteen records of 116.
-Whatever it is, it is a list, and it is the thing an animation most often has
-to say.
-
-The numbering runs 0 to 62, and then jumps to 1000, 1002, 1004 and 10000. Those
-four read like locator ids — `1000` and `10000` *are* locator ids, on 251 and
-247 models — but 1002 and 1004 are locator ids on no model on the disc, so they
-are opcodes in a high range and not addresses. Checking cost a minute and would
-have been a plausible wrong answer.
-
-What the opcodes mean is open. `anmcmd.py census` prints all 52 with their
-sizes and the containers they occur in, which is where naming them starts.
-
 ## The name is the link to the motion
 
 Nothing inside the file identifies its animation. The name does: a class prefix
@@ -80,16 +62,197 @@ as220escape_f_st_quick ->  fas220escape_f_st.CNOM, played faster
 **1,499 of the 2,053 resolve to a `CNOM` that way, and on 1,473 of those every
 command frame lies inside the motion's declared length.** That second number is
 the check: it says the pairing is real and that these frame numbers are `CNOM`
-frames, not seconds or ticks.
+frames — 1/30 of a second each, per [`units.md`](units.md).
+
+## Opcode 0 and opcode 27 carry the same record, and it is the hit
+
+**Opcode 27's payload is 116 bytes**, which is exactly one of opcode 0's
+records. So the two are a list and a single of the same thing, and there are
+6,193 of them: 4,989 inside opcode 0 and 1,204 standing alone.
+
+Opcode 0's twelve-byte head says how many follow:
+
+```
++0x00  u16   opcode 0
++0x02  u16   size == 12 + 116 * n
++0x04  u32   a small number, or 1000
++0x08  u16   n                       == (size - 12) / 116 on all 2,508
++0x0A  u16   zero                    on all 2,508
+```
+
+Two independent fields agreeing on the count, on every command, is what closes
+this: the size and the head are written by different parts of an exporter and
+they never disagree.
+
+**Opcode 0 declares the set and opcode 27 updates one of it.** Of the 185 files
+carrying both, the first opcode 0 precedes the first opcode 27 on **all 185**,
+and 1,176 of the 1,204 opcode-27 records name a slot an opcode 0 had already
+declared. Four files use opcode 27 with no opcode 0 anywhere.
+
+### The record
+
+```
++0x00  u8        slot           0 to 15
++0x01  u8        flag           0 to 5
++0x02  u16       the bone
++0x04  u16       a second bone, or zero
++0x06  u16
++0x08  float[3]  \
++0x14  float[3]   > three vectors; every one of the nine goes negative
++0x20  float[3]  /
++0x2C  float     a size    never negative, set on 6,145 of 6,193
++0x30  float     a size    never negative, set on 5,926
++0x34  u8[4]     the second byte scales with the strength of the hit
++0x38  u8, 0xFF, 0, 0
++0x3C  float
++0x40  float     1.0       on 6,181, zero on the rest
++0x44  float     usually 0.01
++0x48  u16       an id in 1091..1106, then zero
++0x4C  u16, u16  the second an id around 361..370
++0x50  float
++0x54  float     -1.0      on all 6,193
++0x58  float
++0x5C  float
++0x60  u32
++0x64  u32
++0x68  zero      on all 6,193
++0x6C  float
++0x70  float
+```
+
+The nine floats at `+0x08` are three vectors rather than the
+`offset / size / rol` of a `.CTXT` capsule: a size is never negative and all
+nine of these are, between a fifth and a half of the time. The two at `+0x2C`
+and `+0x30` never are, and those are the sizes. Which vector is an offset,
+which an end point and which a direction is not settled here.
+
+### The bone, and every one of them resolves
+
+`+0x02` addresses two spaces at once, and the value says which. **Locator ids
+on this disc start at 1000 and no model has more than 149 nodes**, so a number
+below a thousand is a node index and one above it is a locator id, with no case
+that could be either. Checked against the model that owns each animation —
+`anmcmd.py bones` does this:
+
+| | locator ids | present in the model | node indices | in range |
+|---|---:|---:|---:|---:|
+| player classes | 433 | **433** | 3 | **3** |
+| monsters | 349 | **349** | 3,983 | **3,983** |
+
+**4,768 of 4,768**, with 1,425 further records naming no bone at all. The
+locator route is the `S4` table of [`CMDL`](format_cmdl.md), the same one the
+`collision_*.CTXT` hurt capsules bind through — so a hit and a hurt reach the
+skeleton by the same door.
+
+Resolved to names, the node indices read as a hitbox set and nothing else
+would:
+
+```
+node_head      429      node_l_toe      94
+node_r_weapon  266      weapon          81
+node_r_hand    236      node_r_toe      76
+node_l_hand    202      b19_00_shield   72
+node_jaw       201      node_l_finger00 70
+node_r_forearm 162      node_hara       67
+```
+
+A monster's hitboxes are on its jaw, its head, its hands, its weapon and its
+toes. That is what an attack is, and it is what identifies the record. Read one
+out and it says so plainly:
+
+```
+$ python tools/anmcmd.py hits extract/tree b01_00_507.anmcmd
+  f46  op0  slot 0  locator 1100 (node_l_hand)  ... size 1.60 0.60
+  f54  op0  slot 0  locator 1200 (node_r_hand)  ... size 1.60 0.55
+```
+
+The sixth attack of the first monster in the game is a one-two. And the sword's
+charged swing hangs its hit on `locator 4000`, which is `node_r_weapon` — on
+the sword.
+
+### The byte at `+0x35` scales with the strength of the hit
+
+Two things say so, and neither needs the value's unit to be known.
+
+**Within one attack it decays.** `sw383cge_l3` is the sword's fully charged
+swing: opcode 0 declares two slots at frame 13, then three opcode 27s update
+slot 1 at frames 14, 16 and 17, and across them the byte falls **95, 45, 15**
+while the size at `+0x30` falls 2.70, 2.00, 1.50 and the second vector's `y`
+falls 4.50, 3.50, 2.50. A shockwave travelling out and running down.
+
+**Across charge levels it rises.** The sword is the only class with all three
+on the disc:
+
+| | records | `+0x35` | size |
+|---|---:|---:|---:|
+| `sw381cge_l1` | 1 | 50 | 1.12 |
+| `sw382cge_l2` | 1 | 70 | 1.33 |
+| `sw383cge_l3` | 5 | **95** | **2.70** |
+
+Both the byte and the capsule grow with the charge. The hammer has two levels
+and goes 80 against 40 on the largest single value while rising 80 to 86 on the
+sum, because its level 2 is four hits where level 1 is one — which is what a
+charged multi-hit does to a per-hit number.
+
+Monster records put 100 or 150 there far more often than players do, so the two
+are on different scales; what the number *is* — damage, a percentage, a level —
+is not established.
+
+## The other opcodes, as far as position says
+
+52 opcodes, and **51 have one fixed size wherever they appear**, from 4 bytes —
+no payload at all — up to 120. Naming one needs a correlation; where there is
+one it is given, and where there is none the entry says so.
+
+- **Opcode 13 opens a window and opcode 5 closes it.** Both carry no payload,
+  both occur exactly once in a file, they appear together in 315 files, and 13
+  comes strictly before 5 on **356 of the 366** files with both. 13 falls at
+  44% of the way through the list at the median; 5 is the last command in the
+  file on 288 of 393.
+- **Opcodes 24, 50, 41, 52 and 39 are exclusive terminators.** Each occurs at
+  most once per file, at the last frame, as the last command — 63 of 63 for
+  opcode 24, 39 of 39 for opcode 50, 6 of 6 for opcode 41 — and a file that
+  carries one does not carry another. So a list ends with a statement of what
+  kind of ending it is.
+- **Opcode 10 emits, and never appears in what it emits.** 288 files carry it
+  and **not one of the 229 named `*bullet*` does**, while 197 of those carry a
+  hit record instead. So the firing animation spawns and the projectile's own
+  animation does the hitting. Among the player classes the bow carries it most,
+  65 files, and `ht383cge_l3` — the fully charged shot — issues it ten times in
+  one list. The ranged classes' charged attacks carry no hit record at all,
+  which is the same fact from the other side.
+- **Opcode 17 is a boolean**, 242 payloads of `0` against 239 of `1`. Opcodes
+  8, 9, 11 and 14 are the same four bytes but almost always `1`.
+- **Opcodes 1, 2 and 35 carry a small index** in their first byte, from zero up.
+- **Opcode 22 places something and rotates it.** 448 uses, 82% at frame 0, and
+  its 44 bytes hold a scale (1.0 on 322 of them, then 1.5, 2.0, 0.8), an offset
+  and three angles that read as **degrees** — the only values ever seen there
+  are 90, 180 and −15. Its second word is an id of 10300, 10301 or 10302.
+- **Opcode 40 is frame-0 setup**, 87% of its 317 uses, and pairs a flag with a
+  small id. **Opcode 53 is frame-0 setup on all 231 of its uses**, which no
+  other opcode manages.
+
+The numbering runs 0 to 62 and then jumps to 1000, 1002, 1004 and 10000. Those
+four read like locator ids — `1000` and `10000` *are* locator ids, on 251 and
+247 models — but 1002 and 1004 are locator ids on no model on the disc, so they
+are opcodes in a high range and not addresses. Checking cost a minute and would
+have been a plausible wrong answer.
 
 ## Still open
 
-- All 52 opcodes. The place to start is opcode 0 — the commonest, the only
-  variable-length one, and a list of fixed records, which is the shape of a
-  hitbox set.
+- **Which vector is which** in the hit record. Three vec3s, all signed; the
+  natural readings are an offset, a second end point and a direction, and
+  nothing here distinguishes them. Posing the skeleton and drawing the capsule
+  would settle it in an afternoon.
+- **Two id spaces, neither named anywhere on the disc**: 1091 to 1106 inside the
+  hit record, and 10200 to 12130 in opcodes 10 and 22. Neither value occurs in
+  any of the 4,941 `ECH` tables, so they belong to the CRI Atom sound banks or
+  the `.PTP` effects, and both are unopened. The `se_hitlevel_tbl` and
+  `eff_hitlevel_tbl` in [`ELBN`](format_elbn.md) are the obvious bridge and
+  hold different, smaller numbers.
+- **Thirty-odd opcodes with no correlation yet**, most of them rare: 7, 15, 16,
+  18, 20, 23, 25, 26, 28, 31, 32, 34, 36, 37, 42 to 49, 51, 54, 55, 57, 60, 62.
 - Why 554 files name no motion. Some are plainly not animations at all
   (`stick_bullet`, `soul_breaker_bullet`); the rest may key through the 2,690
   `.mkc` files, which sit beside the `CNOM` in the same `.pac`.
-- The frame rate, which these lists are now in a position to settle: they carry
-  event frames for moves whose durations the [actor
-  parameters](params.md) also describe.
+- `+0x35`'s unit, and why players and monsters use different ranges of it.

@@ -16,7 +16,8 @@ skinning, motion, stage collision, the animation event lists and **the world
 layout** decode. A character can be drawn with its own textures on it, posed by
 the game's own animations and with the mesh following the skeleton; a stage
 reads as a floor plan with its fences, its spawn points, its monster
-generators and the scripts its doorways run. The world's two constants are
+generators and the scripts its doorways run. An attack says which bone it
+swings from and how hard. The world's two constants are
 settled: **one unit is one metre and one frame is 1/30 of a second**, so the
 game's own movement numbers are dimensional at last.
 
@@ -36,6 +37,7 @@ CNOM motion      ->    3,043 files, 3.0M keys   tools/cnom.py   0 errors
 CCLS collision   ->      155 files, 107k tris   tools/ccls.py   0 errors
 CMTM material    ->       91 files, 1,388 keys  tools/cmtm.py   0 errors
 .anmcmd events   ->    2,053 files, 10,175 cmds tools/anmcmd.py 0 errors
+  hit records    ->    6,193 hits, 4,768 bones  all resolving
 ATIH + fences    ->      163 stages, 5,934 marks tools/stage.py 0 errors
 ELBN parameters  ->      707 files, 318 names   tools/elbn.py   0 errors
 ```
@@ -51,11 +53,13 @@ parameters](docs/params.md). The plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
 
-The compiled cutscene language (`.psq`) is untouched, the `.anmcmd` opcodes are
-read but not named, and the `ELBN` records are addressable by name but not
-described field by field. `.map`, listed here for six sessions as the world
-layout, turned out to be the minimap; the layout is `hta.bin`,
-`borderline.bin` and `trigger.trg`.
+The compiled cutscene language (`.psq`) is untouched, the `ELBN` records are
+addressable by name but not described field by field, and thirty of the
+fifty-two `.anmcmd` opcodes still have no correlation — though the two
+commonest are now read, and they are the hitbox.
+
+`.map`, listed here for six sessions as the world layout, turned out to be the
+minimap; the layout is `hta.bin`, `borderline.bin` and `trigger.trg`.
 
 ## BYOA
 
@@ -146,6 +150,8 @@ python tools/elbn.py field <dir> <name>      where a parameter occurs
 python tools/anmcmd.py check|survey <dir>    the animation commands
 python tools/anmcmd.py census <dir>          every opcode, with its size
 python tools/anmcmd.py list|dump <dir> <name>  one list, frame by frame
+python tools/anmcmd.py hits <dir> <name>     the hit records, with bone names
+python tools/anmcmd.py bones <dir>           how many hits name a real bone
 
 python tools/params.py census|tiers <dir>     the actor parameters
 python tools/params.py classes <dir>          the six player classes compared
