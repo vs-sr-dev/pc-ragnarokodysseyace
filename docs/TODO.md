@@ -5,72 +5,72 @@
 
 ---
 
-# Next session — the world, then the events
+# Next session — the opcodes, the frame rate, and the cutscenes
 
-A character now deforms on its own skeleton under its own animation, and a
-stage's walkable ground reads as a floor plan. What is missing between them is
-where things *are*: the stage is a pile of models with no placement, and the
-animations fire no events.
+The world layout is done, and it came with two formats nobody had asked for:
+`ELBN`, which turns out to carry the engine's own parameter vocabulary, and
+`trigger.trg`, which turns out to be script source. What is left between the
+data and a running loop is behaviour.
 
-### 1. `.map` — world layout. 137 files.
+### 1. Name the `.anmcmd` opcodes. Carried over, and now better armed.
 
-The obvious next file, and the one `CCLS` points at. A stage directory holds
-`ground.CMDL`, `sky.CMDL`, a heap of props, and a `.col` that covers only the
-walkable middle of the ground model — so something places the props, sets the
-camera, and says where the player enters and the monsters spawn. 137 `.map`
-files against 155 stages is close enough to be per-stage.
+Still the same 52 unnamed opcodes over 10,175 commands, and still the same
+starting point: opcode 0, the commonest at 2,508 uses, the only
+variable-length one, `12 + 116 * n`, which is the shape a hitbox set has.
 
-Start with the shell: if it carries a `POF0` it will fall open the way `CMDL`
-and `CNOM` did, and if it does not, expect the flat-array shape `CCLS` turned
-out to have — and remember what `CCLS` taught, that a plausible record boundary
-can be twelve bytes wrong and still divide the payload exactly. Find an
-identity that only the right reading satisfies before believing any of it.
+What is new since the item was written is the other end of the correlation.
+`ELBN` now hands over `se_hitlevel_tbl` and `eff_hitlevel_tbl` (76 files each),
+`s_combo_finish_inf` and `s_combo_graph` per player class, and
+`enemy_state_sound_param`; the `.CTXT` capsules were already bound to bones
+through the model's locator table. An opcode that arms a hit has all three of
+those waiting for it, and an opcode whose 116-byte record holds a locator id
+names a bone outright.
 
-### 2. Name the `.anmcmd` opcodes.
+### 2. The frame rate. Still two independent routes, and a third now.
 
-The event lists themselves now read — 2,053 files, 6,802 blocks, 10,175
-commands, see [`format_anmcmd.md`](format_anmcmd.md) — but all 52 opcodes are
-unnamed. Start at opcode 0: the commonest at 2,508 uses, the only
-variable-length one, and a list of fixed 116-byte records, which is the shape a
-hitbox set has. The other end of that guess is already in hand, since the
-capsules a hit would arm are the `collision_*.CTXT` files bound to bones
-through the model's locator table.
+Nothing in `CNOM` says whether a frame is 1/30 or 1/60 of a second, and a
+search of `game_common_param.bin` and `latency.bin` this session found no
+declaration anywhere. The routes:
 
-The method that will work is the one that worked on `params`: correlate. An
-opcode that appears only in `_at` animations is an attack thing; one that
-appears in every animation at frame 0 is a setup thing; one whose 116-byte
-record holds a locator id names a bone.
+- the actor parameters in [`params.md`](params.md) carry durations the
+  animations have to match;
+- `.anmcmd` carries event frames for moves those parameters describe;
+- and `mot_param.bin` now gives, per class, one 16-byte row per motion — 87
+  rows for `fas`, 115 for `fmg` — whose `u16` of flags is a small number
+  (0, 3, 6, 8) that a loop bit and a blend length would both live in.
 
-(`CMTM` is done — it turned out to be `CNOM` with scalars; see
-[`format_cnom.md`](format_cnom.md).)
+### 3. `.psq` — the cutscene language. 3,011 files.
 
-### 3. The frame rate, and it can be settled now.
-
-Nothing in `CNOM` says whether a frame is 1/30 or 1/60 of a second. The actor
-parameters in [`params.md`](params.md) carry durations the animations have to
-match, and `.anmcmd` now carries event frames for moves those same parameters
-describe. Two independent ways to the same number, and both readable.
+`FA FA 'SQIR'` then `PART` chunks. It is now clear what calls it:
+`trigger.trg` runs `callQuestScript("sfEnmGenStart()")`, naming another script
+by string, and every stage carries its own `<stage>.psq` beside the trigger
+list. So `.psq` is where a named script's body is, and the trigger vocabulary
+— 20-odd function names — is the entry point list to check any decoding
+against.
 
 ### Then
 
-4. **`.psq`** — `FA FA 'SQIR'` then `PART` chunks, the compiled cutscene
-   language, 3,011 files. Big, and probably slow.
-5. **Name the `ECH` columns.** The types are inferred and the tool reports
-   them; the *meanings* are the work. The AI filenames
-   ([`RECON.md` §7b](RECON.md)) give every monster an English name for free,
-   which makes a monster table readable without an EBOOT. The `CCLS` surface
-   codes are a small, well-posed instance: 1 to 13, and a footstep table would
-   key on exactly those.
+4. **The `ELBN` records, field by field.** The container is solved and 318
+   names are addressable; not one record is described. `job.cpk/<class>/
+   objbin.bin` is the best target, because it is the same territory as the
+   JSON in [`params.md`](params.md) and the two can be compared against each
+   other rather than guessed at.
+5. **Name the `ECH` columns.** Unchanged. The `CCLS` surface codes 1 to 13 are
+   still the small well-posed instance, and the `ATIH` marker names now give a
+   second vocabulary to correlate against — 272 `jump_*` markers name the
+   stage they lead to, which is a stage graph that the stage table in `ECH`
+   must also encode.
+6. **The minimap transform.** 137 `.map` images, each visibly the silhouette
+   of its own stage's collision. Fitting the transform is a small job and
+   gives the UI layer a working map for free.
 
 ---
-
 ## Deferred, with reasons
 
 - **EBOOT decryption** (Phase 3). Load-bearing here in a way it was not on the
   sister project, but everything above is in the clear, and the experience
   there is that facts get postponed to the disassembler and then found in a
   filename. Nothing on the current list needs it.
-- **`ELBN`** (707 blocks) — unidentified, no consumer waiting.
 - **Audio and video** — CRI Atom and PAMF are both well-trodden formats.
 
 ## Open, unowned
@@ -97,17 +97,95 @@ describe. Two independent ways to the same number, and both readable.
   buffed state but the disc never names it, and a search of all 25,288 messages
   for "Fever" found nothing. Also the four unexplained elements of the `ab_*`
   status vectors.
-- `ELBN`.
 - `.anmcmd`: all 52 opcodes; why 554 of the 2,053 name no motion. See
   [`format_anmcmd.md`](format_anmcmd.md).
-- `.PTP` (67), `.trg` (163), `.mkc` (2,690) — the last of these sit beside the
-  `CNOM` files and may be what the unmatched `.anmcmd` lists key through.
+- `.PTP` (67) and `.mkc` (2,690) — the second of these sit beside the `CNOM`
+  files and may be what the unmatched `.anmcmd` lists key through. (`.trg` is
+  now [`format_stage.md`](format_stage.md).)
+- The stage layout's own leftovers: the polyline's third word, 0 to 5; whether
+  a fence is a closed loop; the 45 markers named `HTA*`; and what places the
+  object a `obj*` marker marks.
 - What the 14 empty `.cpk.patch` stubs would have overlaid, and whether a
   shipped title update exists that fills them.
 
 ---
 
 # Log
+
+## Session 8 — 2026-08-22
+
+- **`.map` is the minimap, not the world layout.** All 137 begin `CTEX` —
+  256x256, 8-bit paletted, one level — and decoding one draws the silhouette of
+  its stage. Six sessions of TODO had it down as "the obvious next file, and
+  the one `CCLS` points at", on the reasoning that 137 against 155 stages is
+  close enough to be per-stage. The count was right and the conclusion was
+  wrong, and reading the first four bytes ended it in ten minutes. Documented
+  in [`format_ctex.md`](format_ctex.md), which already read them.
+- `tools/stage.py` — the actual world layout, three files along in the same
+  directory. **163 stages, 5,934 markers, 1,455 polylines, 508 triggers, 0
+  unreadable**, every identity closing. See
+  [`format_stage.md`](format_stage.md). Findings worth carrying:
+  - **`hta.bin` is `ATIH`, a table of named markers**, 40 bytes each: name
+    pointer, three 16-bit Euler angles, a position and three half-extents. The
+    name pool sits at `align16(0x10 + 40 * count)` and that round-up is the
+    whole arithmetic — 88 of the 163 have an odd count and are eight bytes
+    short without it;
+  - **the collision proves the record.** Drop every `appear*` marker onto its
+    own stage's `.col` and 660 of 661 land on a triangle with a **median height
+    difference of 0.000**, p10 to p90 inside a fifth of a unit. Any wrong
+    reading of a 40-byte record puts plausible floats in the position slot;
+    only the right one puts them on the floor;
+  - **the half-extents separate points from volumes**, and the split is
+    self-checking: all 534 volumes are `pl_q`, `jump_*`, `lock_start` or
+    `SE_area`, and not one is an `emgen_pos` or an `ef_*`. The test has to be a
+    loose one — a rotated marker writes 0.4999999 twice and 0.5 once;
+  - **rotations are 16-bit binary angles, 65536 to the turn.** 3,192 of the
+    3,394 non-zero ones are whole degrees on that scale against 2,271 on the
+    half-turn scale, and the odd degrees are what discriminate;
+  - **`borderline` coordinates are hundredths of a unit**, and nothing says so.
+    At /100 the median `chara_line` vertex is **0.75 units** from the nearest
+    boundary edge of the stage's collision mesh; at /128 it is 4.2, at /64
+    10.2, at /32 57. The identity is the one `CCLS` already established — that
+    the single-use edges are the outline — so the fence and the outline are the
+    same thing written twice;
+  - **`trigger.trg` is script source in the clear**, and its name field is an
+    `ATIH` marker: 507 of 508 resolve. `cfMapJump("010_01_02", "appear03");`
+    spells out the destination stage and the arrival marker, so a map
+    transition is fully described by two strings. `sfAreaVolumeCtrl` settles
+    the event kinds — all 21 kind-2 triggers pass 0 and all 21 kind-0/1 pass 1
+    — so kind 2 is leave and 0/1 are enter.
+- Proved by drawing `010_01_01` and `030_03_01` as floor plans: the collision
+  ground, the `chara_line` fence tracing its boundary, four `appear` markers in
+  diamond formation at the mouth, a `jump_` doorway at the far end, and twenty
+  `emgen_pos` between them. The silhouette is the same shape as the `.map`
+  minimap, which confirms both findings at once.
+- `tools/elbn.py` — `ELBN`, off the deferred list. **707 files, 3,983 entries,
+  318 distinct parameter names, 13,437 relocations, 0 unreadable**, every check
+  closing on the first reading. See [`format_elbn.md`](format_elbn.md).
+  Findings worth carrying:
+  - **it is the format that names its own contents** — a sorted table of
+    `(name, offset, size)`, so every value arrives with the identifier the
+    engine's C++ used. It had been deferred five times as "unidentified, no
+    consumer waiting", and it is the single largest declaration of engine
+    vocabulary on the disc;
+  - **the same shell and a `POF0` tail**, the fifth format in that family, so
+    the relocation trick from `CMDL` said which words are pointers and nothing
+    had to be guessed;
+  - **`mot_param.bin` is the motion table.** `motionDataHeader` is
+    `(count, ptr, stride)` and `_dataA` is `count * stride` bytes, on all 19;
+    every motion id in a player class's table is a `CNOM` in the same `.pac`,
+    87 of 87 for `fas`, 115 of 115 for `fmg`, with nothing left over on either
+    side. `fas` row 211 is `fas211walk`;
+  - **packed RGBA is the trap again.** A stage's lights carry colour as a word,
+    and `0x46d7b4ff` reads as a perfectly plausible 27610.5. `CMTM` produced
+    the same error last session at -4e37, where it was obvious. `dump` now
+    prints the RGBA reading of any word ending in `ff` beside whatever it
+    inferred;
+  - **a name is not a meaning**: `region_data` lives in
+    `monster.cpk/<monster>/objbin.bin`, one per monster, so it is not a stage
+    spawn region however much it sounds like one.
+- Looked for the frame rate in `game_common_param.bin` and `latency.bin` and
+  found neither — `latency.bin` is network ping thresholds. It stays item 2.
 
 ## Session 7 — 2026-08-22
 

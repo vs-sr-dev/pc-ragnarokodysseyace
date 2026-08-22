@@ -129,6 +129,31 @@ confirms the swizzle by eye, and with it the bit order: interleaving `y` into
 the even positions instead of `x` produces the transpose, which is also smooth
 and also wrong.
 
+## The 137 `.map` files are minimaps
+
+Not every `CTEX` is called `.CTEX`. Each stage directory carries one
+`<stage>.map` in its `param.pac`, and all 137 of them begin `CTEX`: 256x256,
+format `0x107`, one level, no mip chain, the palette after the indices like
+every other P8 file on the disc.
+
+Decoded, each one draws the silhouette of its stage — a lilac blob on white
+with a grey outline — and that silhouette is visibly the same shape as the
+stage's own collision mesh seen from above. `.map` is the **minimap**.
+
+This is worth recording because the file extension sent a session looking for a
+world layout. The layout is in [`format_stage.md`](format_stage.md), three
+files along in the same directory. The rule that would have saved the detour is
+the one this project already follows for containers: **recognise a file by its
+magic, never by its extension**.
+
+```
+$ python tools/ctex.py png extract/tree 010_01_01.map map.png
+```
+
+What is *not* known is the transform: nothing has been fitted from stage
+coordinates to the 256x256 image, so the minimap can be drawn but not yet
+registered against anything.
+
 ## Still open
 
 - **`0x28`** takes four values: `0x80` (8,796), `0x70` (2,557), `0x60` (153),

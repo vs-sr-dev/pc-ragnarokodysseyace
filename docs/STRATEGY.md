@@ -69,14 +69,15 @@ Phase 3.
 | `CTEX` texture | 11,536 | ✅ **solved** | [`format_ctex.md`](format_ctex.md) — five pixel formats, mip chains, Morton swizzle |
 | `CMDL` model | 1,127 | ✅ **solved** | [`format_cmdl.md`](format_cmdl.md) — geometry, materials, the draw list and the skinning |
 | `CCLS` collision | 155 | ✅ **solved** | [`format_ccls.md`](format_ccls.md) — the walkable ground, one welded triangle mesh per stage |
-| `.map` | 137 | **highest** | world layout — what places a stage's props and spawns |
+| `.map` | 137 | ✅ **solved** | not the world layout at all: a 256x256 minimap, and a [`CTEX`](format_ctex.md) |
+| stage layout | 163 | ✅ **solved** | [`format_stage.md`](format_stage.md) — `ATIH` markers, the fences and the trigger scripts |
+| `ELBN` params | 707 | ✅ **solved** | [`format_elbn.md`](format_elbn.md) — the named-parameter container, 318 names |
 | `CNOM` motion | 3,043 | ✅ **solved** | [`format_cnom.md`](format_cnom.md) — 3.0M keys, quaternion rotations, bound to skeletons by name |
 | `CMTM` material | 91 | ✅ **solved** | [`format_cnom.md`](format_cnom.md) — `CNOM` with scalars; animates material colour |
 | `.psq` sequence | 2,992 | high | the cutscene language; `SQIR` + `PART` chunks |
 | `.anmcmd` | 2,053 | ✅ **read** | [`format_anmcmd.md`](format_anmcmd.md) — the event lists; container solved, the 52 opcodes unnamed |
 | `.mkc` | 2,690 | medium | |
 | `.CTXT` | 1,151 | ✅ **solved** | plain text: hit capsules and springs, bound to a bone through the model's locator table; see [`format_cmdl.md`](format_cmdl.md) |
-| `ELBN` | 379 | low | unidentified, no consumer waiting |
 | `.PTP` effects | 18 | low | |
 | CRI Atom audio | 274 | low | `.acb`/`.awb`, well-documented format |
 | PAMF video | 46 | low | ffmpeg territory |
@@ -92,7 +93,11 @@ scripting layer on the disc, the EBOOT is where the combat loop, the AI
 dispatch, the quest state machine and the `.psq` interpreter live.
 
 **But the method note from the sister project still applies, and applies
-harder here.**
+harder here**, and session 8 is the sharpest instance yet: `ELBN`, deferred
+five times over as "unidentified, no consumer waiting", turned out to be the
+one format on the disc that ships the engine's own parameter names, and the
+stage triggers turned out to be **script source text in the clear**. Neither
+needed a disassembler; both needed somebody to open the file.
 Repeatedly on that project, things postponed to "the EBOOT phase" turned out to
 be written in the clear somewhere on the disc — sometimes in a filename. Before
 reaching for the disassembler, ask whether the fact is already declared. On
@@ -124,3 +129,9 @@ readable too. What is still missing is a stage to move around in, which is why
 That milestone needs no rendering of the game's art and no EBOOT, and it is the
 first honest test of whether the reimplementation thesis holds here the way it
 held on the sister project.
+
+**As of session 8 it has its stage too.** `010_01_01` reads end to end: a
+ground mesh, 346 collision triangles, a fence to stop at, four spawn points in
+formation at one end and a doorway at the other, and twenty-odd places
+monsters come from in between. Everything the milestone needs is now readable
+except the loop that runs it.

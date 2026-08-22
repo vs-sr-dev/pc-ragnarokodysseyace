@@ -10,12 +10,13 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-7 (2026-08-22): the container stack is open end to end, the game's
+Sessions 1-8 (2026-08-22): the container stack is open end to end, the game's
 database, text and actor parameters are readable, and the textures, geometry,
-skinning, motion, stage collision and the animation event lists decode. A
-character can be drawn with its own textures on it, posed by the game's own
-animations and with the mesh following the skeleton, and a stage's walkable
-ground reads as a floor plan.
+skinning, motion, stage collision, the animation event lists and **the world
+layout** decode. A character can be drawn with its own textures on it, posed by
+the game's own animations and with the mesh following the skeleton; a stage
+reads as a floor plan with its fences, its spawn points, its monster
+generators and the scripts its doorways run.
 
 ```
 ISO (UDF 2.50)   ->      109 files, 5.4 GB      tools/iso.py
@@ -31,21 +32,27 @@ CTEX textures    ->   11,536 files, 5 formats   tools/ctex.py   0 errors
 CMDL geometry    ->    1,127 files, 5.6M tris   tools/cmdl.py   0 errors
 CNOM motion      ->    3,043 files, 3.0M keys   tools/cnom.py   0 errors
 CCLS collision   ->      155 files, 107k tris   tools/ccls.py   0 errors
-CMTM material   ->       91 files, 1,388 keys  tools/cmtm.py   0 errors
+CMTM material    ->       91 files, 1,388 keys  tools/cmtm.py   0 errors
 .anmcmd events   ->    2,053 files, 10,175 cmds tools/anmcmd.py 0 errors
+ATIH + fences    ->      163 stages, 5,934 marks tools/stage.py 0 errors
+ELBN parameters  ->      707 files, 318 names   tools/elbn.py   0 errors
 ```
 
 Formats are documented in [`docs/`](docs): [the disc
 survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 [`TXT`](docs/format_rmsg.md), [`CTEX`](docs/format_ctex.md),
 [`CMDL`](docs/format_cmdl.md), [`CNOM` and `CMTM`](docs/format_cnom.md),
-[`CCLS`](docs/format_ccls.md), [`.anmcmd`](docs/format_anmcmd.md), [the actor
+[`CCLS`](docs/format_ccls.md), [the stage layout](docs/format_stage.md),
+[`ELBN`](docs/format_elbn.md), [`.anmcmd`](docs/format_anmcmd.md), [the actor
 parameters](docs/params.md). The plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
 
-The world layout (`.map`) and the compiled cutscene language (`.psq`) are
-untouched, and the `.anmcmd` opcodes are read but not named.
+The compiled cutscene language (`.psq`) is untouched, the `.anmcmd` opcodes are
+read but not named, and the `ELBN` records are addressable by name but not
+described field by field. `.map`, listed here for six sessions as the world
+layout, turned out to be the minimap; the layout is `hta.bin`,
+`borderline.bin` and `trigger.trg`.
 
 ## BYOA
 
@@ -119,6 +126,17 @@ python tools/cmtm.py track <dir> <name> <material>
 python tools/ccls.py check|survey <dir>      the stage collision
 python tools/ccls.py info|dump <dir> <name>  one stage
 python tools/ccls.py obj <dir> <name> <out>  export the ground as OBJ
+
+python tools/stage.py check|survey <dir>      the world layout
+python tools/stage.py info <dir> <stage>     markers, fences and triggers
+python tools/stage.py markers|triggers <dir> <stage>
+python tools/stage.py grep <dir> <text>      which stages mention a name
+python tools/stage.py obj <dir> <stage> <out>  the layout as OBJ
+
+python tools/elbn.py check|survey <dir>      the named parameters
+python tools/elbn.py names <dir> <file>      the entries of one file
+python tools/elbn.py dump <dir> <file> [entry]
+python tools/elbn.py field <dir> <name>      where a parameter occurs
 
 python tools/anmcmd.py check|survey <dir>    the animation commands
 python tools/anmcmd.py census <dir>          every opcode, with its size
