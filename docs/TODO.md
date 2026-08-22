@@ -5,72 +5,44 @@
 
 ---
 
-# Next session — skinning, then collision
+# Next session — the world, then the events
 
-`CNOM` is read ([`format_cnom.md`](format_cnom.md)) and a skeleton poses from
-the game's own animations. The one link that makes the *mesh* follow the
-skeleton is now reconnoitred too, and it reads cleanly — see below. Putting it
-together is the next session's first hour, not its whole day.
+A character now deforms on its own skeleton under its own animation, and a
+stage's walkable ground reads as a floor plan. What is missing between them is
+where things *are*: the stage is a pile of models with no placement, and the
+animations fire no events.
 
-### 1. Skinning — reconnoitred, and it reads
+### 1. `.map` — world layout. 137 files.
 
-Session 6 found the attributes and validated them, so start from these facts
-rather than from the top. They hold on **all 931 skinned meshes, 473,193
-vertices, with no exception**:
+The obvious next file, and the one `CCLS` points at. A stage directory holds
+`ground.CMDL`, `sky.CMDL`, a heap of props, and a `.col` that covers only the
+walkable middle of the ground model — so something places the props, sets the
+camera, and says where the player enters and the monsters spawn. 137 `.map`
+files against 155 stages is close enough to be per-stage.
 
-- The skinned vertex types are the ones with bits 8 or 9 set: `0x0313` (794
-  meshes, stride 40), `0x0317` (136, strides 32 and 44), `0x0337` (1, stride
-  52).
-- **The first four bytes of a vertex are four `u8` weights, and they sum to
-  exactly 255.** 473,193 of 473,193, and the sum takes no other value anywhere
-  on the disc.
-- **The last four bytes of the stride are four `u8` bone indices**, and every
-  one of them is inside its model's node table.
-- So on `mzzh` mesh 4, vertex 0 reads `229 26 0 0` and `0 5 0 0`: 229/255 to
-  node 0 and 26/255 to node 5.
+Start with the shell: if it carries a `POF0` it will fall open the way `CMDL`
+and `CNOM` did, and if it does not, expect the flat-array shape `CCLS` turned
+out to have — and remember what `CCLS` taught, that a plausible record boundary
+can be twelve bytes wrong and still divide the payload exactly. Find an
+identity that only the right reading satisfies before believing any of it.
 
-The layout bytes at `+0x14` do *not* point at either — byte 3 is the texture
-coordinates and byte 2 is the normal, as on the rigid types. The two skin slots
-sit at offset 0 and at `stride - 4`, which is what the strides in
-[`format_cmdl.md`](format_cmdl.md) leave over once position, normal and
-coordinates are placed.
+### 2. `.anmcmd` (2,053) and `CMTM` (91).
 
-**What is left is only the pose, not the parse:**
+`.anmcmd` is plainly animation *commands* — the events a motion fires, which is
+what turns an attack animation into a hitbox at a frame. It is now much better
+placed than it was: the hitboxes it would arm are the `collision_*.CTXT`
+capsules found this session, bound to bones through the model's locator table,
+and the frames it would fire on are `CNOM` frames. Both ends exist.
 
-1. **Confirm the pairing.** Weight `k` almost certainly goes with index `k`,
-   but "almost certainly" has been wrong twice on this disc. Render it and
-   look.
-2. **The bind-pose inverse.** `CMDL` vertices are in model space, so skinning
-   is `world_anim(bone) * inverse(world_bind(bone))` per influence, weighted.
-   Both matrices are already available: the bind pose from the `CMDL` node
-   transforms, the animated one from `CNOM`'s `pose()`. Nothing else is needed.
-3. **Then draw it.** A character mesh posed by a `CNOM`, with its own textures
-   on it, is a frame of the actual game — and it is the "the numbers are real"
-   milestone this project has been walking towards since session 3.
+`CMTM` sits beside `CNOM` under `*.mot.pac/` and shares the shell, `POF0` and
+all, so it should open in an hour.
 
-Guard against the obvious failure: a wrong pairing or a missing inverse does
-not crash, it produces a figure that is *almost* right, with limbs stretched
-towards the origin. Compare against the model's declared bounding sphere, which
-the animated mesh should still roughly fill.
+### 3. The frame rate, and it can be settled now.
 
-### 2. `CCLS` and `.map` — collision and world layout. 155 + 137 files.
-
-`CCLS` files are named `<stage>.col` and sit in `param.pac` beside `hta.bin`
-(`ATIH`, most likely hit areas). **`CCLS` has no `POF0`** — its payload is
-followed by sixteen zero bytes and nothing else, on all 155 files — so unlike
-`CMDL` and `CNOM` it holds no pointers, and the structure will be flat arrays
-rather than a directory to follow. Expect counts and strides, and expect to
-have to find them rather than read them.
-
-With ground geometry decoded, collision is what turns a drawn stage into a
-stage that can be stood on, and the movement parameters from session 3 then
-have somewhere to happen.
-
-### 3. `CMTM` (91 files) and `.anmcmd` (2,053).
-
-`CMTM` sits beside `CNOM` under `*.mot.pac/` and shares the shell. `.anmcmd`
-is plainly animation *commands* — the events a motion fires, which is what
-turns an attack animation into a hitbox at a frame.
+Nothing in `CNOM` says whether a frame is 1/30 or 1/60 of a second. The actor
+parameters in [`params.md`](params.md) carry durations the animations have to
+match — and `.anmcmd`, once read, will carry frame numbers for events whose
+timing the parameters also describe. Two independent ways to the same number.
 
 ### Then
 
@@ -79,11 +51,9 @@ turns an attack animation into a hitbox at a frame.
 5. **Name the `ECH` columns.** The types are inferred and the tool reports
    them; the *meanings* are the work. The AI filenames
    ([`RECON.md` §7b](RECON.md)) give every monster an English name for free,
-   which makes a monster table readable without an EBOOT.
-6. **Settle the frame rate.** Nothing in `CNOM` says whether a frame is 1/30 or
-   1/60 of a second. The actor parameters in [`params.md`](params.md) carry
-   durations the animations have to match, so the two together should decide
-   it.
+   which makes a monster table readable without an EBOOT. The `CCLS` surface
+   codes are a small, well-posed instance: 1 to 13, and a footstep table would
+   key on exactly those.
 
 ---
 
@@ -100,13 +70,17 @@ turns an attack animation into a hitbox at a frame.
 
 - `CTEX`: the `0x28` stamp and bit 0 of `0x1D`. Both are described in
   [`format_ctex.md`](format_ctex.md); neither affects the decode.
-- `CMDL`: skinning; the four-byte attribute at layout byte 2; the middle byte
-  of the mesh descriptor's first word; `S8` and `S9` and the 16-byte digests;
-  the eight stage grounds whose texture index runs one past their name list.
-  All in [`format_cmdl.md`](format_cmdl.md).
+- `CMDL`: the four-byte attribute at layout byte 2; the middle byte of the
+  mesh descriptor's first word; `S8` and the 16-byte digests at the head of
+  `S9`; the eight stage grounds whose texture index runs one past their name
+  list; and the 25 models whose node table disagrees with their own inverse
+  bind matrices. All in [`format_cmdl.md`](format_cmdl.md).
 - `CNOM`: the `u8` at `+0x04` of a channel; the constant `1000.0` at `0x4C`;
-  the `u16 1` at `0x12`; the frame rate. See
-  [`format_cnom.md`](format_cnom.md).
+  the `u16 1` at `0x12`. See [`format_cnom.md`](format_cnom.md). The frame rate
+  is now item 3 above rather than an open question.
+- `CCLS`: what the fifteen-word bit says about the nine early stages; what the
+  surface codes 1 to 13 name; the eleven stages with an edge used by three or
+  four triangles. See [`format_ccls.md`](format_ccls.md).
 - `ECH`: what the header word at `0x08` is for (zero on all 4,941 files, so the
   disc offers no evidence either way); the one-byte row width; column
   semantics.
@@ -117,14 +91,60 @@ turns an attack animation into a hitbox at a frame.
   for "Fever" found nothing. Also the four unexplained elements of the `ab_*`
   status vectors.
 - `ELBN`.
-- `.PTP` (67), `.trg` (163), `.mkc` (2,690), `.CTXT` (1,151, and they open with
-  readable ASCII like `id 8910`).
+- `.PTP` (67), `.trg` (163), `.mkc` (2,690).
 - What the 14 empty `.cpk.patch` stubs would have overlaid, and whether a
   shipped title update exists that fills them.
 
 ---
 
 # Log
+
+## Session 7 — 2026-08-22
+
+- **Skinning.** The mesh follows the skeleton. See [the skinning section of
+  `format_cmdl.md`](format_cmdl.md). Findings worth carrying:
+  - **the four `u8` at the tail of a vertex are not node indices.** They index
+    a per-mesh **bone palette** that `+0x30` of the mesh descriptor points at,
+    80 bytes an entry. Read as node indices they are every one in range and
+    every one wrong, which is this disc's favourite shape of error;
+  - **the bone is a name**, in a table at the tail of `S9`, so a model binds to
+    its own skeleton the way `CNOM` already bound to it;
+  - **the matrix is the inverse bind pose, transposed**, and it satisfies
+    `matrix * Rx(90) * bind(node) == identity` on 872 of the 931 skinned
+    meshes. That `Rx(90)` is the up-axis question answered — character vertex
+    buffers are Z-up, the skeleton is Y-up, and no field anywhere says so;
+  - **the bind that closes it leaves the node scale out.** Keeping the scale
+    closes only 800 of 931. So a node scale is a runtime one, over the top of
+    the skinning: `z20_01` carries 1.5 on `top` and 2/3 on each weapon node to
+    undo it, which is a base monster wearing a size;
+  - a **rigid mesh is a one-bone skin** on the node its draw call names, so
+    both kinds land in the same space and draw together.
+- Proved on `fas2` under `fas211walk`: a textured walk cycle in profile,
+  creasing at hip, knee and elbow, and a clean T-pose at rest — the guard
+  against the failure that does not crash.
+- **`S4` is the locator table**, `(id, node)` pairs, and it identifies
+  **`.CTXT`**: 1,151 plain-text files named after a locator id and opening by
+  repeating it, on all 1,151. 961 are `collision_*` hit capsules, 190 are
+  spring parameters for hair and cloth. **Character collision was never in
+  `CCLS`** — it is here, in the clear, and needs no reader.
+- `tools/ccls.py` — the stage collision. **155 files, 107,343 triangles, 0
+  unreadable**, every check closing. See [`format_ccls.md`](format_ccls.md).
+  Findings worth carrying:
+  - **the array starts at `0x24`, not `0x30`** — twelve bytes inside what looks
+    like the header. Both readings divide the payload exactly and both make the
+    normal perpendicular to `v1 - v0` on every record, because a plane normal
+    is perpendicular to *any* edge in its plane. Only the cross product tells
+    them apart, and it does so 107,338 times out of 107,343;
+  - **it is a ground mesh, not a hull.** 98.4% of triangles face up; 814 in the
+    whole game stand vertical;
+  - **and it is welded** — 150,236 edges used by two triangles, 21,448 by one,
+    31 by more, matching vertices bit for bit with no T-junctions. The
+    single-use edges are the outline of every stage, and that outline is what
+    fences the player in;
+  - **the fifteen trailing words are one bit about the stage**, not a
+    per-triangle attribute: 146 stages are entirely 1, 9 are entirely -1, no
+    stage mixes them, and the nine are all in the game's first two areas.
+
 
 ## Session 6 — 2026-08-22
 

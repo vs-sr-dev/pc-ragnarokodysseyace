@@ -68,7 +68,8 @@ Phase 3.
 | `.json` params | 89 | ✅ **read** | [`params.md`](params.md) — 1,069 records; the stagger model, the difficulty tiers, and one movement model shared by all six classes |
 | `CTEX` texture | 11,061 | **highest** | the largest population on the disc; nothing renders without them |
 | `CMDL` model | 1,127 | high | geometry |
-| `.map` / `CCLS` | 137 / 155 | high | world layout and collision |
+| `CCLS` collision | 155 | done | the walkable ground, one welded triangle mesh per stage |
+| `.map` | 137 | high | world layout |
 | `CNOM` motion | 3,043 | high | |
 | `.psq` sequence | 2,992 | high | the cutscene language; `SQIR` + `PART` chunks |
 | `.anmcmd` | 2,053 | medium | animation commands |

@@ -141,7 +141,7 @@ By type tag on the ARC directory entries:
 | `tex` | 518 | `CTEX`, texture |
 | `pac` | 348 | nested `ARC` |
 | `trg` | 164 | triggers |
-| `col` | 156 | `CCLS`, collision |
+| `col` | 156 | `CCLS`, the walkable ground; see [`format_ccls.md`](format_ccls.md) |
 | `map` | 138 | |
 | `mdl` | 130 | model |
 | `scn` / `scm` | 81 / 78 | `CSCN` / `CSCM`, camera scenes |
@@ -283,6 +283,12 @@ A `POF0` names every word in the file that holds a pointer, which is what let
 The formats without one hold no pointers, so they will be flat arrays and will
 have to be found the harder way. See
 [`format_cmdl.md`](format_cmdl.md) for the encoding.
+
+That prediction held for both. `CTEX` is a header and a pixel block; `CCLS` is
+a header and one array of 112-byte triangles — and being flat did cost it the
+harder way, since two different record boundaries divide its payload exactly
+and only a cross product tells them apart. See
+[`format_ccls.md`](format_ccls.md).
 
 ## 7b. The AI filenames name the monsters
 
