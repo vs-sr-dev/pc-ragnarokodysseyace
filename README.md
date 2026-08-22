@@ -10,9 +10,10 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-5 (2026-08-22): the container stack is open end to end, the game's
-database, text and actor parameters are readable, and the textures and geometry
-decode. A model can be drawn with its own textures on it.
+Sessions 1-6 (2026-08-22): the container stack is open end to end, the game's
+database, text and actor parameters are readable, and the textures, geometry
+and motion decode. A model can be drawn with its own textures on it, and its
+skeleton can be posed from the game's own animations.
 
 ```
 ISO (UDF 2.50)   ->      109 files, 5.4 GB      tools/iso.py
@@ -26,18 +27,19 @@ TXT messages     ->       76 files, 25,288 msgs tools/rmsg.py   0 errors
 JSON parameters  ->       89 files,  1,069 recs tools/params.py
 CTEX textures    ->   11,536 files, 5 formats   tools/ctex.py   0 errors
 CMDL geometry    ->    1,127 files, 5.6M tris   tools/cmdl.py   0 errors
+CNOM motion      ->    3,043 files, 3.0M keys   tools/cnom.py   0 errors
 ```
 
 Formats are documented in [`docs/`](docs): [the disc
 survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 [`TXT`](docs/format_rmsg.md), [`CTEX`](docs/format_ctex.md),
-[`CMDL`](docs/format_cmdl.md), [the actor parameters](docs/params.md). The plan
-is in
+[`CMDL`](docs/format_cmdl.md), [`CNOM`](docs/format_cnom.md), [the actor
+parameters](docs/params.md). The plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
 
-Skinning, motion (`CNOM`), collision (`CCLS`) and the compiled cutscene
-language (`.psq`) are untouched.
+Skinning, collision (`CCLS`) and the compiled cutscene language (`.psq`) are
+untouched.
 
 ## BYOA
 
@@ -95,6 +97,11 @@ python tools/cmdl.py check|survey <dir>       the geometry
 python tools/cmdl.py info|nodes|meshes <dir> <name>
 python tools/cmdl.py draws <dir> <name>      the node/material/mesh draw list
 python tools/cmdl.py obj <dir> <name> <out>  export Wavefront OBJ
+
+python tools/cnom.py check|survey <dir>       the motion
+python tools/cnom.py info <dir> <name>       one animation, per bone
+python tools/cnom.py track <dir> <name> <bone>
+python tools/cnom.py pose <dir> <name> <frame>
 
 python tools/params.py census|tiers <dir>     the actor parameters
 python tools/params.py classes <dir>          the six player classes compared

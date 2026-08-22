@@ -5,52 +5,62 @@
 
 ---
 
-# Next session — motion, and the rest of a frame
+# Next session — skinning, then collision
 
-`CMDL` is read ([`format_cmdl.md`](format_cmdl.md)) and a model draws with its
-own textures on it. Three things stand between that and a scene.
+`CNOM` is read ([`format_cnom.md`](format_cnom.md)) and a skeleton poses from
+the game's own animations. What is missing is the one link that makes the mesh
+follow the skeleton.
 
-### 1. `CNOM` — motion. 3,043 files.
+### 1. Skinning. It finishes both `CMDL` and `CNOM` at once.
 
-The most valuable, because the actor parameters from session 3 describe
-movement that has nowhere to happen. `CNOM` sits beside `CMDL` under
-`*.mot.pac/`, so start by checking whether it opens with the same shell:
-`'CNOM'`, `u32` payload size, `0x00010005`, zero, and a `POF0` relocation table
-at the end. If it does — and `CTEX`, `CMDL` and `CMTM` all do — then the
-section directory and the name tables are probably the same shape too, and the
-work is naming sections rather than finding them.
+Bits 8 and 9 of the `CMDL` vertex type mark two four-byte attributes on 931
+meshes — the character bodies. Everything needed to test a reading is already
+in hand:
 
-**Use `POF0` first.** It says which words are pointers, which is the single
-thing that made `CMDL` fall open in an afternoon. Decode it, list the
-relocations, look at what they point at, and the structure draws itself.
+- **weights should sum to one.** Four bytes is most likely four `u8` weights,
+  or two `u8` indices and two `u8` weights; either way the sum is a test the
+  file passes or fails, and it costs one pass over 931 meshes to run.
+- **indices must be in range.** They index the node table, whose size the file
+  declares, so a wrong reading walks out of the skeleton immediately.
+- **the layout bytes locate them.** `+0x14` byte 2 is the offset of a four-byte
+  attribute, and the `0x03__` vertex types have a second one at the end of the
+  stride; the strides in
+  [`format_cmdl.md`](format_cmdl.md) account for both.
 
-The bone names are already in hand: `CMDL`'s `S5` names every node, and a
-motion track has to key on those.
+Once it reads, a character mesh can be posed by a `CNOM` and the result is a
+frame of the actual game.
 
-### 2. Skinning, which finishes `CMDL`.
-
-Bits 8 and 9 of the vertex type mark two four-byte attributes on the character
-bodies — bone indices and weights, 931 meshes. Rigid models already draw
-correctly, so this only matters once there is motion to drive it, but it is
-cheap: four bytes of indices into the node table and four of weights, and the
-weights should sum to one, which is a test the file will either pass or fail.
-
-### 3. `CCLS` and `.map` — collision and world layout. 155 + 137 files.
+### 2. `CCLS` and `.map` — collision and world layout. 155 + 137 files.
 
 `CCLS` files are named `<stage>.col` and sit in `param.pac` beside `hta.bin`
-(`ATIH`, most likely hit areas). With ground geometry decoded, collision is
-what turns a drawn stage into a stage that can be stood on.
+(`ATIH`, most likely hit areas). **`CCLS` has no `POF0`** — its payload is
+followed by sixteen zero bytes and nothing else, on all 155 files — so unlike
+`CMDL` and `CNOM` it holds no pointers, and the structure will be flat arrays
+rather than a directory to follow. Expect counts and strides, and expect to
+have to find them rather than read them.
+
+With ground geometry decoded, collision is what turns a drawn stage into a
+stage that can be stood on, and the movement parameters from session 3 then
+have somewhere to happen.
+
+### 3. `CMTM` (91 files) and `.anmcmd` (2,053).
+
+`CMTM` sits beside `CNOM` under `*.mot.pac/` and shares the shell. `.anmcmd`
+is plainly animation *commands* — the events a motion fires, which is what
+turns an attack animation into a hitbox at a frame.
 
 ### Then
 
 4. **`.psq`** — `FA FA 'SQIR'` then `PART` chunks, the compiled cutscene
    language, 3,011 files. Big, and probably slow.
-5. **`.anmcmd`** (2,053) and **`.mkc`** (2,690).
-6. **Name the `ECH` columns.** The types are inferred and the tool reports
-   them; the *meanings* are the work. `enemy_gen.bin` shows this can often be
-   done from the string pool alone, with no EBOOT. The AI filenames
+5. **Name the `ECH` columns.** The types are inferred and the tool reports
+   them; the *meanings* are the work. The AI filenames
    ([`RECON.md` §7b](RECON.md)) give every monster an English name for free,
-   which makes a monster table readable without one.
+   which makes a monster table readable without an EBOOT.
+6. **Settle the frame rate.** Nothing in `CNOM` says whether a frame is 1/30 or
+   1/60 of a second. The actor parameters in [`params.md`](params.md) carry
+   durations the animations have to match, so the two together should decide
+   it.
 
 ---
 
@@ -71,6 +81,9 @@ what turns a drawn stage into a stage that can be stood on.
   of the mesh descriptor's first word; `S8` and `S9` and the 16-byte digests;
   the eight stage grounds whose texture index runs one past their name list.
   All in [`format_cmdl.md`](format_cmdl.md).
+- `CNOM`: the `u8` at `+0x04` of a channel; the constant `1000.0` at `0x4C`;
+  the `u16 1` at `0x12`; the frame rate. See
+  [`format_cnom.md`](format_cnom.md).
 - `ECH`: what the header word at `0x08` is for (zero on all 4,941 files, so the
   disc offers no evidence either way); the one-byte row width; column
   semantics.
@@ -89,6 +102,31 @@ what turns a drawn stage into a stage that can be stood on.
 ---
 
 # Log
+
+## Session 6 — 2026-08-22
+
+- `tools/cnom.py` — the motion format. **3,043 animations, 77,331 tracks,
+  231,993 channels, 3,020,726 keys, 0 unreadable**, every check closing on
+  every file. See [`format_cnom.md`](format_cnom.md). Findings worth carrying:
+  - **the same shell again**, and reading `POF0` first is what made it take an
+    hour. Five formats carry a `POF0` tail — `CMDL`, `CNOM`, `CMTM`, `CSCN`,
+    `CSCM` — while `CTEX` and `CCLS` have none, which says in one pass which of
+    the remaining formats will open the easy way;
+  - **every track has exactly three channels** — translation, rotation, scale —
+    and value blocks tile 16-aligned while key-time blocks tile 4-aligned, with
+    no gap and no overlap on any file;
+  - **the sixteen-byte channel is a quaternion and the disc proves it**: all
+    77,331 rotation channels have every key unit-length to within a thousandth.
+    Four floats could be anything; that test costs a square root and settles
+    it;
+  - **motions bind to skeletons by name**, not by index. 3,019 of 3,043
+    animations have every track name present as a `CMDL` node name; the 61 that
+    are not are `*_PIVOT` helpers and scene props;
+  - **70% of channels carry one key.** A bone that does not move still gets a
+    channel holding a constant, which is why a 24-bone 41-frame walk is 11 kB.
+- Proved by posing `fas2.CMDL` with `fas211walk.CNOM`: a walk cycle in profile,
+  legs scissoring through contact and passing, arms counter-swinging, and the
+  bind pose standing in a T.
 
 ## Session 5 — 2026-08-22
 

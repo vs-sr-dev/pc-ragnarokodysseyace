@@ -263,6 +263,27 @@ backwards on a big-endian read, while the CPK header packets keep their sizes
 in little-endian even though the `@UTF` payloads are big-endian. Worth
 remembering before declaring a field "wrong".
 
+## 7a. Every `C___` format shares one container, and `POF0` sorts them
+
+`CTEX`, `CMDL`, `CNOM`, `CMTM`, `CCLS`, `CSCN` and `CSCM` all open with the
+same sixteen bytes: the magic, a `u32` payload size, `0x00010005`, and zero.
+Every offset inside is relative to `0x10`.
+
+What follows the payload splits them in two, and it is worth knowing before
+opening a new one:
+
+| | files | tail |
+|---|---:|---|
+| `CMDL` `CNOM` `CMTM` `CSCN` `CSCM` | 1,127 / 3,043 / 91 / 82 / 78 | a `POF0` relocation table, then sixteen zero bytes |
+| `CTEX` | 11,536 | none; the payload is the file |
+| `CCLS` | 155 | sixteen zero bytes |
+
+A `POF0` names every word in the file that holds a pointer, which is what let
+`CMDL` and `CNOM` be read by following the structure instead of guessing at it.
+The formats without one hold no pointers, so they will be flat arrays and will
+have to be found the harder way. See
+[`format_cmdl.md`](format_cmdl.md) for the encoding.
+
 ## 7b. The AI filenames name the monsters
 
 `monster.cpk/<id>/ai.pac/` holds `.par` behaviour scripts whose filenames carry
