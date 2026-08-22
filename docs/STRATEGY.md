@@ -11,7 +11,7 @@ Model: Ship of Harkinian, OpenGOAL, devilutionX.
 
 ## The shape of the problem, and how it differs from the sister project
 
-On [PC-3Ddot](../../PC-3Ddot) the decision was easy: 100% of the game logic was
+On the sister project the decision was easy: 100% of the game logic was
 on the disc as readable Lua, so the engine was built to host those scripts
 verbatim. **Here there is no Lua.** Everything executable is inside a 19.8 MB
 PPC64 SELF, and what the disc hands over instead is *data*:
@@ -89,7 +89,8 @@ Unlike on the sister project, this is not a deferrable curiosity: with no
 scripting layer on the disc, the EBOOT is where the combat loop, the AI
 dispatch, the quest state machine and the `.psq` interpreter live.
 
-**But the method note from PC-3Ddot still applies, and applies harder here.**
+**But the method note from the sister project still applies, and applies
+harder here.**
 Repeatedly on that project, things postponed to "the EBOOT phase" turned out to
 be written in the clear somewhere on the disc — sometimes in a filename. Before
 reaching for the disassembler, ask whether the fact is already declared. On

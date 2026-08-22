@@ -5,72 +5,84 @@
 
 ---
 
-# Next session — `CTEX`
+# Next session — `CMDL`
 
-11,536 files, the largest population on the disc, and the wall in front of any
-rendered frame. **Session 3 already reconnoitred the header**; the write-up is
-[`RECON.md` §6.5](RECON.md#65-ctex--reconnoitred-not-yet-solved). Start from
-these established facts rather than from the top:
+1,127 files, the geometry, and the last thing between the project and a frame
+on screen. The textures now decode ([`format_ctex.md`](format_ctex.md)), so a
+mesh with a material reference is a picture.
+
+**Session 4 reconnoitred the container shell.** Start from these facts rather
+than from the top; all of them hold on all 1,127 files unless noted.
 
 ### What is already known
 
-- The file is a **16-byte header** then a payload. `u32` at `0x04` is the
-  payload size, and `size + 16 == file length` on **11,536 of 11,536** files.
-- `u32` at `0x08` is `0x00010005` on every file; `0x0C` is zero.
-- In the payload: **`u16` at `0x12` is the height**, **`u16` at `0x14` is the
-  width**, both powers of two (16–1024). **`u16` at `0x16` is the pixel
-  format.**
-- The pixel formats are identified for the mip-free files, because
-  `payload - 80 == width * height * bpp` lands exactly:
-
-  | format | bpp | matches |
-  |---|---|---:|
-  | `0x109` | 0.5 | 1,809 — DXT1 |
-  | `0x10F` | 1.0 | 141 — DXT5 |
-  | `0x100` | 4.0 | 400, i.e. **every** file of this format — uncompressed 32-bit |
-  | `0x107` | 2.0 | 6 — 16-bit |
-
-- So the payload is **80 bytes of sub-header followed by pixels**, and the 48
-  bytes between `0x20` and `0x50` have not been looked at.
+- **`CMDL` uses the same outer shell as `CTEX`**: `'CMDL'`, `u32` payload size,
+  `u32 0x00010005`, `u32` zero. Then `u32 0x10002000` at `0x10`, where `CTEX`
+  has `0x1000` and its width. Everything is big-endian.
+- **`size + 16` is *not* the file length here** — unlike `CTEX`, where it was on
+  every file. The excess is always a multiple of 16 and always at the end
+  (`0x40` on 606 files, then `0x70`, `0x80`, `0x50`, …, 36 distinct values).
+  File lengths are all 16-aligned. Establish what that tail is before trusting
+  any section to end where the directory says: it may be alignment padding, or
+  it may be a section the header does not index.
+- `0x40` is a **scale vector**: three floats `1.0, 1.0, 1.0` then zero, on all
+  1,127.
+- `0x50` is a **bounding sphere**: centre `x, y, z` then radius, the radius
+  positive on 1,125. One file reads `0, 0, 0, 28.284` — `20 * sqrt(2)`, the
+  circumscribed radius of a 40-unit square, which is the kind of number that
+  does not arrive by accident.
+- `0x60` is **eight `u16` counts**. The first is 7 on every file and the last is
+  0 on every file; the middle six vary together and look like per-section
+  element counts — `(7, 1, 2, 1, 1, 2, 2, 0)` on 195 files, `(7, 3, 28, 3, 3,
+  3, 11, 0)` on 80.
+- `0x70` is a float `1.0`, and then at **`0x74` there is an 11-entry `u32`
+  section directory**, offsets counted from `0x10` as `CTEX`'s are. The
+  eleventh entry equals the payload size on all 1,127 files, so it is the end
+  marker and there are ten sections. Entry 0 is `0xb0` on 1,125.
+- `0xb0` is a **32-byte NUL-padded name**, printable ASCII on all 1,127 — the
+  same field `CTEX` carries at the same offset.
+- After the name, 8-byte records of `u16` quads, ascending in their first
+  field: `(5,2,3,1) (7,2,5,1) (11,2,9,1) (3,1,1,1) (4,1,2,1) …`.
 
 ### What to do, in order
 
-1. **The mip chain.** 9,180 files do not match the flat formula, and that is
-   the whole remaining problem. Concrete case to start from: a 128x32 DXT1 with
-   `u32 @0x1C == 0x1050000` occupies 2,560 payload bytes. Base level is 2,048.
-   The remainder is 512 — exactly one more level, not the 712 a full chain to
-   1x1 would need. So either the chain stops early, or `0x1C` says how many
-   levels there are. Test: for every file, try `sum of levels for n in 1..8`
-   and see which `n` closes, then correlate `n` against `0x1C`. If that
-   correlation is clean the format is done.
-2. **Swizzling.** PS3 RSX textures are frequently swizzled (Morton order), and
-   DXT blocks may be stored linearly while an uncompressed surface is not. The
-   `0x100` files are the ones to test on — 400 files, all with exact sizes, so
-   any decode error is visible immediately as a scrambled image rather than as
-   a size mismatch.
-3. **Write `tools/ctex.py`** with the same shape as the other readers: a
-   `check` command that validates the arithmetic over every file and reports
-   what did not close, plus `info` and a PNG export for eyeballing. Keep the
-   "0 failures out of N" discipline — it is what has caught every wrong
-   assumption so far.
-4. **Do not skip the eyeball test.** A texture decoder that produces the right
-   number of bytes and the wrong picture passes every arithmetic check. Export
-   a handful — `misc.cpk/logo.pac/ui_logo_gravity.ctex` is a known logo and
-   will be obviously right or obviously wrong.
+1. **Close the arithmetic first.** Walk the ten sections, check that each ends
+   where the next begins, and account for the trailing bytes. Keep the "0
+   failures out of 1,127" discipline; it is what has caught every wrong
+   assumption so far, including one this session.
+2. **Find the vertex buffer by its statistics, not by guessing.** A float
+   stream of positions has a signature: values in the range of the bounding
+   sphere at `0x50`, a stride that divides the section length exactly, and
+   consecutive triples that are close together. Test candidate strides against
+   the sphere — a wrong stride puts vertices outside a radius the file itself
+   declares.
+3. **Then the index buffer**, which is easier: `u16` values all under the vertex
+   count, in a section whose length is a multiple of 6 for triangle lists or
+   close to `n + 2` for strips.
+4. **Then the material link.** The `CTEX` name field at `0x30` is what a
+   material would reference, and both formats carry names in the same place.
+   `stage.cpk/*/model.pac/ground.pac/` holds a `ground.CMDL` beside the `CTEX`
+   files it must be naming; that pairing is the cheapest way in.
+5. **Do not skip the eyeball test.** Export an OBJ and look at it. A vertex
+   decoder that produces the right count and the wrong stride passes every
+   arithmetic check — this session's swapped width and height passed 11,530
+   size checks and still drew a comb.
 
-### After `CTEX`
+### After `CMDL`
 
-5. **`CMDL` / `.map` / `CCLS`** — geometry, world layout, collision. 1,127 +
-   137 + 155 files. With `CTEX` this is the first frame, and it is what the
-   "the numbers are real" milestone is waiting on: the movement parameters are
-   known, there is just nowhere to move.
+6. **`.map` and `CCLS`** — world layout and collision, 137 + 155 files. With
+   `CMDL` and `CTEX` this is the first frame, and it is what the "the numbers
+   are real" milestone is waiting on: the movement parameters are known, there
+   is just nowhere to move.
 
-6. **`.psq`** — `FA FA 'SQIR'` then `PART` chunks; the payload names its own
-   source as `*.psq.ppcut`. 2,992 files. Big, and probably slow.
+7. **`CNOM` motion** (3,043), **`CMTM`** (91) and **`.anmcmd`** (2,053).
+   `CNOM` sits beside `CMDL` under `*.mot.pac/`, so the skeleton is probably in
+   the model.
 
-7. **`CNOM` motion** (3,043) and **`.anmcmd`** (2,053).
+8. **`.psq`** — `FA FA 'SQIR'` then `PART` chunks; the payload names its own
+   source as `*.psq.ppcut`. 3,011 files. Big, and probably slow.
 
-8. **Name the `ECH` columns.** The types are inferred and the tool reports
+9. **Name the `ECH` columns.** The types are inferred and the tool reports
    them; the *meanings* are the work. `enemy_gen.bin` shows this can often be
    done from the string pool alone, with no EBOOT.
 
@@ -79,18 +91,16 @@ these established facts rather than from the top:
 ## Deferred, with reasons
 
 - **EBOOT decryption** (Phase 3). Load-bearing here in a way it was not on the
-  sister project, but everything above is in the clear, and the PC-3Ddot
-  experience is that facts get postponed to the disassembler and then found in
-  a filename. Nothing on the current list needs it.
-- **`ELBN`** (379 blocks) — unidentified, no consumer waiting.
+  sister project, but everything above is in the clear, and the experience
+  there is that facts get postponed to the disassembler and then found in a
+  filename. Nothing on the current list needs it.
+- **`ELBN`** (707 blocks) — unidentified, no consumer waiting.
 - **Audio and video** — CRI Atom and PAMF are both well-trodden formats.
-- **Publishing to GitHub** — the repository is written and the BYOA policy is
-  in `.gitignore`, but nothing has been committed; the working directory is not
-  a git repository yet.
 
 ## Open, unowned
 
-- `CTEX`: the 48 unexamined sub-header bytes; the mip chain; swizzling.
+- `CTEX`: the `0x28` stamp and bit 0 of `0x1D`. Both are described in
+  [`format_ctex.md`](format_ctex.md); neither affects the decode.
 - `ECH`: what the header word at `0x08` is for (zero on all 4,941 files, so the
   disc offers no evidence either way); the one-byte row width; column
   semantics.
@@ -101,7 +111,7 @@ these established facts rather than from the top:
   for "Fever" found nothing. Also the four unexplained elements of the `ab_*`
   status vectors.
 - `ELBN`.
-- `.PTP` (18), `.trg` (163), `.mkc` (2,690), `.CTXT` (1,151, and they open with
+- `.PTP` (67), `.trg` (163), `.mkc` (2,690), `.CTXT` (1,151, and they open with
   readable ASCII like `id 8910`).
 - What the 14 empty `.cpk.patch` stubs would have overlaid, and whether a
   shipped title update exists that fills them.
@@ -109,6 +119,27 @@ these established facts rather than from the top:
 ---
 
 # Log
+
+## Session 4 — 2026-08-22
+
+- `tools/ctex.py` — the texture format, solved. **11,536 files, 11,530 closing
+  exactly, 0 unreadable, five pixel formats decoded and eyeballed.** See
+  [`format_ctex.md`](format_ctex.md). Findings worth carrying:
+  - **byte `0x19` is mip levels minus one**, and the chain is stored back to
+    back with no padding, no alignment and no pitch — that was the open
+    question and it closes the arithmetic;
+  - **`0x107` is 8-bit indices with the palette *after* them**, not a 16-bit
+    format. Read as 16-bit its size closes for six files out of 832, which is
+    exactly the kind of partial agreement that reads as confirmation;
+  - **A8R8G8B8 is Morton-swizzled and nothing else is**, and no header field
+    says so — the pixel format does. Scoring every non-DXT file for horizontal
+    roughness both ways separates 400 from 751 with no ambiguous case;
+  - **width comes before height**, which reverses what session 3 recorded.
+    Nothing in the size arithmetic notices, because every formula is symmetric
+    in the two. 11,530 files passed `check` with the axes swapped.
+- `CMDL` reconnaissance (above).
+- Removed the relative links to the sister project's tree from the docs; the
+  repository is public and that one is not.
 
 ## Session 3 — 2026-08-22
 
@@ -126,7 +157,7 @@ these established facts rather than from the top:
     monster or the move.
 - `tools/ech.py` — a constant column wide enough to be a float now reports what
   it reads as (`0x42700000` is 60.0, the fever duration).
-- `CTEX` reconnaissance (above) and [`RECON.md` §6.5](RECON.md).
+- `CTEX` reconnaissance and [`RECON.md` §6.5](RECON.md).
 
 ## Session 2 — 2026-08-22
 
@@ -145,9 +176,10 @@ these established facts rather than from the top:
 
 ## Session 1 — 2026-08-22
 
-- `tools/iso.py` — UDF 2.50 reader ported from PC-3Ddot, sets redefined, and a
-  **multi-extent index** (the inherited version would have written a silently
-  corrupt `sound.cpk`). 109 files, 5.4 GB, manifest computed.
+- `tools/iso.py` — UDF 2.50 reader ported from the sister project, sets
+  redefined, and a **multi-extent index** (the inherited version would have
+  written a silently corrupt `sound.cpk`). 109 files, 5.4 GB, manifest
+  computed.
 - `tools/cpk.py` — CRI CPK: `@UTF` tables, `TOC`/`ITOC`, CRILAYLA. 20
   containers, 2,450 entries, 0 errors.
 - `tools/arc.py` — `ARC`: 1,544 of 1,544 consistent, 13,820 entries, 13,798

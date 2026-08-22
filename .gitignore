@@ -15,13 +15,26 @@ extract/
 *.at3
 *.CTEX
 *.ctex
+*.CMDL
+*.CMTM
 *.CNOM
+*.CCLS
 *.CSCN
 *.CSCM
+*.CTXT
 *.PTP
 *.psq
 *.anmcmd
 *.rmsg
+*.col
+*.map
+*.mkc
+*.mtm
+*.trg
+# ECH tables ship as .bin and the actor parameters as .json; both are game
+# content. There is no hand-written file of either kind in this repository.
+*.bin
+*.json
 *.otf
 *.par
 *.dat
@@ -36,13 +49,11 @@ PARAM.SFO
 # which is what devilutionX and Ship of Harkinian do.
 tools/iso_index.tsv
 
-# Generated reports that embed game content are not publishable even
-# though the tool that makes them is. Anything under generated/ that is
-# a dump of table values, dialogue or a rendered frame stays local.
-generated/**/*.png
-generated/*.png
-generated/**/*.json
-generated/*.json
+# Anything a tool here writes out of the disc: a dump of table values, a
+# rendered frame, a mesh. The tool is publishable, its output is not.
+generated/
+*.png
+*.obj
 
 # build
 build/

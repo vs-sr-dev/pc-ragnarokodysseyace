@@ -10,8 +10,8 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-3 (2026-08-22): the container stack is open end to end, and the
-game's database, text and actor parameters are readable.
+Sessions 1-4 (2026-08-22): the container stack is open end to end, the game's
+database, text and actor parameters are readable, and the textures decode.
 
 ```
 ISO (UDF 2.50)   ->      109 files, 5.4 GB      tools/iso.py
@@ -23,17 +23,17 @@ ISO (UDF 2.50)   ->      109 files, 5.4 GB      tools/iso.py
 ECH tables       ->    4,941 files, 58,534 rows tools/ech.py    0 errors
 TXT messages     ->       76 files, 25,288 msgs tools/rmsg.py   0 errors
 JSON parameters  ->       89 files,  1,069 recs tools/params.py
+CTEX textures    ->   11,536 files, 5 formats   tools/ctex.py   0 errors
 ```
 
 Formats are documented in [`docs/`](docs): [the disc
 survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
-[`TXT`](docs/format_rmsg.md), [the actor parameters](docs/params.md). The plan is in
+[`TXT`](docs/format_rmsg.md), [`CTEX`](docs/format_ctex.md), [the actor
+parameters](docs/params.md). The plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
 
-`CTEX` textures are reconnoitred but not yet decoded: the header is understood
-and the pixel formats identified, the mip chain is not. Geometry, motion and
-the compiled cutscene language are untouched.
+Geometry, motion and the compiled cutscene language are untouched.
 
 ## BYOA
 
@@ -81,6 +81,11 @@ python tools/ech.py grep <dir> <text>         which tables mention a string
 python tools/rmsg.py check|attrs <dir>        the text
 python tools/rmsg.py list <dir> <name>        the messages of one file
 python tools/rmsg.py grep <dir> <text>
+
+python tools/ctex.py check|survey <dir>       the textures
+python tools/ctex.py info|find <dir> <name>  one texture, or a search
+python tools/ctex.py png <dir> <name> <out>  decode to PNG
+python tools/ctex.py unpack <dir> <out>      decode many, mirroring paths
 
 python tools/params.py census|tiers <dir>     the actor parameters
 python tools/params.py classes <dir>          the six player classes compared

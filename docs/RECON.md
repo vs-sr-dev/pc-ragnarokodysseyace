@@ -13,7 +13,8 @@ filesystem whose names are truncated to 31 characters. Extraction goes through
 UDF for the same reason it did on the sister project — names are data, and the
 CPK table of contents keys on them.
 
-`tools/iso.py` is the UDF reader, inherited from PC-3Ddot and corrected here
+`tools/iso.py` is the UDF reader, inherited from the sister project and
+corrected here
 for one real defect (§2).
 
 ## 2. The index records every extent
@@ -205,38 +206,35 @@ They pair positionally with the `ECH` tables — `it_db_weapon.bin` has 450 rows
 and `it_db_name_weapon.rmsg` 450 messages, row *n* to message *n*, on all seven
 pairs checked. That is how a table row gets a name.
 
-### 6.5 `CTEX` — reconnoitred, not yet solved
+### 6.5 `CTEX` — solved
 
-11,536 files, the largest population on the disc. A 16-byte header, then the
-payload:
+11,536 files, the largest population on the disc, and the format is now read
+end to end: five pixel encodings, the mip chain, the palettes, and the swizzle.
+The specification is in [`format_ctex.md`](format_ctex.md); the reader is
+[`../tools/ctex.py`](../tools/ctex.py).
 
-```
-0x00  'CTEX'
-0x04  u32   payload size          w1 + 16 == file length on 11,536 of 11,536
-0x08  u32   0x00010005            constant
-0x0C  u32   zero
---- payload ---
-0x10  u16   0x1000  |  u16 height     powers of two, 32..1024
-0x14  u16   width   |  u16 format     powers of two, 16..512
-0x18  u32   flags
-0x1C  u32   mip / flags   0x1010000, 0x1040000, 0x1050000, 0
-0x20  ...   48 more bytes of sub-header, then the pixels
-```
+In outline: a 16-byte outer header, an 80-byte descriptor, then the pixels.
+`width` at `0x12` and `height` at `0x14` — **that order**, which is the reverse
+of what session 3 recorded here, and which nothing in the size arithmetic
+notices. Byte `0x19` holds mip levels minus one, and summing the chain plus
+`4 * palette entries` reproduces the payload on 11,530 of 11,536 files. The six
+that miss are one directory of stage textures carrying an undeclared 2x2 tail.
 
-The pixel formats fall out of the arithmetic. Where a texture has no mip chain,
-`payload - 80` equals `width * height * bpp` **exactly**:
-
-| format | bpp | exact matches |
+| format | encoding | files |
 |---|---|---:|
-| `0x109` | 0.5 | 1,809 — DXT1 |
-| `0x10F` | 1.0 | 141 — DXT5 |
-| `0x100` | 4.0 | 400 — uncompressed 32-bit, and *all* 400 files of this format match |
-| `0x107` | 2.0 | 6 — 16-bit |
+| `0x109` | DXT1 | 9,848 |
+| `0x10F` | DXT5 | 452 |
+| `0x100` | A8R8G8B8, Morton-swizzled | 400 |
+| `0x107` | 8-bit indices, 256-entry palette | 832 |
+| `0x108` | 4-bit indices, 16-entry palette | 4 |
 
-The remaining 9,180 carry mip chains, and the chain layout is the open
-question: a 128x32 DXT1 with `w7 = 0x1050000` occupies 2,560 bytes, which is
-the base level plus exactly one more, not the full chain a renderer would
-normally expect.
+The palette follows the indices rather than preceding them, which is what makes
+`0x107` legible — read as a 16-bit format its size closes for six files out of
+832 and by coincidence. Only the uncompressed surfaces are swizzled, and the
+pixel format is what says so; no header field does.
+
+Two fields remain unexplained: `0x28` and bit 0 of `0x1D`. Neither affects the
+arithmetic and neither predicts the swizzle.
 
 
 ### 6.6 Other layers
@@ -274,4 +272,5 @@ remembering before declaring a field "wrong".
 - `.psq` opcode set — the `SQIR` chunk language.
 - `.PTP` effects, `.trg` triggers, `.mtm`, `.mkc`.
 - Whether the six nested CPKs in `character.cpk` are per-class or per-gender.
-- `CTEX` pixel formats — PS3 RSX texture layouts, possibly swizzled.
+- `CTEX` — the `0x28` stamp and bit 0 of `0x1D`; see
+  [`format_ctex.md`](format_ctex.md). The format itself is solved.
