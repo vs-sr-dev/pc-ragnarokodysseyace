@@ -1,0 +1,51 @@
+# --- BYOA policy: no proprietary asset in this repository ---
+# See README.md. Code, tools and format documentation only.
+
+*.iso
+extract/
+
+# Disc containers and everything that comes out of them
+*.cpk
+*.cpk.patch
+*.pac
+*.acb
+*.awb
+*.acf
+*.pam
+*.at3
+*.CTEX
+*.ctex
+*.CNOM
+*.CSCN
+*.CSCM
+*.PTP
+*.psq
+*.anmcmd
+*.rmsg
+*.otf
+*.par
+*.dat
+*.DAT
+EBOOT.BIN
+PARAM.SFO
+*.self
+*.elf
+
+# The disc index is derived from a specific disc and lists its layout;
+# the manifest is a fingerprint (path, size, sha256) and IS publishable,
+# which is what devilutionX and Ship of Harkinian do.
+tools/iso_index.tsv
+
+# Generated reports that embed game content are not publishable even
+# though the tool that makes them is. Anything under generated/ that is
+# a dump of table values, dialogue or a rendered frame stays local.
+generated/**/*.png
+generated/*.png
+generated/**/*.json
+generated/*.json
+
+# build
+build/
+out/
+__pycache__/
+*.pyc

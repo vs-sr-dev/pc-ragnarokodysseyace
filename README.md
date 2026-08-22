@@ -1,0 +1,103 @@
+# PC-ROA
+
+Documentation and tooling towards a native PC reimplementation of
+**Ragnarok Odyssey ACE** (PS3, 2013 — the expanded edition of *Ragnarok
+Odyssey* for PS Vita).
+
+This repository contains **no game content**. It contains a disc reader, format
+documentation, and the tools that produced it. To use any of it you supply your
+own copy of the disc.
+
+## Status
+
+Sessions 1-3 (2026-08-22): the container stack is open end to end, and the
+game's database, text and actor parameters are readable.
+
+```
+ISO (UDF 2.50)   ->      109 files, 5.4 GB      tools/iso.py
+  20 x CPK       ->    2,450 entries            tools/cpk.py    0 errors
+  1,544 x ARC    ->   13,820 entries            tools/arc.py    0 errors
+  + nested CPK, cmp/lzma, cmp/zlib
+                 ->   32,727 leaves, 2.0 GB     tools/assets.py
+
+ECH tables       ->    4,941 files, 58,534 rows tools/ech.py    0 errors
+TXT messages     ->       76 files, 25,288 msgs tools/rmsg.py   0 errors
+JSON parameters  ->       89 files,  1,069 recs tools/params.py
+```
+
+Formats are documented in [`docs/`](docs): [the disc
+survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
+[`TXT`](docs/format_rmsg.md), [the actor parameters](docs/params.md). The plan is in
+[`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
+[`docs/TODO.md`](docs/TODO.md).
+
+`CTEX` textures are reconnoitred but not yet decoded: the header is understood
+and the pixel formats identified, the mip chain is not. Geometry, motion and
+the compiled cutscene language are untouched.
+
+## BYOA
+
+Bring Your Own Assets. Nothing extracted from the disc is redistributed here —
+no textures, no models, no text, no audio, no executable. What *is* published:
+
+- the tools, which are original code;
+- format documentation, which describes structure rather than content;
+- `tools/manifest.tsv`, the fingerprint of the supported disc (path, size,
+  sha256), so that a copy can be identified and verified before use. This is
+  the same thing devilutionX and Ship of Harkinian publish.
+
+`extract/` and everything derived from the disc stays local. See
+[`.gitignore`](.gitignore), which states the policy per file type.
+
+The reference disc is **Ragnarok Odyssey ACE (USA)**, title id `NPWR04119_00`.
+
+## Tools
+
+Python 3.11+, no third-party dependencies.
+
+```
+python tools/iso.py index                     read the UDF tree
+python tools/iso.py sets                      what a full extract/ means
+python tools/iso.py manifest                  compute the disc fingerprint
+python tools/iso.py extract [set ...]         extract into extract/
+python tools/iso.py verify [set ...] [--deep] check extract/ against it
+
+python tools/cpk.py survey <dir>              census every CPK
+python tools/cpk.py list|info|tree|magic <cpk>
+python tools/cpk.py unpack <cpk> <dir>
+
+python tools/arc.py check <dir>               verify every ARC in every CPK
+python tools/arc.py list|magic <file|dir>
+python tools/arc.py unpack <file> <dir>
+
+python tools/assets.py census <dir>           every leaf, grouped by magic
+python tools/assets.py find <dir> <glob>      locate a leaf at any depth
+python tools/assets.py unpack <dir> <out>     write the whole tree to disk
+
+python tools/ech.py check|survey <dir>        the tables
+python tools/ech.py info|dump <dir> <name>    one table, with inferred types
+python tools/ech.py grep <dir> <text>         which tables mention a string
+
+python tools/rmsg.py check|attrs <dir>        the text
+python tools/rmsg.py list <dir> <name>        the messages of one file
+python tools/rmsg.py grep <dir> <text>
+
+python tools/params.py census|tiers <dir>     the actor parameters
+python tools/params.py classes <dir>          the six player classes compared
+python tools/params.py show|diff <dir> <name> one actor, or one variant
+python tools/params.py field <dir> <name>     where a field occurs and its range
+```
+
+Point `iso.py` at your image with `--iso`, or drop it in the repository root
+under its original name. The readers above take either the directory holding
+the `.cpk` files or the tree that `assets.py unpack` writes; the second is much
+faster, since decompressing 1.7 GB of CRILAYLA in Python is not.
+
+Each tool's module docstring is the format specification; they are meant to be
+read.
+
+## Not affiliated
+
+*Ragnarok Odyssey ACE* is the property of its rights holders (GungHo Online
+Entertainment, Game Arts). This project is unaffiliated, non-commercial, and
+distributes none of their work.

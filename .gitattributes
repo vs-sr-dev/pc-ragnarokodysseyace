@@ -1,0 +1,8 @@
+# The repository stores LF and checks out LF, on every platform. The tools are
+# Python and the documentation is Markdown; neither wants a line ending that
+# depends on who cloned it.
+* text=auto eol=lf
+
+# The disc fingerprint is generated with explicit LF by tools/iso.py and its
+# bytes are compared, so it must not be rewritten on checkout.
+tools/manifest.tsv -text
