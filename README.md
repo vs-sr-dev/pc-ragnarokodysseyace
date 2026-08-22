@@ -96,6 +96,12 @@ faster, since decompressing 1.7 GB of CRILAYLA in Python is not.
 Each tool's module docstring is the format specification; they are meant to be
 read.
 
+## Licence
+
+MIT, see [`LICENSE`](LICENSE). It covers the tools and the documentation in
+this repository — which is all this repository contains. It says nothing about
+the disc you supply, which is not ours to licence.
+
 ## Not affiliated
 
 *Ragnarok Odyssey ACE* is the property of its rights holders (GungHo Online
