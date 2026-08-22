@@ -107,7 +107,7 @@ declared. Four files use opcode 27 with no opcode 0 anywhere.
 +0x3C  float
 +0x40  float     1.0       on 6,181, zero on the rest
 +0x44  float     usually 0.01
-+0x48  u16       an id in 1091..1106, then zero
++0x48  u16       a CRI Atom cue id, then zero - the impact sound
 +0x4C  u16, u16  the second an id around 361..370
 +0x50  float
 +0x54  float     -1.0      on all 6,193
@@ -238,18 +238,68 @@ four read like locator ids — `1000` and `10000` *are* locator ids, on 251 and
 are opcodes in a high range and not addresses. Checking cost a minute and would
 have been a plausible wrong answer.
 
+## `+0x48` is the impact sound, and it names itself
+
+The field is a **CRI Atom cue id in `sound.cpk/common.acb`**, which
+[`cpk.py`](../tools/cpk.py)'s `@UTF` reader already opens - an `.acb` is an
+`@UTF` table, so no new format had to be read to settle this.
+
+941 of the 6,193 records carry 0 and 5,252 carry an id. **26 distinct ids are
+used and 25 of them name a cue**; the exception is 347, four times, in one
+monster's `z24_01_511`. Zero is a sentinel rather than a cue, and the disc says
+so: cue 0 of `common.acb` is `SYSTEM_CURSOR`, a menu blip that no sword swing
+would play.
+
+The names say what the record is:
+
+    1090..1093  HIT_DMG_S     HIT_DMG_M     HIT_DMG_L     HIT_DMG_LL
+    1097..1100  SLASH_DMG_S   SLASH_DMG_M   SLASH_DMG_L   SLASH_DMG_LL
+    1101..1104  STRIKE_DMG_S  STRIKE_DMG_M  STRIKE_DMG_L  STRIKE_DMG_LL
+    1105..1106  FLAME_DMG_M   FLAME_DMG_L
+    1107..1108  STORM_DMG_M   STORM_DMG_L
+    260..347    FIRE_EXPLOSION_S/L, BURNING_ATTACK, SAND_GET and six others,
+                39 uses at most and usually one
+
+So a hit declares its **damage family** - blunt, slash, strike, flame, storm -
+and its **size**, S through LL, in one number, and the sound and the family are
+the same field.
+
+**That corroborates `+0x35` independently.** Session 9 read the byte at `+0x35`
+as the strength of the hit from two small series inside single files. Group all
+5,252 records by the cue's family and size suffix instead and the median rises
+with the suffix in **all five families**:
+
+    FLAME    M=18  L=30
+    HIT      S=12  M=65  L=90   LL=100
+    SLASH    S=30  M=30  L=100  LL=100
+    STORM    M=28  L=90
+    STRIKE   S=4   M=55  L=100  LL=100
+
+Two fields written by different tools - a sound designer picking a cue, an
+animator setting a number - agreeing about which hits are big.
+
+The families also fall where the monster does. `b02_00` and `b07_00` reach for
+`FLAME_DMG` more than anything else, `b03_00` is 57 `SLASH_DMG_LL` against
+11 of anything else, and `b01_00`, the Orc King with a club, leads on
+`STRIKE_DMG_L`.
+
+`hits` prints the cue name in the last column.
+
 ## Still open
 
 - **Which vector is which** in the hit record. Three vec3s, all signed; the
   natural readings are an offset, a second end point and a direction, and
   nothing here distinguishes them. Posing the skeleton and drawing the capsule
   would settle it in an afternoon.
-- **Two id spaces, neither named anywhere on the disc**: 1091 to 1106 inside the
-  hit record, and 10200 to 12130 in opcodes 10 and 22. Neither value occurs in
-  any of the 4,941 `ECH` tables, so they belong to the CRI Atom sound banks or
-  the `.PTP` effects, and both are unopened. The `se_hitlevel_tbl` and
-  `eff_hitlevel_tbl` in [`ELBN`](format_elbn.md) are the obvious bridge and
-  hold different, smaller numbers.
+- **One id space left of the two.** The hit record's is solved - see below.
+  The other, 10001 to 39547 in opcode 10's `+0x02`, is a global effect id:
+  10502, 10505 and 10510 are each used by half a dozen unrelated monsters, so
+  it is not an index into the per-class `.PTP`. `.PTP` is `PTCP`, a container
+  of `PTB` blocks with an 84-entry sparse index and its assets named in the
+  clear - `ef_I_as_hit_zan001.ctex`, `anm_ef_I_fire_tubu001.txx` - but nothing
+  in the first 64 bytes of a block looks like that id, so the table that maps
+  one to the other is still to find. The `eff_hitlevel_tbl` in
+  [`ELBN`](format_elbn.md) is the obvious bridge and holds smaller numbers.
 - **Thirty-odd opcodes with no correlation yet**, most of them rare: 7, 15, 16,
   18, 20, 23, 25, 26, 28, 31, 32, 34, 36, 37, 42 to 49, 51, 54, 55, 57, 60, 62.
 - Why 554 files name no motion. Some are plainly not animations at all

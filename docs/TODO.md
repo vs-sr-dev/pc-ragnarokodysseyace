@@ -5,64 +5,88 @@
 
 ---
 
-# Next session — the cutscene language
+# Next session — the AI parameters, and the two id spaces
 
-The hit record is read and bound to the skeleton, so what an attack *does* is
-now legible frame by frame. What is left between the data and a running loop is
-the script layer.
+`.psq` turned out to be Squirrel 2.2 bytecode with its debug tables intact, so
+the script layer is now read: 3,011 files, 11,232 functions, the authors' own
+variable names, and a closed list of **289 native functions** the engine has to
+provide. See [`format_psq.md`](format_psq.md). Six monster directories carry
+their AI as script; the other 77 do not. The `.anmcmd` hit record's sound id is
+named too — see [`format_anmcmd.md`](format_anmcmd.md).
 
-### 1. `.psq` — the cutscene language. 3,011 files.
+### 1. `.par` — the AI parameter tables. 438 files.
 
-`FA FA 'SQIR'` then `PART` chunks. It is clear what calls it: `trigger.trg`
-runs `callQuestScript("sfEnmGenStart()")`, naming another script by string, and
-every stage carries its own `<stage>.psq` beside the trigger list. So `.psq` is
-where a named script's body is, and the trigger vocabulary — 20-odd function
-names in [`format_stage.md`](format_stage.md) — is the entry-point list to
-check any decoding against.
+**83 monster directories carry an `ai.pac`** and each holds three to six
+`.par` — `AI_B01_OrcKing.par`, `_act`, `_cmb`, `_coop`, `_dfa`, `_prowl` — 438
+in all, and they are the AI of the 77 that have no `.cnut`. No magic, records
+that look 64 bytes wide, so it is a plain array format of the kind `ECH` and
+`ATIH` already are.
 
-### 2. The two id spaces the hit record points at.
+**The six `.cnut` are the Rosetta stone.** They call `checkRangeParam`,
+`check_term_param`, `getTime(n)` and `check_converted_xml_term`, and that last
+name says the AI was authored as XML and converted — so the same term
+vocabulary should be on both sides of the border. Decode one `.par` against
+`AI_B01_OrcKing.cnut`, which is the one monster that has both.
 
-1091 to 1106 inside the hit record, 10200 to 12130 in opcodes 10 and 22.
-Neither occurs in any of the 4,941 `ECH` tables, so they are the sound banks or
-the `.PTP` effects. **274 CRI Atom `.acb`/`.awb`** is a documented format and
-opening it would name the first space outright; `.PTP` is 67 files and
-unexamined. This is the cheapest remaining naming job on the disc.
+### 2. `.PTP` — the effect ids.
 
-### 3. The rest of the `.anmcmd` opcodes.
+The hit record's id space is solved (below): it is a CRI Atom cue id. The other
+one is not. Opcode 10's `+0x02` runs 10001 to 39547 and the same values —
+10502, 10505, 10510 — are used by half a dozen unrelated monsters, so it is a
+**global** effect id and not an index into a per-class file.
 
-Thirty of the fifty-two have no correlation yet, most of them rare. The method
-that worked on the twenty-two that do is positional — where in the list an
-opcode falls, what it co-occurs with, whether it is exclusive with another —
-and it is close to exhausted. What would move it further is the geometry: pose
-the skeleton, draw the hit capsule, and the three vectors of the record become
-readable, which is also item 4.
+`.PTP` is `PTCP`: a 16-byte header, an 84-entry sparse index of
+`(u32 offset, u16, u16)` at `0x40`, then `PTB` blocks, and the blocks name
+their own assets in the clear — `ef_I_as_hit_zan001.ctex`,
+`ef_I_nn_wind001_M.pac`, `anm_ef_I_fire_tubu001.txx`. 70 files. Nothing in the
+first 64 bytes of a `PTB` looks like the id, so what is wanted is either a
+field further in or a separate table; `eff_hitlevel_tbl` in `ELBN` is the
+obvious place to look first.
+
+### 3. The 289 native functions, from the two sides that describe them.
+
+`psq.py api` gives each one a name and an arity histogram, and the call sites
+give the argument values. `cfSetCameraType` is called 328 times with three
+arguments and twice with two; the first argument takes a handful of values.
+That is enough to write down what most of them do without a disassembler, and
+it is the specification the host has to satisfy. The ones worth doing first are
+the ones a stage needs to run: `cfSetEnableEmGen`, `cfSetEnableHitArea`,
+`cfSetEnableBorderline`, `cfMapJump`, `cfStartPieceLock`, `cfGetGlobalFlag`,
+`cfSetGlobalFlag`, `chrSetMotion`.
 
 ### Then
 
-4. **Which vector is which** in the hit record. Three signed vec3s; the natural
-   readings are an offset, an end point and a direction. Posing the skeleton
-   and drawing the capsule settles it, and `cmdl.py gait` already does the
-   forward kinematics that needs.
-5. **The `ELBN` records, field by field.** The container is solved and 318
+4. **The rest of the `.anmcmd` opcodes.** Thirty of the fifty-two have no
+   correlation. The positional method is close to exhausted; what would move
+   it further is the geometry — pose the skeleton, draw the hit capsule — which
+   is also item 5.
+5. **Which vector is which** in the hit record. Three signed vec3s; the natural
+   readings are an offset, an end point and a direction. `cmdl.py gait` already
+   does the forward kinematics that needs.
+6. **The `ELBN` records, field by field.** The container is solved and 318
    names are addressable; not one record is described. `job.cpk/<class>/
    objbin.bin` is the best target, because it is the same territory as the
-   JSON in [`params.md`](params.md) and the two can be compared against each
-   other rather than guessed at.
-6. **Name the `ECH` columns.** The `CCLS` surface codes 1 to 13 are still the
-   small well-posed instance, and the `ATIH` marker names give a second
-   vocabulary — 272 `jump_*` markers name the stage they lead to, which is a
-   stage graph the stage table in `ECH` must also encode.
-7. **The minimap transform.** 137 `.map` images, each visibly the silhouette of
+   JSON in [`params.md`](params.md).
+7. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
+   small, well-posed instances with known consumers: the `.psq` calls name
+   their rows, so the columns can be read against the script that uses them.
+   The `CCLS` surface codes 1 to 13 are the other one.
+8. **The minimap transform.** 137 `.map` images, each visibly the silhouette of
    its own stage's collision. A small job that gives the UI layer a working map.
+9. **Structure the `.psq` control flow.** `psq.py src` prints labels and
+   `goto`. Rebuilding `if`/`while`/`switch` is ordinary work and nobody needs
+   it yet.
 
 ---
 ## Deferred, with reasons
 
-- **EBOOT decryption** (Phase 3). Load-bearing here in a way it was not on the
-  sister project, but everything above is in the clear, and the experience
-  there is that facts get postponed to the disassembler and then found in a
-  filename. Nothing on the current list needs it.
-- **Audio and video** — CRI Atom and PAMF are both well-trodden formats.
+- **EBOOT decryption** (Phase 3). Narrower than it was: the quest state machine
+  and the boss AI are script, so what is left inside it is the combat loop and
+  the 289 native functions. Still nothing on the current list needs it.
+- **Audio and video** — the `.acb` half is no longer deferred: an `.acb` is an
+  `@UTF` table and `cpk.py` opens it, which is how the hit record's sound got
+  named. What is still deferred is decoding the waveforms in the `.awb`, and
+  PAMF video, both well-trodden.
 
 ## Open, unowned
 
@@ -91,9 +115,12 @@ readable, which is also item 4.
 - `.anmcmd`: thirty of the fifty-two opcodes; which of the hit record's three
   vectors is which; the unit of `+0x35`; why 554 of the 2,053 name no motion.
   See [`format_anmcmd.md`](format_anmcmd.md).
-- `.PTP` (67) and `.mkc` (2,690) — the second of these sit beside the `CNOM`
-  files and may be what the unmatched `.anmcmd` lists key through. (`.trg` is
-  now [`format_stage.md`](format_stage.md).)
+- `.psq`: `_OP_COMPARITH`'s packed `_arg1`, exercised three times on the whole
+  disc and read out of the interpreter rather than confirmed; and the `.ppcut`
+  macro names, which the preprocessor consumed. See
+  [`format_psq.md`](format_psq.md).
+- `.PTP` (70) and `.mkc` (2,690) — the second of these sit beside the `CNOM`
+  files and may be what the unmatched `.anmcmd` lists key through.
 - The stage layout's own leftovers: the polyline's third word, 0 to 5; whether
   a fence is a closed loop; the 45 markers named `HTA*`; and what places the
   object a `obj*` marker marks.
@@ -103,6 +130,92 @@ readable, which is also item 4.
 ---
 
 # Log
+
+## Session 10 — 2026-08-22
+
+- **`.psq` is Squirrel 2.2 bytecode.** See [`format_psq.md`](format_psq.md) and
+  `psq.py`. **3,011 files, 11,232 functions, 314,930 instructions, 55,368
+  literals, 0 unreadable**, every file consumed to the byte. Findings worth
+  carrying:
+  - **the six bytes that identify it were on the first line all along.**
+    `0xFAFA` is `SQ_BYTECODE_STREAM_TAG` and `SQIR`, `PART`, `TAIL` are
+    `SQ_CLOSURESTREAM_HEAD`, `_PART` and `_TAIL`. Nine sessions of TODO had
+    `PART` down as a chunk with a payload; it is a separator between the fields
+    of one record, which is why `PART` sometimes follows `PART` with nothing in
+    between. The word `0x08000010` that introduces every string is `OT_STRING`;
+  - **the debug tables shipped.** Every function names its `.ppcut` source
+    file, every instruction has a source line, and `localvarinfos` gives every
+    local a name and a live range — so a `.psq` decompiles with the authors'
+    own variable names. `psq.py src` prints statements; control flow stays as
+    labels and `goto` rather than being guessed at;
+  - **the version is settled by the code, not the header, three ways**: the
+    highest opcode on the disc is `0x3C`, which is the last entry of Squirrel
+    2.2's enum; `_OP_ARITH`'s `_arg3` is the operator as ASCII — 4,423 `+`,
+    674 `*`, 295 `-`, 42 `/` and nothing else; and `CLAMP(v, l, h)` in
+    `common.psq` decodes to its own three-line source, with `CMP_L` and `CMP_G`
+    the right way round. Under a Squirrel 3.x table the byte that ends all
+    11,232 functions reads as `_OP_MUL`;
+  - **`_varparams` is 1 on exactly the 19 functions that use `_OP_VARGC`**,
+    which is what says the trailer is `u32 + u8 + u8` and not `u32 + u16`;
+  - **all 55,368 literals are strings** — Squirrel puts numbers in the
+    instruction — and **1,578 are Japanese, all valid UTF-8**, not Shift-JIS.
+    The developer comments are in the clear: `★★ 図鑑用のフラグ立てる ★★`
+    sits next to `cfSetGlobalFlag(1368, 1)`.
+- **The engine's script interface is a closed list.** `psq.py api`: 453 names
+  are called on the root table, 164 are defined by a `.psq`, and **289 are
+  not**. Those 289 — 119 of them beginning `cf` — are the host functions a
+  reimplementation has to provide, with a call count and an arity histogram
+  each.
+- **The names name things.** `psq.py xref` joins the script layer to the stage
+  layer [session 8](format_stage.md) read:
+  - `cfSetEnableHitArea` — **1,457 of 1,459** name an `ATIH` marker of their own
+    stage;
+  - `cfMapJump` — **147 of 147** name a stage that exists and an arrival marker
+    inside it;
+  - `cfSetEnableBorderline` — **679 of 686** name a `borderline` polyline;
+  - **`trigger.trg`'s `callQuestScript("sfEnmGenStart()")` resolves 144 times
+    of 147** against a function the same stage's own `.psq` defines. That is
+    the question last session's TODO asked, closed;
+  - the ones that miss resolve one table further out: `enemy_gen.bin` in the
+    quest's `.pac` pairs `emgen_pos01` with the `emgen01` the script says, and
+    `piecelock.bin` names the `pl_*` the script locks with.
+- **19 `.cnut` files are the same format under Squirrel's own extension**, and
+  nothing was looking for them because nothing was matching on the magic:
+  **six bosses and twelve mercenary classes carry their AI as script.**
+  `AI_B19_LordOfDeath.cnut` is the largest script on the disc — 123 functions,
+  7,721 instructions — and `active_script()` reads HP rate, target range,
+  damage count, anger, six timers, last action and target angle, then picks
+  from `prt_N` weighted tables through a vararg `prt_select(rand, id, weight,
+  …)` that biases away from repeating the last action. **78 native functions
+  are called only from the `.cnut`** and every one is a question about the
+  fight. The AI holds no state at all.
+- **The hit record's `+0x48` is a CRI Atom cue id**, and `common.acb` names it.
+  See [`format_anmcmd.md`](format_anmcmd.md); `anmcmd.py hits` prints the cue.
+  An `.acb` is an `@UTF` table, so [`cpk.py`](../tools/cpk.py) already read it
+  and no new format was needed. Findings worth carrying:
+  - **26 distinct cue ids are used across the 6,193 hit records and 25 of them
+    name a cue** in `sound.cpk/common.acb`. The exception is 347, four times,
+    in one monster's `z24_01_511`. 941 records carry zero, and **zero is a
+    sentinel rather than cue 0**, because cue 0 is `SYSTEM_CURSOR`, a menu blip
+    no sword swing would play;
+  - **the names are the damage model**: `HIT_DMG`, `SLASH_DMG`, `STRIKE_DMG`,
+    `FLAME_DMG`, `STORM_DMG`, each with an `S`/`M`/`L`/`LL` size. So a hit
+    declares its family and its size in one field, and the sound is not a
+    separate decision from the damage;
+  - **that corroborates `+0x35` from a second direction.** Session 9 read the
+    byte as the strength of the hit from two small series inside single files.
+    Group all 5,252 records by their cue's size suffix instead and the median
+    rises with the suffix in **all five families** — `STRIKE` runs 4, 55, 100,
+    100. A sound designer and an animator agreeing about which hits are big;
+  - session 9 called the space "1091 to 1106". It is 26 values over 260 to
+    1108, and the low band is `FIRE_EXPLOSION_S/L`, `BURNING_ATTACK`,
+    `SAND_GET` — a handful of uses each.
+- Opened `.PTP` far enough to see it is `PTCP`, an index of `PTB` blocks naming
+  their own textures, and far enough to know the effect id is not its index.
+  That is now TODO item 2.
+
+- Rewrote [`STRATEGY.md`](STRATEGY.md), which had said for nine sessions that
+  this disc had no scripting layer.
 
 ## Session 9 — 2026-08-22
 

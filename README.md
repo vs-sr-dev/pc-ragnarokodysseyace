@@ -10,16 +10,20 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-8 (2026-08-22): the container stack is open end to end, the game's
+Sessions 1-10 (2026-08-22): the container stack is open end to end, the game's
 database, text and actor parameters are readable, and the textures, geometry,
-skinning, motion, stage collision, the animation event lists and **the world
-layout** decode. A character can be drawn with its own textures on it, posed by
-the game's own animations and with the mesh following the skeleton; a stage
-reads as a floor plan with its fences, its spawn points, its monster
-generators and the scripts its doorways run. An attack says which bone it
-swings from and how hard. The world's two constants are
-settled: **one unit is one metre and one frame is 1/30 of a second**, so the
-game's own movement numbers are dimensional at last.
+skinning, motion, stage collision, the animation event lists, the world layout
+and **the script layer** decode. A character can be drawn with its own textures
+on it, posed by the game's own animations and with the mesh following the
+skeleton; a stage reads as a floor plan with its fences, its spawn points, its
+monster generators and the scripts its doorways run. An attack says which bone
+it swings from and how hard. The world's two constants are settled: **one unit
+is one metre and one frame is 1/30 of a second**, so the game's own movement
+numbers are dimensional at last.
+
+**`.psq` is Squirrel 2.2 bytecode**, debug tables and all, so the cutscenes,
+the quest logic and six bosses' AI decompile with the authors' own variable
+names and source lines.
 
 ```
 ISO (UDF 2.50)   ->      109 files, 5.4 GB      tools/iso.py
@@ -38,8 +42,11 @@ CCLS collision   ->      155 files, 107k tris   tools/ccls.py   0 errors
 CMTM material    ->       91 files, 1,388 keys  tools/cmtm.py   0 errors
 .anmcmd events   ->    2,053 files, 10,175 cmds tools/anmcmd.py 0 errors
   hit records    ->    6,193 hits, 4,768 bones  all resolving
+  impact sounds  ->       25 of 26 cue ids       named in common.acb
 ATIH + fences    ->      163 stages, 5,934 marks tools/stage.py 0 errors
 ELBN parameters  ->      707 files, 318 names   tools/elbn.py   0 errors
+Squirrel script  ->    3,011 files, 315k insns tools/psq.py    0 errors
+  engine API     ->      289 native functions  named and counted
 ```
 
 Formats are documented in [`docs/`](docs): [the disc
@@ -48,12 +55,13 @@ survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 [`CMDL`](docs/format_cmdl.md), [`CNOM` and `CMTM`](docs/format_cnom.md),
 [`CCLS`](docs/format_ccls.md), [the stage layout](docs/format_stage.md),
 [the units](docs/units.md),
-[`ELBN`](docs/format_elbn.md), [`.anmcmd`](docs/format_anmcmd.md), [the actor
+[`ELBN`](docs/format_elbn.md), [`.anmcmd`](docs/format_anmcmd.md), [the script
+layer](docs/format_psq.md), [the actor
 parameters](docs/params.md). The plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
 
-The compiled cutscene language (`.psq`) is untouched, the `ELBN` records are
+The 438 `.par` AI parameter files are unread, the `ELBN` records are
 addressable by name but not described field by field, and thirty of the
 fifty-two `.anmcmd` opcodes still have no correlation — though the two
 commonest are now read, and they are the hitbox.

@@ -83,7 +83,7 @@ declared. Four files use opcode 27 with no opcode 0 anywhere.
     +0x3C  float
     +0x40  float     1.0       on 6,181, zero on the rest
     +0x44  float     usually 0.01
-    +0x48  u16       an id in 1091..1106, then zero
+    +0x48  u16       a CRI Atom cue id, then zero - the impact sound
     +0x4C  u16, u16  the second an id around 361..370
     +0x50  float
     +0x54  float     -1.0      on all 6,193
@@ -189,10 +189,19 @@ none does, the entry says so.
   small id. **Opcode 53 is frame-0 setup on all 231 of its uses**, which is the
   only opcode that is.
 
-Two id spaces appear and neither is named anywhere on the disc: **1091 to
-1106** inside the hit record, and **10200 to 12130** in opcodes 10 and 22.
-Neither occurs in any of the 4,941 `ECH` tables, so they belong to the sound
-banks or the `.PTP` effects, and both of those are unopened.
+**The hit record's `+0x48` is a CRI Atom cue id** in `sound.cpk/common.acb`,
+which is an `@UTF` table and so opens with [`cpk.py`](cpk.py)'s reader. 26
+distinct ids are used and 25 name a cue; the names are `HIT_DMG_*`,
+`SLASH_DMG_*`, `STRIKE_DMG_*`, `FLAME_DMG_*` and `STORM_DMG_*` with an
+`S/M/L/LL` size suffix, so a hit declares its damage family and its size in one
+field. Grouped by that suffix, the median of `+0x35` rises in all five
+families, which corroborates the strength reading from a second direction.
+Zero is a sentinel and not cue 0, because cue 0 is `SYSTEM_CURSOR`.
+
+The other id space, **10001 to 39547** in opcode 10's `+0x02`, is a global
+effect id - the same numbers appear across unrelated monsters - and the table
+that resolves it is not found. `.PTP` is `PTCP`, a container of `PTB` blocks
+naming its own textures, but nothing in it carries that id yet.
 
 ## The name is the link to the motion
 
@@ -210,7 +219,7 @@ Usage:
   python anmcmd.py census <dir>           every opcode, with its size
   python anmcmd.py list <dir> <name>      one list, frame by frame
   python anmcmd.py dump <dir> <name>      the same, with the payload bytes
-  python anmcmd.py hits <dir> <name>      the hit records, with bone names
+  python anmcmd.py hits <dir> <name>      the hit records, bones and cues
   python anmcmd.py bones <dir>            how many hit records name a bone
   python anmcmd.py find <dir> <glob>      locate a list at any depth
 """
@@ -241,7 +250,7 @@ class Hit:
     `words` so that `hits` can print them without pretending to read them."""
 
     __slots__ = ('slot', 'flag', 'bone', 'bone2', 'spare', 'vectors',
-                 'sizes', 'power', 'raw')
+                 'sizes', 'power', 'cue', 'raw')
 
 
     def __init__(self, raw: bytes):
@@ -252,6 +261,7 @@ class Hit:
                         for k in range(3)]
         self.sizes = struct.unpack_from('>2f', raw, 0x2C)
         self.power = raw[0x35]
+        self.cue = struct.unpack_from('>H', raw, 0x48)[0]
 
     @property
     def by_locator(self) -> bool:
@@ -268,6 +278,31 @@ class Hit:
             return f'locator {self.bone} ({at})'
         return (names[self.bone] if self.bone < len(names)
                 else f'node {self.bone}')
+
+
+def cues(root, bank: str = 'common.acb') -> dict:
+    """One CRI Atom bank's cue ids, by number.
+
+    The hit record's `+0x48` is a cue id and `sound.cpk/common.acb` is the
+    bank it names: 5,248 of the 5,252 non-zero ones are cues of this one
+    file. Each `.acb` numbers its cues from zero, so there is no point
+    merging banks - a hit in `common.acb` is what the record means."""
+    from cpk import Utf                                       # noqa: PLC0415
+
+    root = pathlib.Path(root)
+    src = (leaves(root, 'sound')
+           if any(p.is_file() for p in root.glob('*.cpk'))
+           else ((p.relative_to(root).as_posix(), p.read_bytes())
+                 for p in root.rglob('*.acb')))
+    for path, blob in src:
+        if path.rsplit('/', 1)[-1] != bank:
+            continue
+        head = Utf(blob).rows[0]
+        cue = Utf(head['CueTable']).rows
+        name = Utf(head['CueNameTable']).rows if head['CueNameTable'] else []
+        by_index = {r['CueIndex']: r['CueName'] for r in name}
+        return {r['CueId']: by_index.get(i, '?') for i, r in enumerate(cue)}
+    return {}
 
 
 def hits_of(cmd: 'Command') -> list[Hit]:
@@ -533,6 +568,7 @@ def cmd_hits(root, name) -> int:
     path, a = _one(root, name)
     model = _model_for(root, path)
     names, loc = _skeleton(model)
+    bank = cues(root)
     print(path)
     print(f'  skeleton: {model.name if model else "not found"}, '
           f'{len(names)} nodes, {len(loc)} locators')
@@ -547,7 +583,8 @@ def cmd_hits(root, name) -> int:
                 print(f'  f{b["frame"]:<4d} op{c.op:<3d} slot {h.slot:2d} '
                       f'flag {h.flag}  {h.where(names, loc):<28s} '
                       f'{v}  size {h.sizes[0]:6.2f} {h.sizes[1]:6.2f}  '
-                      f'+0x35 {h.power}')
+                      f'+0x35 {h.power:>3d}  '
+                      f'{bank.get(h.cue, h.cue) if h.cue else "-"}')
     return 0
 
 
