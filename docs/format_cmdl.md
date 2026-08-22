@@ -1,12 +1,14 @@
 # `CMDL` — the geometry format
 
-**Status: geometry solved.** 1,127 models, 15,833 meshes, 6,127,335 vertices,
-5,591,558 triangles, 0 unreadable, and every arithmetic check closing on every
-file. Reader: [`../tools/cmdl.py`](../tools/cmdl.py).
+**Status: solved, skinning included.** 1,127 models, 15,833 meshes, 6,127,335
+vertices, 5,591,558 triangles, 0 unreadable, and every arithmetic check closing
+on every file. Reader: [`../tools/cmdl.py`](../tools/cmdl.py).
 
 With [`CTEX`](format_ctex.md) decoded, this is the first frame: geometry,
 texture coordinates, and the model → material → texture chain that says which
-picture goes on which triangle.
+picture goes on which triangle. With [`CNOM`](format_cnom.md) decoded and the
+skinning below read, it is a frame of the game: a character mesh deforming on
+its own skeleton, driven by its own animation.
 
 ## Three chunks, and an identity
 
@@ -74,15 +76,49 @@ costs nothing.
 | S0 | the draw list | `counts[1]` × 12 bytes, padded to a multiple of 16 |
 | S1 | the node table | `counts[2]` × 96, exactly, on all 1,127 |
 | S2 | the material table | `counts[3]` × 48, exactly, on all 1,127 |
-| S3 | mesh descriptors, then the vertex and index buffers | |
-| S4 | absent on 705 files | |
+| S3 | mesh descriptors, then the vertex, index and bone-palette blocks | |
+| S4 | the locator table | absent on 705 files |
 | S5 | node names | one per node, on all 1,127 |
 | S6 | material names | one per material, on all 1,127 |
 | S7 | texture names — these are `CTEX` names | |
 | S8 | pointers into a block of short `u16` records, one per texture | |
-| S9 | 16-byte digests, then a further pointer table | |
+| S9 | 16-byte digests, then the skinning bone names | |
 
 A name table is `u32 count`, then that many pointers, then the strings.
+
+## The locator table, and what `.CTXT` is
+
+`S4` is `u32 count`, then that many `(u16 id, u16 node)` pairs — numeric
+attachment points on the skeleton. `fas2` declares forty of them: `1000` at the
+hip, five apiece at each hand, `8199` at a swinging bone, `10000` at the node
+actually named `eff_10000`.
+
+Those ids are the other half of a format the survey had left unidentified. The
+1,151 **`.CTXT`** files are plain ASCII key/value, they sit in the same `.pac`
+as the model, and they are named after a locator id and open by repeating it —
+on all 1,151, with no exception:
+
+```
+collision_8910.CTXT          blast_8199.CTXT
+  id 8910                      id 8199
+  shape 3                      mass 0.6
+  offset 0 0.03 0              damping_linear 0.99
+  size 0.16 0.45 0.18          stiffness_spring 120 140 160
+  rol 0 0 90                   linear_limitter_min -0.5 -0.2 -0.1
+```
+
+There are three kinds — `collision` (961 files: `shape`, `offset`, `size`,
+`rol`), `blast` (75: masses, dampings, spring stiffnesses, linear limits) and
+`hair` (115: `spring_x/y/z`, `radius`, `init_angle`, angle limits). So
+`collision_*` is a hit volume bound to a bone and the other two are the springs
+that make hair and cloth trail: `8199` on `fas2` resolves through `S4` to
+`node_secondly01`, which is what that node is for. 1,119 of the 1,151 ids are
+declared by a model sitting in the same directory; the 32 that are not are
+`hair_800x` on detachable hair, which presumably resolve against the head that
+wears them.
+
+**Character collision is therefore not in `CCLS`.** It is here, in the clear,
+one small text file per capsule, and it needs no reader at all.
 
 ## The draw list is what ties the model together
 
@@ -158,6 +194,7 @@ three decimal places.
 +0x14  u8[4] attribute offsets
 +0x18  u8 0, u8 stride, u8 stride again, u8 0
 +0x1C  u32   vertex buffer
++0x30  u32   bone palette, on skinned meshes only
 +0x40  float[4]  bounding sphere
 ```
 
@@ -188,7 +225,7 @@ layout with a normal inserted in front of the position:
 Byte 3 is the offset of the **texture coordinates**, two floats, present when
 bit 4 of the vertex type is set. Bits 5 and 6 add a second and third set, eight
 bytes each, stacked in front of the first; bits 8 and 9 add the four-byte pair
-a skinned mesh needs — weights at offset 0 and bone indices at `stride - 4` —
+a skinned mesh needs — weights at offset 0 and palette slots at `stride - 4` —
 which is why the `0x03__` types are the character bodies and the `0x00__` types
 the rigid attachments. Byte 2 is the offset of a
 four-byte attribute sitting between the coordinates and the normal.
@@ -196,6 +233,75 @@ four-byte attribute sitting between the coordinates and the normal.
 **Vertices are already in model space**, not in node space. No transform has to
 be composed to draw a model; the node hierarchy is read for the skeleton, not
 for placement.
+
+## Skinning
+
+931 of the 15,833 meshes are skinned — the vertex types with bit 8 or 9 set,
+`0x0313`, `0x0317`, `0x0337`. Three pieces put a mesh on a skeleton, and the
+file states each of them rather than leaving it to be inferred.
+
+**The vertex carries four weights and four slots.** The first four bytes are
+`u8` weights and **they sum to exactly 255**, on all 473,193 skinned vertices
+with no exception; the last four bytes of the stride are `u8` slot numbers, and
+weight *k* goes with slot *k*. The layout bytes at `+0x14` describe neither —
+they place the position, the normal and the coordinates, and the two skin
+fields take the four bytes left over at each end of the stride.
+
+**The palette is the mesh's own bone list.** `+0x30` of the mesh descriptor
+points at a block of 80-byte entries, and the slot numbers index *that*, not
+the node table — which is why reading them as node indices produces a figure
+whose bones are plausible and whose limbs are wrong. A mesh has a palette
+exactly when it is skinned: 15,833 of 15,833. The blocks tile the tail of `S3`
+after the vertex and index buffers, so a palette runs to the next block or to
+the end of the section.
+
+```
++0x00  u16   bone            then fourteen zero bytes
++0x10  float[16]             the inverse bind pose, transposed
+```
+
+**The bone is a name.** The `u16` indexes the name table at the tail of `S9`,
+past the count and the 16-byte digests, and those names are node names — which
+is how [`CNOM`](format_cnom.md) binds too. A palette holds only the bones its
+mesh uses, 14 of `fas2`'s 21 on the first mesh, in node order; the bone ids
+number the model's bones in the order the meshes first ask for them.
+
+**The matrix is transposed** — the translation is the fourth *row*, so the file
+is written for row vectors. Rebuilt for column vectors it satisfies
+
+```
+matrix * Rx(90) * bind(node) == identity          872 of 931, to a thousandth
+```
+
+and that `Rx(90)` answers the up-axis question the whole format had been
+quiet about: **the vertex buffers are Z-up and the skeleton is Y-up**, and the
+conversion is baked into these matrices rather than stored anywhere as a field.
+Skinning a vertex is then
+
+```
+v' = Σ weight[k]/255 · world(bone[slot[k]]) · inverse_bind[k] · v
+```
+
+which lands in the skeleton's Y-up space. `world()` is the node hierarchy posed
+by a `CNOM`, or the rest pose where the motion does not name a node.
+
+`bind()` is the node hierarchy **with the node scale left out**, and that is
+what closes the identity — keeping the scale closes only 800 of the 931. So a
+scale on a node is a runtime one, multiplying the skinned result instead of
+being baked into it, and `z20_01` says as much in the file: `top` carries 1.5
+and both weapon nodes carry 2/3 to undo it, so the monster is a base model
+wearing a size.
+
+A rigid mesh is the same expression with one bone, the node its draw call
+names. At rest that reduces to `Rx(-90)`, so rigid and skinned meshes come out
+in the same space and can be drawn together.
+
+The 59 meshes still left over, across 25 models, have a node table whose rest
+transform sits a few degrees from the one their matrices were baked against —
+shoulders and arms, mostly — plus one stage prop, `crystal`, whose nodes place
+twelve instances up to 78 units from where the mesh was modelled. **The matrix
+is what to trust** for the bind. Nothing on the animated path goes through the
+node table's Euler angles at all, since `CNOM` keys quaternions.
 
 ## What it looks like
 
@@ -211,19 +317,22 @@ That model is Loki, and the disc says so without a disassembler:
 monsters** — `AI_Z27_YamiGiant`, `AI_Z24_Gagapu`, `AI_Z21_Nfdeadkafra` — which
 gives every model an English name for free.
 
+`cmdl.py obj <dir> <model> <out> <motion> <frame>` writes the same thing posed,
+skinning included. The frame that proved the skinning was the player body
+`character.cpk/model.cpk/fas2` under `fas211walk`: a walk cycle in profile, the
+mesh creasing at the hip, knee and elbow, with its own textures on it — and the
+same model at rest standing in a clean T-pose, which is the guard against the
+failure that does not crash, a wrong pairing dragging limbs towards the origin.
+
 ## Still open
 
-- **Skinning — the attributes read, the pose does not yet.** On all 931 skinned
-  meshes and 473,193 vertices, the first four bytes of a vertex are four `u8`
-  weights summing to exactly 255, and the last four bytes of the stride are
-  four `u8` bone indices, every one inside the model's node table. No
-  exceptions. What is not yet done is applying them: the weight-to-index
-  pairing is unconfirmed and the bind-pose inverse is not written. See
-  [`TODO.md`](TODO.md).
 - The four-byte attribute at layout byte 2 — colour is the obvious guess and
   the obvious guess has been wrong twice on this disc.
 - The middle byte of the mesh descriptor's first word, and `+0x04`, constant at
   `0x0e250200` everywhere.
-- `S8` and `S9`, and the 16-byte digests in `S9`.
+- `S8`, and the 16-byte digests at the head of `S9` — one per texture, so a
+  content hash is the obvious reading.
 - What the eight stage grounds mean by a texture index one past the end of
   their name list.
+- Why 25 models disagree with their own inverse bind matrices, and whether the
+  engine reads a rest pose from somewhere other than the node table.

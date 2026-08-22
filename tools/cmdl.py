@@ -57,15 +57,25 @@ one entry `POF0` does not relocate.
                                 padded up to a multiple of sixteen
     S1  the node table          96 bytes per node,     == counts[2] exactly
     S2  the material table      48 bytes per material, == counts[3] exactly
-    S3  the mesh descriptors, followed by the vertex and index buffers
-    S4  usually absent
+    S3  the mesh descriptors, then the vertex, index and bone-palette blocks
+    S4  the locator table, absent on 705 files
     S5  the node names
     S6  the material names
     S7  the texture names, which are `CTEX` names
     S8  pointers into a block of short u16 records, one per texture
-    S9  16-byte digests, then a further pointer table
+    S9  16-byte digests, then the skinning bone names
 
 A name table is `u32 count`, then that many pointers, then the strings.
+
+## The locator table
+
+`S4` is `u32 count`, then that many `(u16 id, u16 node)` pairs: numeric
+attachment points, `1000` at the hip, `8199` at a swinging bone, `10000` at
+`eff_10000`. The ids are what the `.CTXT` files sitting beside the model are
+named after and open with - `collision_8910.CTXT` begins `id 8910`, and that
+id is in this table against `node_fas2_sec01`. So the plain-text `.CTXT`
+files, hit capsules and spring parameters both, bind to the skeleton through
+`S4`.
 
 ## The draw list
 
@@ -126,6 +136,7 @@ The names in `S5` line up with this table one for one, and they are legible -
     +0x14  u8[4] attribute offsets, and see below
     +0x18  u8 0, u8 stride, u8 stride again, u8 0
     +0x1C  u32   vertex buffer
+    +0x30  u32   bone palette, on skinned meshes only
     +0x40  float[4]  bounding sphere
 
 Indices are `u16`, triangle lists. **The vertex block ends exactly where the
@@ -157,6 +168,67 @@ node space: no transform has to be composed to draw a model, and the model's
 declared bounding sphere confirms it - which is why a textured render comes out
 right with the node hierarchy read but not applied.
 
+## Skinning
+
+931 of the 15,833 meshes are skinned - the vertex types with bit 8 or 9 set,
+`0x0313`, `0x0317` and `0x0337`. Three pieces put a mesh on a skeleton, and
+each of them is stated in the file rather than inferred:
+
+**The vertex carries four weights and four slots.** The first four bytes of a
+vertex are `u8` weights and **they sum to exactly 255**, on all 473,193 skinned
+vertices with no exception; the last four bytes of the stride are `u8` slot
+numbers. Weight `k` goes with slot `k`. The layout bytes at `+0x14` describe
+neither: they place the position, the normal and the texture coordinates, and
+the two skin fields take the four bytes left over at each end of the stride.
+
+**The palette is the mesh's own bone list.** `+0x30` of the descriptor points
+at a block of 80-byte entries - `u16` bone, fourteen zero bytes, then a 4x4
+matrix - and the slot numbers index *that*, not the node table. The blocks tile
+`S3` after the vertex and index buffers, so a palette runs to the next block or
+to the end of the section. A mesh has a palette exactly when it is skinned:
+15,833 of 15,833.
+
+**The bone is a name.** The `u16` indexes the name table at the tail of `S9`,
+and those are node names, which is how `CNOM` binds too. The palette holds only
+the bones a mesh actually uses - 14 of 21 on `fas2`'s first mesh - and lists
+them in node order, while the bone ids number the model's bones in the order
+the meshes first ask for them.
+
+**The matrix is the inverse bind pose, and it is transposed**: the translation
+is the fourth *row*, so the file is written for row vectors. Rebuild it as a
+column-vector matrix and it satisfies
+
+    matrix * Rx(90) * bind(node) == identity
+
+on 872 of the 931 skinned meshes, to a thousandth. That `Rx(90)` is the whole
+Z-up-to-Y-up question answered: **the vertex buffers are Z-up and the skeleton
+is Y-up**, and the conversion is baked into these matrices rather than stored
+anywhere as a field. So skinning a vertex,
+
+    v' = sum over k of  weight[k]/255 * world(bone[slot[k]]) * inverse_bind[k] * v
+
+lands in the skeleton's Y-up space, and `world()` is the node hierarchy posed
+by a `CNOM` - see [`cnom.py`](cnom.py) - or the bind pose itself.
+
+A rigid mesh is the same expression with one bone, the node its draw call
+names, which is what `posed()` does: at rest that reduces to `Rx(-90)`, so
+rigid and skinned meshes come out in the same space and can be drawn together.
+
+**`bind()` is the node hierarchy with the node scale left out**, and that is
+what closes the identity - keeping the scale closes only 800 of the 931. A
+scale on a node is therefore a runtime one, multiplying the skinned result
+rather than being baked into it, and `z20_01` says as much in the file: `top`
+carries 1.5 and the two weapon nodes carry 2/3 to undo it, so the monster is a
+base model wearing a size.
+
+The 59 meshes still left over, across 25 models, are ones whose node table
+records a rest transform a few degrees from the one the matrices were baked
+against - the shoulders and arms, mostly - and one stage prop, `crystal`, whose
+nodes place twelve instances up to 78 units from where the mesh was modelled.
+**The matrix is the one to trust** for the bind; nothing on the animated path
+goes through the node table's Euler angles at all, since `CNOM` keys
+quaternions.
+
 Usage:
   python cmdl.py check <dir>              the whole arithmetic, every file
   python cmdl.py survey <dir>             every model, largest first
@@ -164,12 +236,17 @@ Usage:
   python cmdl.py nodes <dir> <name>       the node tree
   python cmdl.py meshes <dir> <name>      the mesh descriptors
   python cmdl.py draws <dir> <name>       the draw list, with names
-  python cmdl.py obj <dir> <name> <out>   export Wavefront OBJ
+  python cmdl.py skin <dir> <name>        the bone palettes and the weights
+  python cmdl.py locators <dir> <name>    the attachment points of S4
+  python cmdl.py obj <dir> <name> <out> [motion frame]
+                                          export Wavefront OBJ, posed by a
+                                          CNOM when one is named
   python cmdl.py find <dir> <glob>        locate a model at any depth
 """
 from __future__ import annotations
 
 import fnmatch
+import math
 import pathlib
 import struct
 import sys
@@ -184,7 +261,69 @@ HEADER = 0x10
 NODE = 96
 MATERIAL = 48
 DESC = 80
+BONE = 80
 NUL = bytes(1)
+
+Matrix = list                                     # 4x4, row r column c
+
+IDENTITY: Matrix = [[float(r == c) for c in range(4)] for r in range(4)]
+RX90: Matrix = [[1., 0., 0., 0.], [0., 0., -1., 0.],
+                [0., 1., 0., 0.], [0., 0., 0., 1.]]
+
+
+def mul(a: Matrix, b: Matrix) -> Matrix:
+    return [[sum(a[i][k] * b[k][j] for k in range(4)) for j in range(4)]
+            for i in range(4)]
+
+
+def invert(m: Matrix) -> Matrix:
+    """The inverse of an affine matrix. Some nodes scale, so not a transpose."""
+    a = [row[:3] for row in m[:3]]
+    cof = [[a[(i + 1) % 3][(j + 1) % 3] * a[(i + 2) % 3][(j + 2) % 3]
+            - a[(i + 1) % 3][(j + 2) % 3] * a[(i + 2) % 3][(j + 1) % 3]
+            for j in range(3)] for i in range(3)]
+    det = sum(a[0][j] * cof[0][j] for j in range(3)) or 1.0
+    r = [[cof[j][i] / det for j in range(3)] for i in range(3)]
+    t = [-sum(r[i][k] * m[k][3] for k in range(3)) for i in range(3)]
+    return [r[i] + [t[i]] for i in range(3)] + [[0., 0., 0., 1.]]
+
+
+def apply(m: Matrix, v) -> tuple[float, float, float]:
+    return tuple(sum(m[r][c] * v[c] for c in range(3)) + m[r][3]
+                 for r in range(3))
+
+
+def from_euler(r) -> Matrix:
+    """The node rotation, which is Rz Ry Rx in radians."""
+    cx, sx = math.cos(r[0]), math.sin(r[0])
+    cy, sy = math.cos(r[1]), math.sin(r[1])
+    cz, sz = math.cos(r[2]), math.sin(r[2])
+    return [
+        [cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx, 0.],
+        [sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx, 0.],
+        [-sy, cy * sx, cy * cx, 0.],
+        [0., 0., 0., 1.],
+    ]
+
+
+def from_quaternion(q) -> Matrix:
+    """The CNOM rotation, x y z w."""
+    x, y, z, w = q
+    return [
+        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w), 0.],
+        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w), 0.],
+        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y), 0.],
+        [0., 0., 0., 1.],
+    ]
+
+
+def compose(translation, rotation: Matrix, scale) -> Matrix:
+    m = [row[:] for row in rotation]
+    for r in range(3):
+        for c in range(3):
+            m[r][c] *= scale[c]
+        m[r][3] = translation[r]
+    return m
 
 
 def decode_pof0(data: bytes) -> list[int]:
@@ -210,7 +349,8 @@ def decode_pof0(data: bytes) -> list[int]:
 
 class Mesh:
     __slots__ = ('index', 'indices', 'index_ptr', 'prim', 'vertices',
-                 'vtype', 'layout', 'stride', 'vertex_ptr', 'sphere')
+                 'vtype', 'layout', 'stride', 'vertex_ptr', 'palette_ptr',
+                 'sphere')
 
     def __init__(self, buf: bytes, o: int, index: int):
         self.index = index
@@ -220,6 +360,7 @@ class Mesh:
         self.layout = struct.unpack_from('>4B', buf, o + 0x14)
         self.stride = buf[o + 0x19]
         self.vertex_ptr = struct.unpack_from('>I', buf, o + 0x1C)[0]
+        self.palette_ptr = struct.unpack_from('>I', buf, o + 0x30)[0]
         self.sphere = struct.unpack_from('>4f', buf, o + 0x40)
 
     @property
@@ -235,6 +376,11 @@ class Mesh:
     def uv_offset(self) -> int | None:
         """Two floats, present when bit 4 of the vertex type is set."""
         return self.layout[3] if self.vtype & 0x10 else None
+
+    @property
+    def skinned(self) -> bool:
+        """Bits 8 and 9 add the weights and the palette slots."""
+        return bool(self.vtype & 0x300)
 
     @property
     def drawable(self) -> bool:
@@ -264,6 +410,7 @@ class Cmdl:
         self.counts = struct.unpack_from('>8H', buf, 0x60)
         self.dir = struct.unpack_from('>11I', buf, 0x74)
         self.name = buf[0xB0:0xD0].split(NUL)[0].decode('ascii', 'replace')
+        self._palettes: dict[int, tuple[int, int]] | None = None
 
     # -- the pieces
 
@@ -329,13 +476,10 @@ class Cmdl:
             'colours': struct.unpack_from('>3I', self.buf, o + 8),
         }
 
-    def names(self, sec: int) -> list[str]:
-        s = self.section(sec)
-        if not s:
-            return []
-        o = s[0]
+    def _names(self, o: int, room: int) -> list[str]:
+        """A name table - u32 count, that many pointers, then the strings."""
         n = struct.unpack_from('>I', self.buf, o)[0]
-        if n > 4096 or 4 + 4 * n > s[1]:
+        if n > 4096 or 4 + 4 * n > room:
             return []
         out = []
         for k in range(n):
@@ -344,6 +488,162 @@ class Cmdl:
             if e < 0:
                 return out
             out.append(self.buf[p:e].decode('ascii', 'replace'))
+        return out
+
+    def names(self, sec: int) -> list[str]:
+        s = self.section(sec)
+        return self._names(s[0], s[1]) if s else []
+
+    def bones(self) -> list[str]:
+        """The skinning bones, named. A palette entry's u16 indexes this.
+
+        They sit at the tail of S9, past the count and the 16-byte digests.
+        """
+        s = self.section(9)
+        if not s:
+            return []
+        o = s[0] + 16 + struct.unpack_from('>I', self.buf, s[0])[0] * 16
+        return self._names(o, s[0] + s[1] - o) if o + 4 <= s[0] + s[1] else []
+
+    def locators(self) -> list[tuple[int, int]]:
+        """S4: (id, node) for every attachment point the .CTXT files name."""
+        s = self.section(4)
+        if not s:
+            return []
+        n = struct.unpack_from('>I', self.buf, s[0])[0]
+        if 4 + 4 * n > s[1]:
+            return []
+        return [struct.unpack_from('>HH', self.buf, s[0] + 4 + 4 * k)
+                for k in range(n)]
+
+    # -- skinning
+
+    def palettes(self) -> dict[int, tuple[int, int]]:
+        """(file offset, entry count) of every mesh's bone palette.
+
+        The blocks tile the tail of S3, so one runs to the next or to the end
+        of the section.
+        """
+        if self._palettes is None:
+            s = self.section(3)
+            ptr = {}
+            if s:
+                for i in range(self.meshes):
+                    p = self.mesh(i).palette_ptr
+                    if p:
+                        ptr[i] = self.at(p)
+            end = s[0] + s[1] if s else 0
+            order = sorted(set(ptr.values()))
+            self._palettes = {
+                i: (o, (min([q for q in order if q > o], default=end) - o)
+                    // BONE)
+                for i, o in ptr.items()}
+        return self._palettes
+
+    def palette(self, i: int) -> list[tuple[int, Matrix]]:
+        """(bone, inverse bind pose) per slot, the matrix un-transposed."""
+        where = self.palettes().get(i)
+        if not where:
+            return []
+        o, n = where
+        out = []
+        for k in range(n):
+            b = o + k * BONE
+            rows = [struct.unpack_from('>4f', self.buf, b + 16 + 16 * r)
+                    for r in range(4)]
+            out.append((struct.unpack_from('>H', self.buf, b)[0],
+                        [[rows[c][r] for c in range(4)] for r in range(4)]))
+        return out
+
+    def skin(self, m: Mesh) -> list[tuple[bytes, bytes]]:
+        """(weights, slots) per vertex - four u8 each, the weights over 255."""
+        if not m.skinned:
+            return []
+        o = self.at(m.vertex_ptr)
+        return [(self.buf[o + i * m.stride:o + i * m.stride + 4],
+                 self.buf[o + (i + 1) * m.stride - 4:o + (i + 1) * m.stride])
+                for i in range(m.vertices)]
+
+    def parents(self) -> list[int]:
+        """The parent of every node, -1 for the root, read off the depths."""
+        out, stack = [], []
+        for i in range(self.nodes):
+            d = self.node(i)['depth']
+            del stack[d - 1:]
+            out.append(stack[-1] if stack else -1)
+            stack.append(i)
+        return out
+
+    def world(self, pose: dict | None = None,
+              scale: bool = True) -> list[Matrix]:
+        """Every node's world matrix, in the skeleton's own Y-up space.
+
+        With no pose that is the rest skeleton; with one - a CNOM sampled at a
+        frame, keyed by bone name - it is the animated one, and a node the
+        motion does not name keeps its own transform.
+        """
+        names = self.names(5)
+        chain, out = [], []
+        for i in range(self.nodes):
+            n = self.node(i)
+            p = pose.get(names[i]) if pose and i < len(names) else None
+            if p:
+                m = compose(p['translation'],
+                            from_quaternion(p['rotation']),
+                            p['scale'] if scale else (1., 1., 1.))
+            else:
+                m = compose(n['translation'], from_euler(n['rotation']),
+                            n['scale'] if scale else (1., 1., 1.))
+            d = n['depth']
+            del chain[d - 1:]
+            m = mul(chain[-1] if chain else IDENTITY, m)
+            chain.append(m)
+            out.append(m)
+        return out
+
+    def bind(self) -> list[Matrix]:
+        """The pose the inverse bind matrices were baked against.
+
+        It is the rest skeleton with the node scale left out - a scale there
+        is a runtime one, applied over the skinning rather than into it.
+        """
+        return self.world(scale=False)
+
+    def skin_matrices(self, i: int, node: int, world: list[Matrix],
+                      bind: list[Matrix] | None = None) -> list[Matrix]:
+        """What multiplies a vertex of mesh i, one matrix per palette slot.
+
+        A rigid mesh is the same thing with a single bone, the one its draw
+        call names, so both kinds come out in the same space.
+        """
+        names = self.names(5)
+        pal = self.palette(i)
+        if pal:
+            bones = self.bones()
+            out = []
+            for b, inverse in pal:
+                j = names.index(bones[b]) if b < len(bones) \
+                    and bones[b] in names else node
+                out.append(mul(world[j], inverse))
+            return out
+        bind = bind if bind is not None else self.bind()
+        return [mul(world[node], invert(mul(RX90, bind[node])))]
+
+    def posed(self, m: Mesh, matrices: list[Matrix]) -> list[tuple]:
+        """The mesh's vertices under those matrices, weighted."""
+        pos = self.positions(m)
+        if not m.skinned:
+            return [apply(matrices[0], v) for v in pos]
+        out = []
+        for v, (w, slot) in zip(pos, self.skin(m)):
+            acc = [0.0, 0.0, 0.0]
+            for k in range(4):
+                if not w[k] or slot[k] >= len(matrices):
+                    continue
+                q = apply(matrices[slot[k]], v)
+                for r in range(3):
+                    acc[r] += w[k] / 255.0 * q[r]
+            out.append(tuple(acc))
         return out
 
     # -- geometry
@@ -463,11 +763,46 @@ def cmd_check(root) -> int:
              f'{path}: texture index out of range')
         if not m.section(3):
             continue
+        bones, pal_of, names5 = m.bones(), m.palettes(), m.names(5)
+        bindw = m.bind() if pal_of else []
         for i in range(m.meshes):
             mesh = m.mesh(i)
             note('mesh descriptor signature',
                  struct.unpack_from('>I', blob, m.section(3)[0] + i * DESC)[0]
                  & 0xFFFF00FF == 0x010F0007, f'{path}: mesh {i} signature')
+            note('a bone palette exactly when the mesh is skinned',
+                 mesh.skinned == (i in pal_of),
+                 f'{path}: mesh {i} type {mesh.vtype:#06x}, '
+                 f'palette {mesh.palette_ptr:#x}')
+            if i in pal_of:
+                where = pal_of[i]
+                nxt = min([o for o, _ in pal_of.values() if o > where[0]],
+                          default=m.section(3)[0] + m.section(3)[1])
+                note('the palette is a whole number of 80-byte entries',
+                     (nxt - where[0]) % BONE == 0,
+                     f'{path}: mesh {i} palette spans {nxt - where[0]} bytes')
+                skin = m.skin(mesh)
+                note('the four weights sum to 255',
+                     all(sum(w) == 255 for w, _ in skin),
+                     f'{path}: mesh {i} weights')
+                note('every slot a weight uses is inside the palette',
+                     all(s[k] < where[1] for w, s in skin for k in range(4)
+                         if w[k]),
+                     f'{path}: mesh {i} slot past {where[1]} entries')
+                worst, named = 0.0, True
+                for b, inverse in m.palette(i):
+                    if b >= len(bones) or bones[b] not in names5:
+                        named = False
+                        continue
+                    d = mul(inverse, mul(RX90, bindw[names5.index(bones[b])]))
+                    worst = max(worst, max(abs(d[r][c] - IDENTITY[r][c])
+                                           for r in range(4)
+                                           for c in range(4)))
+                note('every bone names a node of this model', named,
+                     f'{path}: mesh {i} bone id out of range')
+                note('the inverse bind pose inverts Rx(90) x the bind pose',
+                     worst < 2e-3,
+                     f'{path}: mesh {i} residual {worst:.4f}')
             if not mesh.drawable:
                 continue
             vend = mesh.vertex_ptr + mesh.vertices * mesh.stride
@@ -584,18 +919,64 @@ def cmd_draws(root, name) -> int:
     return 0
 
 
-def cmd_obj(root, name, out) -> int:
+def cmd_skin(root, name) -> int:
+    path, m = _one(root, name)
+    nodes, bones = m.names(5), m.bones()
+    bindw = m.bind()
+    print(f'{path}  {len(bones)} skinning bones')
+    for b, bone in enumerate(bones):
+        print(f'   {b:>3}  {bone}')
+    for i in sorted(m.palettes()):
+        x = m.mesh(i)
+        skin = m.skin(x)
+        n = sum(1 for w, _ in skin for k in range(4) if w[k])
+        print(f'  mesh {i}: {x.vertices:,} vertices, type {x.vtype:#06x} '
+              f'stride {x.stride}, {n / max(1, x.vertices):.2f} influences '
+              f'each')
+        for k, (b, inverse) in enumerate(m.palette(i)):
+            bone = bones[b] if b < len(bones) else '?'
+            j = nodes.index(bone) if bone in nodes else -1
+            d = mul(inverse, mul(RX90, bindw[j])) if j >= 0 else None
+            res = max(abs(d[r][c] - IDENTITY[r][c])
+                      for r in range(4) for c in range(4)) if d else float('nan')
+            print(f'    slot {k:>3}  bone {b:>3}  node {j:>3}  {bone:<24}'
+                  f' residual {res:.5f}')
+    return 0
+
+
+def cmd_locators(root, name) -> int:
+    path, m = _one(root, name)
+    nodes = m.names(5)
+    loc = m.locators()
+    print(f'{path}  {len(loc)} locators')
+    for lid, node in loc:
+        print(f'   {lid:>6}  node {node:>3}  '
+              f'{nodes[node] if node < len(nodes) else "?"}')
+    return 0
+
+
+def cmd_obj(root, name, out, motion='', frame='0') -> int:
     path, m = _one(root, name)
     nodes, texs = m.names(5), m.names(7)
+    pose = None
+    if motion:
+        from cnom import _one as _cnom                         # noqa: PLC0415
+        apath, a = _cnom(root, motion)
+        pose = a.pose(float(frame))
+        print(f'{apath}  frame {frame} of {a.frames}, {a.tracks} tracks')
+    world = m.world(pose)
+    bind = m.bind()
     lines, base, tbase = [], 1, 1
     lines.append(f'# {path}')
     lines.append(f'# {m.name}: {m.meshes} meshes, {m.nodes} nodes, '
                  f'{m.counts[1]} draw calls')
+    if motion:
+        lines.append(f'# posed by {motion} at frame {frame}')
     for call, (n, mat, me) in enumerate(m.draws()):
         x = m.mesh(me)
         if not x.drawable:
             continue
-        pos = m.positions(x)
+        pos = m.posed(x, m.skin_matrices(me, n, world, bind))
         uv = m.uvs(x)
         t = m.material(mat)['texture'] if mat < m.materials else -1
         lines.append(f'o {call:03d}_{nodes[n] if n < len(nodes) else me}')
@@ -654,8 +1035,12 @@ def main() -> int:
         return cmd_meshes(rest[0], rest[1])
     if cmd == 'draws':
         return cmd_draws(rest[0], rest[1])
+    if cmd == 'skin':
+        return cmd_skin(rest[0], rest[1])
+    if cmd == 'locators':
+        return cmd_locators(rest[0], rest[1])
     if cmd == 'obj':
-        return cmd_obj(rest[0], rest[1], rest[2])
+        return cmd_obj(rest[0], rest[1], rest[2], *rest[3:5])
     if cmd == 'find':
         return cmd_find(rest[0], rest[1])
     print(f'unknown command: {cmd}')

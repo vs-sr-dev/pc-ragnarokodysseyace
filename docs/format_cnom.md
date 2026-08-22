@@ -141,13 +141,14 @@ that against a `CMDL` skeleton and drawing the bones is what proved the format:
 through contact and passing, arms counter-swinging — and the bind pose stands
 in a T. A wrong quaternion order or a wrong key stride does not produce that.
 
+That pose is also all the other half needs. `CMDL` carries an inverse bind
+matrix per bone per mesh, so hanging the mesh on this skeleton is one
+multiplication per influence — see [the skinning section of
+`format_cmdl.md`](format_cmdl.md). Note what the animated path does *not* touch:
+the node table's Euler angles. Every rotation from here is a quaternion.
+
 ## Still open
 
-- **Skinning**, which is `CMDL`'s half of the job. The attributes themselves now
-  read — four `u8` weights summing to 255 at the head of every skinned vertex,
-  four `u8` bone indices at the tail, on all 473,193 of them — but nothing has
-  been posed with them yet. Until it is, the skeleton animates and the mesh
-  does not follow it.
 - The `u8` at `+0x04` of a channel — `0x0f` on the twelve-byte channels and
   `0x10` on the sixteen, so it tracks the size and adds nothing. Probably an
   interpolation or component-count code.

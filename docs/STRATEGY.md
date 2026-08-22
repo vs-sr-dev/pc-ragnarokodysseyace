@@ -73,7 +73,7 @@ Phase 3.
 | `.psq` sequence | 2,992 | high | the cutscene language; `SQIR` + `PART` chunks |
 | `.anmcmd` | 2,053 | medium | animation commands |
 | `.mkc` | 2,690 | medium | |
-| `.CTXT` | 1,151 | medium | opens with readable ASCII |
+| `.CTXT` | 1,151 | done | plain text: hit capsules and springs, bound to a bone through the model's locator table |
 | `ELBN` | 379 | low | unidentified, no consumer waiting |
 | `.PTP` effects | 18 | low | |
 | CRI Atom audio | 274 | low | `.acb`/`.awb`, well-documented format |

@@ -10,10 +10,10 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-6 (2026-08-22): the container stack is open end to end, the game's
-database, text and actor parameters are readable, and the textures, geometry
-and motion decode. A model can be drawn with its own textures on it, and its
-skeleton can be posed from the game's own animations.
+Sessions 1-7 (2026-08-22): the container stack is open end to end, the game's
+database, text and actor parameters are readable, and the textures, geometry,
+skinning and motion decode. A character can be drawn with its own textures on
+it, posed by the game's own animations, with the mesh following the skeleton.
 
 ```
 ISO (UDF 2.50)   ->      109 files, 5.4 GB      tools/iso.py
@@ -38,7 +38,7 @@ parameters](docs/params.md). The plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
 
-Skinning, collision (`CCLS`) and the compiled cutscene language (`.psq`) are
+Stage collision (`CCLS`) and the compiled cutscene language (`.psq`) are
 untouched.
 
 ## BYOA
@@ -96,7 +96,10 @@ python tools/ctex.py unpack <dir> <out>      decode many, mirroring paths
 python tools/cmdl.py check|survey <dir>       the geometry
 python tools/cmdl.py info|nodes|meshes <dir> <name>
 python tools/cmdl.py draws <dir> <name>      the node/material/mesh draw list
-python tools/cmdl.py obj <dir> <name> <out>  export Wavefront OBJ
+python tools/cmdl.py skin <dir> <name>       the bone palettes and the weights
+python tools/cmdl.py locators <dir> <name>   the attachment points
+python tools/cmdl.py obj <dir> <name> <out> [motion frame]
+                                             export Wavefront OBJ, posed
 
 python tools/cnom.py check|survey <dir>       the motion
 python tools/cnom.py info <dir> <name>       one animation, per bone
