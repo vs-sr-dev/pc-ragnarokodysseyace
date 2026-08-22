@@ -179,6 +179,13 @@ Two files key past their own declared length, `menu.cpk/animeicon_00` and
 `animeicon_20`, both ending at frame 60 against headers saying 31 and 51.
 `CNOM` has no such case in 3,043 files.
 
+## The frame
+
+A `CNOM` frame is **1/30 of a second**, and nothing in the file says so. It is
+recovered from the geometry of the locomotion cycles — the planted foot of a
+run slides backwards at exactly `run_sp`, and the resulting gait is a human one
+only at 30 fps. See [`units.md`](units.md).
+
 ## Still open
 
 - The `u8` at `+0x04` of a channel — `0x0f` on the twelve-byte channels and

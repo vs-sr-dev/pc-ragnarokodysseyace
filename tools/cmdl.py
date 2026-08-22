@@ -241,7 +241,22 @@ Usage:
   python cmdl.py obj <dir> <name> <out> [motion frame]
                                           export Wavefront OBJ, posed by a
                                           CNOM when one is named
+  python cmdl.py gait <dir> <name> <motion>
+                                          how fast the planted foot slides
+                                          backwards, in units per frame
   python cmdl.py find <dir> <glob>        locate a model at any depth
+
+## The gait, and what it calibrates
+
+`gait` runs the skeleton forward through a locomotion cycle and measures how
+fast the **planted foot** travels backwards in model space. In a cycle authored
+to be played while the character moves, that rate *is* the locomotion speed,
+because any disagreement shows on screen as a sliding foot.
+
+On the twelve player models it comes out at the number the actor parameters
+declare, with nothing fitted: `run_sp` is 0.17 and `fas213run` slides at
+0.1698. That pins the unit of a `_sp` field to **units per animation frame**,
+and it is what [`units.md`](../docs/units.md) builds the frame rate on.
 """
 from __future__ import annotations
 
@@ -263,6 +278,7 @@ MATERIAL = 48
 DESC = 80
 BONE = 80
 NUL = bytes(1)
+PLANTED = 0.03            # how close to its lowest an ankle counts as down
 
 Matrix = list                                     # 4x4, row r column c
 
@@ -1017,6 +1033,52 @@ def cmd_find(root, pattern) -> int:
     return 0
 
 
+def cmd_gait(root, name: str, motion: str) -> int:
+    """The backward speed of the planted foot, in units per frame.
+
+    A locomotion cycle is authored against a translation speed: while a foot
+    is on the ground it must travel backwards at exactly the rate the
+    character advances, or it slides. Sampling that rate reads the speed the
+    animator was given, in the animation's own units.
+    """
+    from cnom import _one as _cnom                             # noqa: PLC0415
+
+    path, m = _one(root, name)
+    apath, a = _cnom(root, motion)
+    names = m.names(5)
+    index = {n: i for i, n in enumerate(names)}
+    feet = [n for n in names if n.endswith('_foot')]
+    if len(feet) < 2:
+        print(f'{path}: no pair of *_foot nodes')
+        return 1
+
+    track = []
+    for f in range(a.frames + 1):
+        w = m.world(a.pose(float(f)))
+        track.append({n: (w[index[n]][1][3], w[index[n]][2][3]) for n in feet})
+
+    floor = min(min(r[n][0] for n in feet) for r in track)
+    planted = [(n, f) for n in feet for f in range(1, a.frames + 1)
+               if max(track[f - 1][n][0], track[f][n][0]) < floor + PLANTED
+               and track[f][n][1] < track[f - 1][n][1]]
+    if not planted:
+        print(f'{apath}: {a.frames} frames, no frame with a foot on the floor')
+        return 1
+    v = sorted(track[f - 1][n][1] - track[f][n][1] for n, f in planted)
+    med = v[len(v) // 2]
+    print(path)
+    print(f'{apath}   {a.frames} frames, {len(v)} planted samples')
+    print(f'  ankle floor          {floor:.3f}')
+    print(f'  slide per frame      {med:.4f}   '
+          f'(p10 {v[len(v) // 10]:.4f}, p90 {v[len(v) * 9 // 10]:.4f})')
+    print(f'  distance per cycle   {med * a.frames:.3f}')
+    for fps in (30, 60):
+        print(f'  at {fps} fps           {med * fps:6.2f} units/s, '
+              f'{2 * fps / a.frames * 60:5.0f} steps/min, '
+              f'step {med * a.frames / 2:.2f}')
+    return 0
+
+
 def main() -> int:
     a = sys.argv[1:]
     if not a:
@@ -1041,6 +1103,8 @@ def main() -> int:
         return cmd_locators(rest[0], rest[1])
     if cmd == 'obj':
         return cmd_obj(rest[0], rest[1], rest[2], *rest[3:5])
+    if cmd == 'gait':
+        return cmd_gait(rest[0], rest[1], rest[2])
     if cmd == 'find':
         return cmd_find(rest[0], rest[1])
     print(f'unknown command: {cmd}')

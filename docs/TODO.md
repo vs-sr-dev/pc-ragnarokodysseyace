@@ -5,7 +5,7 @@
 
 ---
 
-# Next session — the opcodes, the frame rate, and the cutscenes
+# Next session — the opcodes, then the cutscenes
 
 The world layout is done, and it came with two formats nobody had asked for:
 `ELBN`, which turns out to carry the engine's own parameter vocabulary, and
@@ -26,20 +26,7 @@ through the model's locator table. An opcode that arms a hit has all three of
 those waiting for it, and an opcode whose 116-byte record holds a locator id
 names a bone outright.
 
-### 2. The frame rate. Still two independent routes, and a third now.
-
-Nothing in `CNOM` says whether a frame is 1/30 or 1/60 of a second, and a
-search of `game_common_param.bin` and `latency.bin` this session found no
-declaration anywhere. The routes:
-
-- the actor parameters in [`params.md`](params.md) carry durations the
-  animations have to match;
-- `.anmcmd` carries event frames for moves those parameters describe;
-- and `mot_param.bin` now gives, per class, one 16-byte row per motion — 87
-  rows for `fas`, 115 for `fmg` — whose `u16` of flags is a small number
-  (0, 3, 6, 8) that a loop bit and a blend length would both live in.
-
-### 3. `.psq` — the cutscene language. 3,011 files.
+### 2. `.psq` — the cutscene language. 3,011 files.
 
 `FA FA 'SQIR'` then `PART` chunks. It is now clear what calls it:
 `trigger.trg` runs `callQuestScript("sfEnmGenStart()")`, naming another script
@@ -50,17 +37,17 @@ against.
 
 ### Then
 
-4. **The `ELBN` records, field by field.** The container is solved and 318
+3. **The `ELBN` records, field by field.** The container is solved and 318
    names are addressable; not one record is described. `job.cpk/<class>/
    objbin.bin` is the best target, because it is the same territory as the
    JSON in [`params.md`](params.md) and the two can be compared against each
    other rather than guessed at.
-5. **Name the `ECH` columns.** Unchanged. The `CCLS` surface codes 1 to 13 are
+4. **Name the `ECH` columns.** Unchanged. The `CCLS` surface codes 1 to 13 are
    still the small well-posed instance, and the `ATIH` marker names now give a
    second vocabulary to correlate against — 272 `jump_*` markers name the
    stage they lead to, which is a stage graph that the stage table in `ECH`
    must also encode.
-6. **The minimap transform.** 137 `.map` images, each visibly the silhouette
+5. **The minimap transform.** 137 `.map` images, each visibly the silhouette
    of its own stage's collision. Fitting the transform is a small job and
    gives the UI layer a working map for free.
 
@@ -83,8 +70,8 @@ against.
   list; and the 25 models whose node table disagrees with their own inverse
   bind matrices. All in [`format_cmdl.md`](format_cmdl.md).
 - `CNOM`: the `u8` at `+0x04` of a channel; the constant `1000.0` at `0x4C`;
-  the `u16 1` at `0x12`. See [`format_cnom.md`](format_cnom.md). The frame rate
-  is now item 3 above rather than an open question.
+  the `u16 1` at `0x12`. See [`format_cnom.md`](format_cnom.md). The frame
+  rate is settled in [`units.md`](units.md).
 - `CCLS`: what the fifteen-word bit says about the nine early stages; what the
   surface codes 1 to 13 name; the eleven stages with an edge used by three or
   four triangles. See [`format_ccls.md`](format_ccls.md).
@@ -184,8 +171,29 @@ against.
   - **a name is not a meaning**: `region_data` lives in
     `monster.cpk/<monster>/objbin.bin`, one per monster, so it is not a stage
     spawn region however much it sounds like one.
-- Looked for the frame rate in `game_common_param.bin` and `latency.bin` and
-  found neither — `latency.bin` is network ping thresholds. It stays item 2.
+- **The frame rate, and the metre.** See [`units.md`](units.md) and
+  `cmdl.py gait`. Findings worth carrying:
+  - **the twelve player models are 1.55 to 1.88 units tall with the sole of
+    the foot at `z = 0.000`**, and their arm span is 1.512, so a unit is a
+    metre and the characters are 1:1 humans;
+  - **the planted foot of a locomotion cycle slides backwards at exactly the
+    parameter's speed.** Walk 0.0492 against `walk_sp` 0.05, run **0.1699
+    against `run_sp` 0.17**, dash 0.2790 against `fast_sp` 0.28, on all twelve
+    player models, with nothing fitted. So `_sp` is metres per animation frame
+    and the animations are authored against the JSON;
+  - **that closes the loophole that mattered.** Had the art been on thirties
+    and the tick on sixties, the foot would slide by a factor of two. The
+    animation frame and the simulation frame are the same frame;
+  - **a frame is 1/30 s.** The run cycle is 21 frames: at 30 fps that is
+    5.09 m/s at 171 steps a minute with a 1.78 m step, which is a real
+    runner's gait in all three numbers at once; at 60 fps it is 10.19 m/s at
+    **343 steps a minute**, a cadence no human has ever run. `fall_gravity_y`
+    agrees independently — 3.2 times Earth at 30 fps, 12.8 at 60;
+  - what this does *not* say is that the game renders at 30. Nothing on the
+    disc speaks about the display, and a 60 Hz presentation over a 30 Hz tick
+    is exactly what a Vita game's port would look like.
+- Looked for a declared frame rate in `game_common_param.bin` and `latency.bin`
+  and found none — `latency.bin` is network ping thresholds in milliseconds.
 
 ## Session 7 — 2026-08-22
 

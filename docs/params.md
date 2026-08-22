@@ -149,12 +149,20 @@ The suffix carries the unit, consistently enough to depend on:
 
 | | | evidence |
 |---|---|---|
-| `_f` | frames | integral in 1,926 of 1,932 occurrences |
+| `_f` | frames, at 1/30 s each | integral in 1,926 of 1,932 occurrences |
 | `_p` | points | integral in all 4,490 occurrences |
-| `_sp` | speed | small floats, ~0.05 to 0.6 |
-| `_acc` | acceleration | smaller floats still |
+| `_sp` | metres per frame | small floats, ~0.05 to 0.6 |
+| `_acc` | metres per frame squared | smaller floats still |
 | `_r` | radius, or ratio | mixed integral and fractional |
 | `_y` | a vertical component | roughly half fractional |
+
+**And the units are now dimensional.** One world unit is one metre and one
+frame is 1/30 of a second — see [`units.md`](units.md), which recovers both
+from the geometry of the walk and run cycles. So `run_sp = 0.17` is 5.1 metres
+a second, `acc = 0.035` is 31.5 metres per second squared, and
+`fall_gravity_y = -0.035` is 3.2 times Earth gravity. The animations are
+authored against these numbers: the planted foot of `fas213run` slides
+backwards at 0.1698 against a declared 0.17.
 
 And the prefix carries the subsystem: `ab_` abnormal status, `stg_` stagger,
 `prob_` drop probability, `cmb_` combo, `es_` evade, `jg_` guard, `dmg_`

@@ -16,7 +16,9 @@ skinning, motion, stage collision, the animation event lists and **the world
 layout** decode. A character can be drawn with its own textures on it, posed by
 the game's own animations and with the mesh following the skeleton; a stage
 reads as a floor plan with its fences, its spawn points, its monster
-generators and the scripts its doorways run.
+generators and the scripts its doorways run. The world's two constants are
+settled: **one unit is one metre and one frame is 1/30 of a second**, so the
+game's own movement numbers are dimensional at last.
 
 ```
 ISO (UDF 2.50)   ->      109 files, 5.4 GB      tools/iso.py
@@ -43,6 +45,7 @@ survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 [`TXT`](docs/format_rmsg.md), [`CTEX`](docs/format_ctex.md),
 [`CMDL`](docs/format_cmdl.md), [`CNOM` and `CMTM`](docs/format_cnom.md),
 [`CCLS`](docs/format_ccls.md), [the stage layout](docs/format_stage.md),
+[the units](docs/units.md),
 [`ELBN`](docs/format_elbn.md), [`.anmcmd`](docs/format_anmcmd.md), [the actor
 parameters](docs/params.md). The plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
@@ -111,6 +114,8 @@ python tools/cmdl.py info|nodes|meshes <dir> <name>
 python tools/cmdl.py draws <dir> <name>      the node/material/mesh draw list
 python tools/cmdl.py skin <dir> <name>       the bone palettes and the weights
 python tools/cmdl.py locators <dir> <name>   the attachment points
+python tools/cmdl.py gait <dir> <name> <motion>
+                                             the planted foot's speed
 python tools/cmdl.py obj <dir> <name> <out> [motion frame]
                                              export Wavefront OBJ, posed
 
