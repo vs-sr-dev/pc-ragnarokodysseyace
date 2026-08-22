@@ -55,9 +55,12 @@ Squirrel script  ->    3,011 files, 315k insns tools/psq.py    0 errors
   engine API     ->      289 native functions  named and counted
 monster AI       ->      228 files, 6,550 rules tools/ai.py     0 errors
   action tables  ->    3,269 groups, 19,707 weighted actions
-  condition terms->       66 of 77 named, 27,862 of 29,100 instructions
+  condition terms->       66 of 76 named, 27,862 of 29,100 instructions
   AI parameters  ->      438 .par, 4 record kinds, every sentinel exact
   action -> motion->   1,109 of 1,423 ids name a motion in their own pac
+mercenary AI     ->       12 classes, 48 tables tools/merc.py   0 errors
+  probability    ->      454 tables, all summing to exactly 10000
+  command lists  ->      350 lists, 1,549 button presses
 ```
 
 Formats are documented in [`docs/`](docs): [the disc
@@ -67,7 +70,8 @@ survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 [`CCLS`](docs/format_ccls.md), [the stage layout](docs/format_stage.md),
 [the units](docs/units.md),
 [`ELBN`](docs/format_elbn.md), [`.anmcmd`](docs/format_anmcmd.md), [the script
-layer](docs/format_psq.md), [the monster AI](docs/format_ai.md), [the actor
+layer](docs/format_psq.md), [the monster AI](docs/format_ai.md), [the
+mercenary AI](docs/format_merc.md), [the actor
 parameters](docs/params.md). The plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
@@ -184,6 +188,11 @@ python tools/ai.py probs|rules <dir> <name>  the action tables, and the rules
 python tools/ai.py par <dir> <name>          the six `.par` of one monster
 python tools/ai.py acts <dir>                every action id, and its motion
 python tools/ai.py terms|ops <dir>           the condition vocabulary
+
+python tools/merc.py check|list <dir>        the mercenary AI
+python tools/merc.py dump <dir> <cls>        one class, prt to command step
+python tools/merc.py commands|targets <dir>  the command and target tables
+python tools/merc.py combos <dir>            the runs, as button presses
 
 python tools/params.py census|tiers <dir>     the actor parameters
 python tools/params.py classes <dir>          the six player classes compared

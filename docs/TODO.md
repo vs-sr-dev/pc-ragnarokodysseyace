@@ -7,10 +7,13 @@
 
 # Next session — `.PTP`, then the native functions
 
-`ai.pac` is finished: the tables, the rules, the vocabulary and the six `.par`
-all read, and an action id resolves to a named motion. See
-[`format_ai.md`](format_ai.md). What is left of the AI is ten terms the disc
-has no oracle for, and they are listed there rather than here.
+Both AI systems are finished. The monsters' is in
+[`format_ai.md`](format_ai.md) — tables, rules, vocabulary, the six `.par`,
+and an action id resolving to a named motion. The mercenaries' is in
+[`format_merc.md`](format_merc.md) — four `ELBN` per class and the script that
+indexes them, with the command runs reading as button presses into the same
+combo tree the player drives. What is left of either is listed in its own
+document rather than here.
 
 ### 1. `.PTP` — the effect ids.
 
@@ -32,44 +35,40 @@ term dispatch names **forty-odd predicates over monster state** —
 `getHpRate`, `getTargetRange`, `getAngleTypeAtTarget`, `isTargetJump`,
 `getActiveSameKindCount`, `checkRangeParam` and the rest — and every one of
 them is a small function over state the engine has to keep anyway. Writing
-those down is the shortest route to *"a monster fights"*. The ones a **stage**
+those down is the shortest route to *"a monster fights"*. The mercenary AI
+adds 19 more of the same shape — `getRange`, `getNumOfEnemy`, `getTargetType`,
+`isAvailableAceSkill` — and its whole interface is only those 19 plus `print`.
+The ones a **stage**
 needs first are still `cfSetEnableEmGen`, `cfSetEnableHitArea`,
 `cfSetEnableBorderline`, `cfMapJump`, `cfStartPieceLock`, `cfGetGlobalFlag`,
 `cfSetGlobalFlag`, `chrSetMotion`.
 
-### 3. The mercenary AI — a second system, with its own oracle.
-
-`mercenary.cpk/<class>.pac` holds `select_action.bin`, `select_target.bin`,
-`command_data.bin`, `target_data.bin` **and** `consider_action.cnut`, thirteen
-classes of each. `select_action.bin` is an `ELBN` whose names are `act_cmd_00`
-through `act_cmd_22` — so the container is already open and the parameters are
-already named. The same method that opened the monster AI applies verbatim:
-decompile the `.cnut`, and read the tables against it.
-
-### 4. The rest of the `.anmcmd` opcodes.
+### 3. The rest of the `.anmcmd` opcodes.
 
 Thirty of the fifty-two have no correlation. The positional method is close to
 exhausted; what would move it further is the geometry — pose the skeleton,
-draw the hit capsule — which is also item 5. One new lever: an `.anmcmd` is
+draw the hit capsule — which is also item 4. Two new levers: an `.anmcmd` is
 now known to be *named by the motion id an AI action picks*, so a command list
-can be read against the rule that fires it.
+can be read against the rule that fires it; and the player's own `.anmcmd` are
+named by the press string that reaches them, so a combo's command list is
+addressable from the mercenary tables.
 
 ### Then
 
-5. **Which vector is which** in the hit record. Three signed vec3s; the natural
+4. **Which vector is which** in the hit record. Three signed vec3s; the natural
    readings are an offset, an end point and a direction. `cmdl.py gait` already
    does the forward kinematics that needs.
-6. **The `ELBN` records, field by field.** The container is solved and 318
+5. **The `ELBN` records, field by field.** The container is solved and 318
    names are addressable; not one record is described. `job.cpk/<class>/
    objbin.bin` is the best target, because it is the same territory as the
    JSON in [`params.md`](params.md).
-7. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
+6. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
    small, well-posed instances with known consumers: the `.psq` calls name
    their rows, so the columns can be read against the script that uses them.
    The `CCLS` surface codes 1 to 13 are the other one.
-8. **The minimap transform.** 137 `.map` images, each visibly the silhouette
+7. **The minimap transform.** 137 `.map` images, each visibly the silhouette
    of its own stage's collision. A small job that gives the UI layer a map.
-9. **Structure the `.psq` control flow.** `psq.py src` prints labels and
+8. **Structure the `.psq` control flow.** `psq.py src` prints labels and
    `goto`. Rebuilding `if`/`while`/`switch` is ordinary work and nobody needs
    it yet.
 
@@ -126,12 +125,54 @@ can be read against the rule that fires it.
 - The stage layout's own leftovers: the polyline's third word, 0 to 5; whether
   a fence is a closed loop; the 45 markers named `HTA*`; and what places the
   object a `obj*` marker marks.
+- The mercenary AI's leftovers: the command ids other than 0, 14 and 15; the
+  flag word at `+0x08`; the seven words of a `target_NN`; command 16, used
+  twice; and the message ids in the two roster tables. See
+  [`format_merc.md`](format_merc.md).
 - What the 14 empty `.cpk.patch` stubs would have overlaid, and whether a
   shipped title update exists that fills them.
 
 ---
 
 # Log
+
+## Session 13 — 2026-08-22
+
+- **The mercenary AI opens, and it names the attack buttons.** See
+  [`format_merc.md`](format_merc.md) and `merc.py`. **12 classes, 454
+  probability tables, 350 command lists, 1,549 command steps, 166 target
+  records, 0 unreadable.** Findings worth carrying:
+  - **the container had already declared the structure.** All four `.bin` in a
+    mercenary `.pac` are `ELBN`, which session 8 opened, and `ELBN` names its
+    own entries: `prt00..prtNN` beside `select_prt`, `act_cmd_00..NN` beside
+    `act_cmd_data`. Two sessions of TODO listed these as unread files; the
+    names were in them the whole time. Third instance of the same lesson in
+    four sessions;
+  - **the script indexes the table and the arithmetic proves it.** On all 12
+    classes and both selector functions - 24 comparisons - the values
+    `consider_action.cnut` returns lie inside the table's `prt` indices and
+    `max(return)` equals the last index exactly. All 454 `prt` are closed by
+    `(0xffffffff, 0)` and **all 454 sum to exactly 10000**;
+  - **command 14 is the weak attack button and 15 the strong one.**
+    `job.cpk` names a combo motion by the press string that reaches it -
+    `sw325at_ssssl`, `sw355at_sllll`, `sw361at_l` - and a run of 14s and 15s
+    in an `act_cmd` is that string. **168 of the 188 runs name a motion the
+    same class ships**, and no run exceeds five presses, the depth of the
+    combo tree. The 20 that miss are the Mage and the Hammersmith, whose trees
+    are shallower than the tables written for them. So an `act_cmd` is a list
+    of *inputs*, not of animations;
+  - **the two AI systems meet at the action id.** `getNearestBossAction()` and
+    `getTargetActId()` are compared against 21 distinct values across the
+    twelve scripts and every one is between 102 and 125, inside the block
+    session 12 resolved to the monster's `at*` motions. A mercenary holds off
+    because the boss has started action 108;
+  - **the same shared-table arrangement, reached independently**: within a job
+    the male and female share their tables, and in five jobs of six their
+    script too - `swm` and `sww` decompile identically but for one source line
+    number. The Cleric is the exception;
+  - the whole host interface is **19 predicates and `print`**, all already
+    inside the disc-wide 289, and `getHpRate` is the one name both AI systems
+    call - with no argument from the monsters and one from the mercenaries.
 
 ## Session 12 — 2026-08-22
 

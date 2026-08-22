@@ -92,6 +92,7 @@ Phase 3.
 | `.PTP` effects | 70 | medium | `PTCP` + `PTB`; the `.anmcmd` effect ids point somewhere here |
 | AI tables | 228 | ✅ **solved** | [`format_ai.md`](format_ai.md) — `ProbList.dat` and the decision scripts; 66 of 77 terms named off the game's own dispatch |
 | `.par` AI | 438 | ✅ **solved** | [`format_ai.md`](format_ai.md) — four record kinds and two structs, every sentinel exact |
+| mercenary AI | 48 | ✅ **solved** | [`format_merc.md`](format_merc.md) — four `ELBN` per class and the script that indexes them; the command runs are button presses |
 | CRI Atom audio | 274 | ✅ **read** | `@UTF` tables; `cpk.py` opens them, and `common.acb` names the hit record's sound |
 | PAMF video | 46 | low | ffmpeg territory |
 | `.otf` font | 1 | ✅ **free** | ordinary OpenType |
