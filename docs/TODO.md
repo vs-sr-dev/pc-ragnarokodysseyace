@@ -5,77 +5,85 @@
 
 ---
 
-# Next session — the AI parameters, and the two id spaces
+# Next session — name the rest of the AI terms, then `.par`
 
-`.psq` turned out to be Squirrel 2.2 bytecode with its debug tables intact, so
-the script layer is now read: 3,011 files, 11,232 functions, the authors' own
-variable names, and a closed list of **289 native functions** the engine has to
-provide. See [`format_psq.md`](format_psq.md). Six monster directories carry
-their AI as script; the other 77 do not. The `.anmcmd` hit record's sound id is
-named too — see [`format_anmcmd.md`](format_anmcmd.md).
+The AI tables are open: `ProbList.dat` and the two decision scripts read, 0
+unreadable, checked against the six monsters that also ship their AI as
+Squirrel. See [`format_ai.md`](format_ai.md). What is left in `ai.pac` is the
+`.par` half and two thirds of the condition vocabulary.
 
-### 1. `.par` — the AI parameter tables. 438 files.
+### 1. The 67 unnamed condition terms.
 
-**83 monster directories carry an `ai.pac`** and each holds three to six
-`.par` — `AI_B01_OrcKing.par`, `_act`, `_cmb`, `_coop`, `_dfa`, `_prowl` — 438
-in all, and they are the AI of the 77 that have no `.cnut`. No magic, records
-that look 64 bytes wide, so it is a plain array format of the kind `ECH` and
-`ATIH` already are.
+Ten of the 77 are proven and cover 19,435 of the 29,100 instructions. The
+commonest unnamed ones are `0x07` (795 uses), `0x15` (719), `0xdc` (661),
+`0x6d` (606), `0xd2` (496), `0xd5` (481), `0x12` (479).
 
-**The six `.cnut` are the Rosetta stone.** They call `checkRangeParam`,
-`check_term_param`, `getTime(n)` and `check_converted_xml_term`, and that last
-name says the AI was authored as XML and converted — so the same term
-vocabulary should be on both sides of the border. Decode one `.par` against
-`AI_B01_OrcKing.cnut`, which is the one monster that has both.
+**The method is the one that named the ten**: take a monster with both a
+`.cnut` and a `SelectScript.dat`, decompile with `psq.py src`, and align rule
+by rule — `AI_B01_OrcKing`'s first 56 rules already line up with the table's.
+The vocabulary is known from the scripts' own local names (`AIT_TGT_DOWN`,
+`AIT_BOSS_TIME`, `AIT_OTHER_BOSS`, six `ACT_TIME` slots and the rest), so this
+is matching a known list against a known list, not guessing.
 
-### 2. `.PTP` — the effect ids.
+Also open: the `0x2000` and `0x4000` instruction flags, 434 uses between them.
 
-The hit record's id space is solved (below): it is a CRI Atom cue id. The other
-one is not. Opcode 10's `+0x02` runs 10001 to 39547 and the same values —
-10502, 10505, 10510 — are used by half a dozen unrelated monsters, so it is a
-**global** effect id and not an index into a per-class file.
+### 2. `.par` — the other half of `ai.pac`. 438 files.
 
-`.PTP` is `PTCP`: a 16-byte header, an 84-entry sparse index of
-`(u32 offset, u16, u16)` at `0x40`, then `PTB` blocks, and the blocks name
-their own assets in the clear — `ef_I_as_hit_zan001.ctex`,
-`ef_I_nn_wind001_M.pac`, `anm_ef_I_fire_tubu001.txx`. 70 files. Nothing in the
-first 64 bytes of a `PTB` looks like the id, so what is wanted is either a
-field further in or a separate table; `eff_hitlevel_tbl` in `ELBN` is the
-obvious place to look first.
+Five or six per monster: `<name>.par`, `_act`, `_cmb`, `_coop`, `_dfa`,
+`_prowl`. No magic, records that look 64 bytes wide. `check_term_param` and
+`checkRangeParam` are named in the `.cnut` and unread on this side, and the
+`_act`/`_cmb`/`_dfa` split matches the modes the decision scripts switch
+between.
 
-### 3. The 289 native functions, from the two sides that describe them.
+### 3. Tie an action id to a motion.
+
+A `ProbList` group's items are ids like 1, 4, 100 to 110, 200 to 205, and the
+script prints `select_actid:` beside them. `.anmcmd` names a motion by a
+three-digit id in its filename and `CNOM` by name, so if an action id resolves
+to one of those the AI joins the animation layer, and the last gap between
+"the monster decides" and "the monster moves" closes.
+
+### 4. `.PTP` — the effect ids.
+
+Opcode 10's `+0x02` in `.anmcmd` runs 10001 to 39547 and the same values are
+used by unrelated monsters, so it is a **global** effect id, not an index into
+the per-class file. `.PTP` is `PTCP`: a 16-byte header, an 84-entry sparse
+index of `(u32 offset, u16, u16)` at `0x40`, then `PTB` blocks naming their own
+assets in the clear — `ef_I_as_hit_zan001.ctex`, `anm_ef_I_fire_tubu001.txx`.
+70 files. Nothing in the first 64 bytes of a `PTB` looks like the id, so what
+is wanted is a field further in or a separate table; `eff_hitlevel_tbl` in
+`ELBN` is the place to look first.
+
+### 5. The 289 native script functions.
 
 `psq.py api` gives each one a name and an arity histogram, and the call sites
-give the argument values. `cfSetCameraType` is called 328 times with three
-arguments and twice with two; the first argument takes a handful of values.
-That is enough to write down what most of them do without a disassembler, and
-it is the specification the host has to satisfy. The ones worth doing first are
-the ones a stage needs to run: `cfSetEnableEmGen`, `cfSetEnableHitArea`,
-`cfSetEnableBorderline`, `cfMapJump`, `cfStartPieceLock`, `cfGetGlobalFlag`,
-`cfSetGlobalFlag`, `chrSetMotion`.
+give the argument values. That is enough to write down what most of them do
+without a disassembler. The ones a stage needs to run first:
+`cfSetEnableEmGen`, `cfSetEnableHitArea`, `cfSetEnableBorderline`, `cfMapJump`,
+`cfStartPieceLock`, `cfGetGlobalFlag`, `cfSetGlobalFlag`, `chrSetMotion`.
 
 ### Then
 
-4. **The rest of the `.anmcmd` opcodes.** Thirty of the fifty-two have no
+6. **The rest of the `.anmcmd` opcodes.** Thirty of the fifty-two have no
    correlation. The positional method is close to exhausted; what would move
    it further is the geometry — pose the skeleton, draw the hit capsule — which
-   is also item 5.
-5. **Which vector is which** in the hit record. Three signed vec3s; the natural
+   is also item 7.
+7. **Which vector is which** in the hit record. Three signed vec3s; the natural
    readings are an offset, an end point and a direction. `cmdl.py gait` already
    does the forward kinematics that needs.
-6. **The `ELBN` records, field by field.** The container is solved and 318
+8. **The `ELBN` records, field by field.** The container is solved and 318
    names are addressable; not one record is described. `job.cpk/<class>/
    objbin.bin` is the best target, because it is the same territory as the
    JSON in [`params.md`](params.md).
-7. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
+9. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
    small, well-posed instances with known consumers: the `.psq` calls name
    their rows, so the columns can be read against the script that uses them.
    The `CCLS` surface codes 1 to 13 are the other one.
-8. **The minimap transform.** 137 `.map` images, each visibly the silhouette of
-   its own stage's collision. A small job that gives the UI layer a working map.
-9. **Structure the `.psq` control flow.** `psq.py src` prints labels and
-   `goto`. Rebuilding `if`/`while`/`switch` is ordinary work and nobody needs
-   it yet.
+10. **The minimap transform.** 137 `.map` images, each visibly the silhouette
+    of its own stage's collision. A small job that gives the UI layer a map.
+11. **Structure the `.psq` control flow.** `psq.py src` prints labels and
+    `goto`. Rebuilding `if`/`while`/`switch` is ordinary work and nobody needs
+    it yet.
 
 ---
 ## Deferred, with reasons
@@ -121,6 +129,10 @@ the ones a stage needs to run: `cfSetEnableEmGen`, `cfSetEnableHitArea`,
   [`format_psq.md`](format_psq.md).
 - `.PTP` (70) and `.mkc` (2,690) — the second of these sit beside the `CNOM`
   files and may be what the unmatched `.anmcmd` lists key through.
+- The AI's own leftovers: 67 of the 77 condition terms; the `0x2000` and
+  `0x4000` instruction flags; what an action id names; the five `ProbList`
+  files whose group ids repeat rather than ascend; and the eight
+  `EventTable.dat` and `MotStream.dat`. See [`format_ai.md`](format_ai.md).
 - The stage layout's own leftovers: the polyline's third word, 0 to 5; whether
   a fence is a closed loop; the 45 markers named `HTA*`; and what places the
   object a `obj*` marker marks.
@@ -130,6 +142,42 @@ the ones a stage needs to run: `cfSetEnableEmGen`, `cfSetEnableHitArea`,
 ---
 
 # Log
+
+## Session 11 — 2026-08-22
+
+- **The monster AI opens.** See [`format_ai.md`](format_ai.md) and `ai.py`.
+  **84 `ProbList.dat` (3,269 groups, 19,707 items), 144 decision scripts
+  (29,100 instructions, 6,528 rules), 0 unreadable**, every file consumed to
+  the byte. Findings worth carrying:
+  - **the six `.cnut` are the oracle and they work.** `monster.cpk/b01_00`
+    ships its AI twice - as `ProbList.dat` + `SelectScript.dat` and as
+    `AI_B01_OrcKing.cnut` - so every reading here is checked instruction
+    against decompiled line rather than against plausibility;
+  - **`ProbList.dat` is a weighted action table**: a `(group id, first item)`
+    index and `(action id, weight, 0)` items. The file ends exactly at
+    `0x10 + 4*groups + 4*items` on all 84, and **the script's weights are the
+    table's multiplied by a hundred** - `prt_select(rand, 1, 8500, 4, 1500)`
+    against `[(1, 85), (4, 15)]`. Of the OrcKing's 31 `prt_N`, 26 have a group
+    and **all 26 carry the same action ids in the same order**;
+  - **the decision scripts are six-byte instructions**, `u16 a, u16 b, u16 op`,
+    where `op`'s low twelve bits are a condition term, `0x1000` starts a rule
+    and puts its action in `a`, and `0x8000` takes the term's negative branch.
+    All 144 divide by three and all 144 end with one all-zero instruction;
+  - **ten terms are proven** - HP rate, range, angry, last action, damage
+    count, other-zako count, action successes, AI type, an action timer and a
+    probability - and they cover 19,435 of the 29,100 instructions. The range
+    is in hundredths of a unit, the same convention the stage `borderline`
+    uses;
+  - **the OrcKing's first 56 rules pick the same group as its script's, in the
+    same order.** The first that does not is rule 56, where the script picks
+    `prt_140`, one of five three-digit groups the table does not carry;
+  - **the tables are shared between difficulty variants and the scripts are
+    not**: `b18_00` and `b18_01` ship byte-identical `ProbList.dat` and
+    different `.cnut`. That is why the other five monsters with both diverge
+    early, and it is a fact about how the game was built rather than a failure
+    of the reading;
+  - a monster now reads as what it is - `AI_Z11_Domovoi_1` tries fourteen rules
+    in order, laddering on range, and falls through to an unconditional group.
 
 ## Session 10 — 2026-08-22
 

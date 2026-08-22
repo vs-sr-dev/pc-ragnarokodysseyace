@@ -1,6 +1,6 @@
 # PC-ROA — strategy
 
-*Aligned to the end of session 10 (2026-08-22). Detail and priorities live in
+*Aligned to the end of session 11 (2026-08-22). Detail and priorities live in
 [`TODO.md`](TODO.md); this document is the frame.*
 
 Goal: a **native PC reimplementation** of *Ragnarok Odyssey ACE*, the PS3
@@ -90,7 +90,8 @@ Phase 3.
 | `.mkc` | 2,690 | medium | |
 | `.CTXT` | 1,151 | ✅ **solved** | plain text: hit capsules and springs, bound to a bone through the model's locator table; see [`format_cmdl.md`](format_cmdl.md) |
 | `.PTP` effects | 70 | medium | `PTCP` + `PTB`; the `.anmcmd` effect ids point somewhere here |
-| `.par` AI | 438 | high | the AI parameter tables; the six `.cnut` name their fields |
+| AI tables | 228 | ✅ **read** | [`format_ai.md`](format_ai.md) — `ProbList.dat` and the decision scripts; 10 of 77 terms named |
+| `.par` AI | 438 | high | the other half of `ai.pac`; no magic, records that look 64 bytes wide |
 | CRI Atom audio | 274 | ✅ **read** | `@UTF` tables; `cpk.py` opens them, and `common.acb` names the hit record's sound |
 | PAMF video | 46 | low | ffmpeg territory |
 | `.otf` font | 1 | ✅ **free** | ordinary OpenType |

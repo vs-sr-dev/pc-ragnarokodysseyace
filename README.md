@@ -10,7 +10,7 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-10 (2026-08-22): the container stack is open end to end, the game's
+Sessions 1-11 (2026-08-22): the container stack is open end to end, the game's
 database, text and actor parameters are readable, and the textures, geometry,
 skinning, motion, stage collision, the animation event lists, the world layout
 and **the script layer** decode. A character can be drawn with its own textures
@@ -23,7 +23,9 @@ numbers are dimensional at last.
 
 **`.psq` is Squirrel 2.2 bytecode**, debug tables and all, so the cutscenes,
 the quest logic and six bosses' AI decompile with the authors' own variable
-names and source lines.
+names and source lines. Those six scripts are the oracle that opened **every
+monster's AI**: the weighted action tables and the rules that pick one of them
+now read as conditions on HP, range, anger and the last action taken.
 
 ```
 ISO (UDF 2.50)   ->      109 files, 5.4 GB      tools/iso.py
@@ -47,6 +49,8 @@ ATIH + fences    ->      163 stages, 5,934 marks tools/stage.py 0 errors
 ELBN parameters  ->      707 files, 318 names   tools/elbn.py   0 errors
 Squirrel script  ->    3,011 files, 315k insns tools/psq.py    0 errors
   engine API     ->      289 native functions  named and counted
+monster AI       ->      228 files, 6,528 rules tools/ai.py     0 errors
+  action tables  ->    3,269 groups, 19,707 weighted actions
 ```
 
 Formats are documented in [`docs/`](docs): [the disc
@@ -56,12 +60,13 @@ survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 [`CCLS`](docs/format_ccls.md), [the stage layout](docs/format_stage.md),
 [the units](docs/units.md),
 [`ELBN`](docs/format_elbn.md), [`.anmcmd`](docs/format_anmcmd.md), [the script
-layer](docs/format_psq.md), [the actor
+layer](docs/format_psq.md), [the monster AI](docs/format_ai.md), [the actor
 parameters](docs/params.md). The plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
 
-The 438 `.par` AI parameter files are unread, the `ELBN` records are
+The 438 `.par` AI parameter files and 67 of the AI's 77 condition
+terms are unread, the `ELBN` records are
 addressable by name but not described field by field, and thirty of the
 fifty-two `.anmcmd` opcodes still have no correlation — though the two
 commonest are now read, and they are the hitbox.
