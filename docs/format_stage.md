@@ -2,7 +2,8 @@
 
 **Status: solved.** 163 stages, **5,934 markers, 1,455 polylines, 508
 triggers, 0 unreadable**, and every arithmetic identity closing on every file.
-Reader: [`../tools/stage.py`](../tools/stage.py).
+Reader: [`../tools/stage.py`](../tools/stage.py). The minimap's transform onto
+that layout is **measured rather than read**, and how well is below.
 
 This is where things *are*. [`CMDL`](format_cmdl.md) draws a stage and
 [`CCLS`](format_ccls.md) says which of it is solid; these three files, all of
@@ -23,6 +24,147 @@ The cost of that wrong guess was about ten minutes, and the thing that ended it
 was reading the first four bytes before reading anything else. The layout was
 three doors along in the same directory, in files named `hta.bin`,
 `borderline.bin` and `trigger.trg`.
+
+Being a picture was where `.map` stopped for eleven sessions. **The minimap**
+below finishes it: a picture is not a minimap until something says where on it
+the player is standing.
+
+## The minimap, and where it sits over the world
+
+*Session 19.* `.map` was identified in session 8 and then left as a picture.
+A picture is not a minimap: a minimap is a picture **plus the transform that
+puts the player's position on it**, and the disc does not write that transform
+down anywhere. So it has to be measured. `stage.py minimap`, `minimap_png` and
+`minimap_check`.
+
+**The population.** 137 files, all `CTEX`, all 256×256, all format `0x107`
+(`P8`, 8-bit paletted) and all with an alpha channel. 135 stage directories
+carry one beside a `.col`; 155 carry a `.col` at all, so twenty stages —
+towns and interiors — have collision and no map. Two directories carry two:
+`060_01_01` and `060_01_02` also ship `<stage>_2.map`, **the same silhouette
+with part of it hatched off behind a dashed line**, which is the closed half
+of a stage that opens later.
+
+Every one names itself in the `CTEX` header, and the name is the stage's.
+
+### What is measured, and against what
+
+The map's **alpha channel is a silhouette** of the walkable ground. The `.col`
+beside it is a collision mesh. Project that mesh onto the XZ plane, draw it
+under a candidate transform, and score the result against the silhouette by
+**intersection over union**. Nothing joins the two files but the transform, so
+the score is not fitted to anything: one is a texture an artist painted and
+the other is a mesh an exporter wrote.
+
+The transform searched is a scale and an offset, with no rotation and no
+shear:
+
+    pixel_x = s * world_x + ox
+    pixel_y = s * world_z + oy
+
+**The sign of the `z` term is positive on every stage.** World `+z` runs *down*
+the image, which is what a map drawn looking down the `-y` axis does, and
+trying the other sign never wins.
+
+### The anchor is the footprint's own centroid, at the centre of the image
+
+Seed the search with the mesh's **area-weighted centroid** on top of the
+silhouette's, and it barely moves. Over the 47 stages that fit at IoU 0.85 or
+better the centroid lands at
+
+    x = 127.5   sd 4.2 px
+    y = 127.5   sd 11.7 px
+
+on a 256×256 image, whose centre is 127.5. That is the rule, and it is exact
+to the pixel in the median.
+
+### The scale is one number, and the measurement will not pin it closer than a band
+
+`python tools/stage.py minimap extract/tree/stage.cpk`, 135 stages:
+
+```
+  IoU                        median   0.805   p10   0.621   p90   0.924
+  px/m                       median   1.360   p10   1.140   p90   1.510
+  95 of 135 fit at IoU 0.75 or better, 38 between 0.5 and 0.75, 2 below 0.5
+```
+
+The fitted scale spreads from 0.91 to 1.70, which looks like a per-stage
+number until you sort by how well the stage fits:
+
+| kept | n | median | mean | sd |
+|---|---:|---:|---:|---:|
+| everything | 135 | 1.360 | 1.342 | 0.147 |
+| IoU ≥ 0.75 | 95 | 1.360 | 1.340 | 0.142 |
+| IoU ≥ 0.85 | 47 | 1.350 | 1.323 | **0.098** |
+| IoU ≥ 0.90 | 25 | 1.310 | 1.313 | **0.059** |
+
+**The spread collapses as the fit improves**, which is what a constant plus
+measurement noise looks like and not what a per-stage parameter looks like.
+The best estimate is **1.31 to 1.33 pixels per metre** — 4/3 sits inside one
+standard deviation of the 25 best fits — and one caution against calling it
+settled: the fitted scale still correlates −0.54 with the log of the stage's
+area, and a big stage both fits better and fits lower.
+
+Pinned completely — the centroid on the centre, one scale for all 135, **no
+free parameter at all** — the transform still gets a median IoU of 0.65, and
+the curve is flat:
+
+```
+  s = 1.2500   median IoU 0.642   >= 0.75 on 45 of 135
+  s = 1.2800   median IoU 0.649   >= 0.75 on 45
+  s = 1.3333   median IoU 0.649   >= 0.75 on 41
+  s = 1.4000   median IoU 0.642   >= 0.75 on 38
+```
+
+So a renderer that hardcodes `1.32 px/m` about the footprint centroid is right
+about two thirds of the picture on every stage in the game, and per-stage
+fitting buys the rest. Where the disc declares the per-stage part is **not
+found**: `stageparam.bin`, the `ELBN` sitting in the same `param.pac`, carries
+only lights, shadows, fog and clipping — see [`format_elbn.md`](format_elbn.md).
+
+### Where the fit loses, it loses for a visible reason
+
+`stage.py minimap_png` draws one: **red is map only, blue is mesh only, white
+is both.** Two things show up on every stage and neither is an error in the
+transform:
+
+- **a red rim all the way round.** The artist drew an outline stroke outside
+  the ground. The mesh has no outline;
+- **blue tabs at the exits.** The collision mesh runs on past the doorway into
+  the transition volume; the drawing stops at the door.
+
+Both cost a fixed number of *edge* pixels, so they cost a corridor far more
+than a field: `010_01_03` is a three-armed passage and scores 0.62 while
+`040_01_02`, a blob of the same era, scores 0.92. The two stages below 0.5 are
+the narrowest on the disc.
+
+### The markers agree, and they were not part of the fit
+
+`hta.bin` is a third file. It places the monster generators, the props and the
+arrival points in world coordinates, and the fit never looked at it. Push them
+through the transform — `stage.py minimap_check` — over the 95 stages that fit
+at 0.75 or better:
+
+| marker | on a drawn pixel | of |
+|---|---:|---:|
+| `emgen_pos` — the monster generators | 1,376 | 1,411 (**97.5 %**) |
+| `obj` — the placed props | 399 | 421 (**94.8 %**) |
+| `appear` — where the player arrives | 167 | 178 (**93.8 %**) |
+| `appear01a` / `01b` / `01c` | 197 | 207 (**95.2 %**) |
+| `pl_q` | 56 | 60 (93.3 %) |
+| `ef_A` | 126 | 136 (92.6 %) |
+| `ef` | 113 | 193 (58.5 %) |
+| `ef_light` | 35 | 87 (40.2 %) |
+| `ef_C` | 1 | 89 (**1.1 %**) |
+| `ef_B` | 0 | 43 (**0.0 %**) |
+
+**Every marker kind that has to stand on the ground lands on the ground**, at
+93 to 98 %, and the ones that miss are the effect emitters — which hang in the
+air, sit on walls and ring the stage from outside it. `ef_B` and `ef_C` are
+outside the drawn map on every single instance, which is a fact about those
+two kinds and worth carrying to whoever reads the effect layer next.
+
+2,949 of 3,780 markers in all, 78.0 %, with nothing fitted to any of them.
 
 ## `hta.bin` — `ATIH`, the marker table
 
@@ -256,12 +398,24 @@ camera and sound.
 - What the 45 markers literally named `HTA*` are for.
 - The `obj*` markers place objects, but nothing here says *which* object. The
   `objbin.bin` and `stobjbin.bin` [`ELBN`](format_elbn.md) files beside them
-  are the obvious place to look, and they have not been read. What session 14
+  are the obvious place to look; session 19 read the `objbin.bin` records and
+  they are a body - capsules, regions, clipping - so they say what an object
+  *is*, not which marker gets one. What session 14
   did establish is that they are *placements* and not hints: all 772 of them
   have ground underneath and the median sits **1 cm** above the collision
   mesh.
 - `stageparam.bin` is read as a container but its `stage_param` record is not
-  named field by field. See [`ELBN`](format_elbn.md).
-- The minimap's transform. The `.map` silhouette is visibly the same shape as
-  the collision floor plan, but nothing has been fitted, so the mapping from
-  stage coordinates to the 256×256 image is unknown.
+  named field by field. See [`ELBN`](format_elbn.md). It does **not** carry the
+  minimap transform: its five entries are lights, shadows, fog and clipping.
+- **`ef_B` and `ef_C` are outside the drawn map on every instance** - 0 of 43
+  and 1 of 89 - while every marker kind that stands on the ground is inside it
+  at 93 to 98 %. Whatever those two effect kinds are, they ring the stage from
+  outside.
+- ~~The minimap's transform.~~ **Measured in session 19** - see *The minimap*
+  above. What is left of it is **where the disc declares the scale**. The
+  orientation and the anchor are settled (no rotation, world `+z` down the
+  image, the collision footprint's area centroid at pixel 127.5, 127.5) and
+  the scale is 1.31 to 1.33 px/m, but that band is a measurement and not a
+  number read off the disc, and per-stage fitting still buys real accuracy -
+  median IoU 0.805 fitted against 0.65 pinned. `stageparam.bin` does not carry
+  it.

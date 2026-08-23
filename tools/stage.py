@@ -159,11 +159,15 @@ things you walk up to and press a button on.
     survey   the census, by marker kind and by script function
     info     one stage: its markers, its fences and its triggers
     obj      the layout as Wavefront OBJ, in the same space as `ccls.py obj`
+    minimap  every `.map` fitted over its own stage's collision mesh
+    minimap_png   one of those fits, drawn
+    minimap_check the fitted transform against `hta.bin`'s markers
 """
 
 from __future__ import annotations
 
 import collections
+import fnmatch
 import math
 import pathlib
 import struct
@@ -648,6 +652,266 @@ def cmd_obj(root, name: str, out: str) -> int:
     return 0
 
 
+
+# --------------------------------------------------------------------------
+# the minimap, and the transform that puts it over the collision mesh
+
+MAP_SIDE = 256            # every one of the 137 is 256 x 256
+COARSE = 4                # the search runs at a quarter of that
+
+
+def map_mask(path) -> tuple[int, int, bytes]:
+    """A `.map` as one byte an opaque pixel. They are `CTEX`, `P8`, 256x256."""
+    from ctex import Ctex                                     # noqa: PLC0415
+    c = Ctex(pathlib.Path(path).read_bytes(), pathlib.Path(path).name)
+    w, h, rgba = c.rgba(0)
+    return w, h, bytes(1 if rgba[4 * i + 3] else 0 for i in range(w * h))
+
+
+def footprint(path):
+    """A `.col` flattened to the XZ plane: its triangles and area centroid."""
+    from ccls import Ccls                                     # noqa: PLC0415
+    c = Ccls(pathlib.Path(path).read_bytes(), pathlib.Path(path).name)
+    tris = []
+    area = cx = cz = 0.0
+    for t in c.triangles():
+        (x0, _, z0), (x1, _, z1), (x2, _, z2) = t['v']
+        a = abs((x1 - x0) * (z2 - z0) - (x2 - x0) * (z1 - z0)) / 2
+        if a <= 0:
+            continue
+        tris.append(((x0, z0), (x1, z1), (x2, z2)))
+        area += a
+        cx += a * (x0 + x1 + x2) / 3
+        cz += a * (z0 + z1 + z2) / 3
+    if area <= 0:
+        return [], 0.0, 0.0, 0.0
+    return tris, cx / area, cz / area, area
+
+
+def rasterise(tris, s: float, ox: float, oy: float, w: int, h: int) -> bytes:
+    """The footprint drawn under `pixel = (s*x + ox, s*z + oy)`.
+
+    The sign of the `z` term is positive on every stage: world `+z` runs down
+    the image, which is what a map drawn looking down the `-y` axis does.
+    """
+    buf = bytearray(w * h)
+    for tri in tris:
+        p = [(s * x + ox, s * z + oy) for x, z in tri]
+        lo_y = max(0, int(min(q[1] for q in p)))
+        hi_y = min(h - 1, int(max(q[1] for q in p)) + 1)
+        lo_x = max(0, int(min(q[0] for q in p)))
+        hi_x = min(w - 1, int(max(q[0] for q in p)) + 1)
+        if lo_x > hi_x or lo_y > hi_y:
+            continue
+        (ax, ay), (bx, by), (cx, cy) = p
+        det = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
+        if abs(det) < 1e-12:
+            continue
+        for y in range(lo_y, hi_y + 1):
+            row = y * w
+            for x in range(lo_x, hi_x + 1):
+                u = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / det
+                if u < -0.02:
+                    continue
+                v = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / det
+                if v < -0.02 or u + v > 1.02:
+                    continue
+                buf[row + x] = 1
+    return bytes(buf)
+
+
+def overlap(a: bytes, b: bytes) -> float:
+    """Intersection over union - the only score here, and it is not fitted to
+    anything: the mask is a texture an artist drew and the footprint is a
+    collision mesh, and nothing joins them but this transform."""
+    inter = union = 0
+    for i in range(len(a)):
+        p, q = a[i], b[i]
+        if p or q:
+            union += 1
+            if p and q:
+                inter += 1
+    return inter / union if union else 0.0
+
+
+def shrink(mask: bytes, w: int, h: int, k: int) -> tuple[int, int, bytes]:
+    """Downsample by `k`, a cell opaque when any of its pixels is."""
+    ww, hh = w // k, h // k
+    out = bytearray(ww * hh)
+    for y in range(hh):
+        for x in range(ww):
+            for dy in range(k):
+                row = (y * k + dy) * w + x * k
+                if any(mask[row:row + k]):
+                    out[y * ww + x] = 1
+                    break
+    return ww, hh, bytes(out)
+
+
+def fit_map(mask, w, h, tris, cx, cz, scales=None):
+    """The (scale, offset) that lays the footprint over the mask.
+
+    Searched coarse then fine. The seed is the two centroids on top of each
+    other, which is where the answer turns out to be on most stages anyway.
+    """
+    n = sum(mask)
+    if not n or not tris:
+        return None
+    mx = sum(i % w for i in range(w * h) if mask[i]) / n
+    my = sum(i // w for i in range(w * h) if mask[i]) / n
+    k = COARSE
+    ww, hh, small = shrink(mask, w, h, k)
+    scales = scales or [0.90 + 0.05 * i for i in range(17)]
+    best = None
+    for s in scales:
+        ox, oy = mx - s * cx, my - s * cz
+        for dx in range(-12, 13, 6):
+            for dy in range(-12, 13, 6):
+                got = overlap(small, rasterise(tris, s / k, (ox + dx) / k,
+                                               (oy + dy) / k, ww, hh))
+                if best is None or got > best[0]:
+                    best = (got, s, ox + dx, oy + dy)
+    _, s, ox, oy = best
+    fine = None
+    for ds in (-0.04, -0.02, 0.0, 0.02, 0.04):
+        for dx in (-3, 0, 3):
+            for dy in (-3, 0, 3):
+                got = overlap(mask, rasterise(tris, s + ds, ox + dx, oy + dy,
+                                              w, h))
+                if fine is None or got > fine[0]:
+                    fine = (got, s + ds, ox + dx, oy + dy)
+    return fine
+
+
+def _stages_with_maps(root):
+    root = pathlib.Path(root)
+    for d in sorted(root.rglob('param.pac')):
+        maps = list(d.glob('*.map'))
+        cols = list(d.glob('*.col'))
+        if maps and cols:
+            yield d.parent.name, maps[0], cols[0]
+
+
+def cmd_minimap(root, want: str = '*') -> int:
+    """Every `.map` fitted over its own stage's collision mesh."""
+    import statistics                                         # noqa: PLC0415
+
+    rows = []
+    print(f'{"stage":<12s} {"IoU":>6s} {"px/m":>6s} {"origin px":>16s} '
+          f'{"centre offset":>14s} {"area m2":>9s}')
+    for name, mp, co in _stages_with_maps(root):
+        if not fnmatch.fnmatch(name, want):
+            continue
+        w, h, mask = map_mask(mp)
+        tris, cx, cz, area = footprint(co)
+        got = fit_map(mask, w, h, tris, cx, cz)
+        if got is None:
+            print(f'{name:<12s}  empty')
+            continue
+        iou, s, ox, oy = got
+        # where the footprint's own centroid lands, which is the thing that
+        # turns out to be constant
+        px, py = s * cx + ox, s * cz + oy
+        rows.append((name, iou, s, px, py, area))
+        print(f'{name:<12s} {iou:6.3f} {s:6.3f} ({ox:7.1f},{oy:7.1f}) '
+              f'({px:6.1f},{py:6.1f}) {area:9.0f}')
+    if not rows:
+        return 1
+    print(f'\n{len(rows)} stages')
+    for label, k in (('IoU', 1), ('px/m', 2),
+                     ('the centroid lands at x', 3), ('and at y', 4)):
+        v = sorted(r[k] for r in rows)
+        print(f'  {label:<26s} median {statistics.median(v):7.3f}   '
+              f'p10 {v[len(v) // 10]:7.3f}   p90 {v[9 * len(v) // 10]:7.3f}')
+    good = sum(1 for r in rows if r[1] >= 0.75)
+    mid = sum(1 for r in rows if 0.5 <= r[1] < 0.75)
+    print(f'  {good} of {len(rows)} fit at IoU 0.75 or better, {mid} between '
+          f'0.5 and 0.75, {len(rows) - good - mid} below 0.5')
+    return 0
+
+
+def cmd_minimap_png(root, name: str, out: str) -> int:
+    """One stage's fit as a picture: the drawn map, the mesh, and the overlap.
+
+    Red is map only, blue is mesh only, white is both. A good fit is white
+    with a red rim, because the artist drew an outline stroke outside the
+    ground and the collision mesh has no outline.
+    """
+    from ctex import write_png                                # noqa: PLC0415
+
+    for stage, mp, co in _stages_with_maps(root):
+        if not fnmatch.fnmatch(stage, name):
+            continue
+        w, h, mask = map_mask(mp)
+        tris, cx, cz, area = footprint(co)
+        got = fit_map(mask, w, h, tris, cx, cz)
+        if got is None:
+            raise SystemExit(f'{stage}: the map is empty')
+        iou, s, ox, oy = got
+        mesh = rasterise(tris, s, ox, oy, w, h)
+        rgba = bytearray(w * h * 4)
+        for i in range(w * h):
+            a, b = mask[i], mesh[i]
+            rgba[4 * i:4 * i + 4] = (
+                bytes((255, 255, 255, 255)) if a and b else
+                bytes((220, 60, 60, 255)) if a else
+                bytes((60, 90, 220, 255)) if b else
+                bytes((16, 16, 20, 255)))
+        write_png(out, w, h, bytes(rgba))
+        print(f'{out}: {stage}, IoU {iou:.3f}, {s:.3f} px/m, '
+              f'origin ({ox:.1f}, {oy:.1f})')
+        return 0
+    raise SystemExit(f'no stage matches {name!r}')
+
+
+
+def cmd_minimap_check(root, want: str = '*') -> int:
+    """The transform against the markers, which it was not fitted to.
+
+    The fit sees a texture's alpha channel and a collision mesh and nothing
+    else. `hta.bin` is a third file: it places the monster generators, the
+    props and the arrival points in world coordinates. Push those through the
+    transform and the ones that stand on the ground should land on a drawn
+    pixel - and the ones that do not are the effect emitters, which hang in
+    the air and off the edge of the map on purpose.
+    """
+    root = pathlib.Path(root)
+    kinds: collections.Counter = collections.Counter()
+    hits: collections.Counter = collections.Counter()
+    stages = inside = total = 0
+    for name, mp, co in _stages_with_maps(root):
+        if not fnmatch.fnmatch(name, want):
+            continue
+        hta = mp.parent / 'hta.bin'
+        if not hta.is_file():
+            continue
+        w, h, mask = map_mask(mp)
+        tris, cx, cz, _ = footprint(co)
+        got = fit_map(mask, w, h, tris, cx, cz)
+        if got is None or got[0] < 0.75:
+            continue
+        stages += 1
+        _, s, ox, oy = got
+        for m in Atih(hta.read_bytes(), name).markers:
+            x, _y, z = m.position
+            px, py = int(round(s * x + ox)), int(round(s * z + oy))
+            on = 0 <= px < w and 0 <= py < h and bool(mask[py * w + px])
+            kinds[m.kind] += 1
+            hits[m.kind] += on
+            inside += on
+            total += 1
+    if not total:
+        return 1
+    print(f'{stages} stages fitting at IoU 0.75 or better, {total} markers')
+    print(f'{inside} of {total} land on a drawn pixel of their own map '
+          f'({100.0 * inside / total:.1f}%)\n')
+    print(f'{"kind":<16s} {"on the map":>10s} {"of":>6s} {"":>7s}')
+    for kind, n in kinds.most_common(16):
+        print(f'  {kind:<14s} {hits[kind]:10d} {n:6d} '
+              f'{100.0 * hits[kind] / n:6.1f}%')
+    return 0
+
+
 def main() -> int:
     a = sys.argv[1:]
     if not a:
@@ -668,6 +932,12 @@ def main() -> int:
         return cmd_grep(rest[0], rest[1])
     if cmd == 'obj':
         return cmd_obj(rest[0], rest[1], rest[2])
+    if cmd == 'minimap':
+        return cmd_minimap(rest[0], *rest[1:2])
+    if cmd == 'minimap_png':
+        return cmd_minimap_png(rest[0], rest[1], rest[2])
+    if cmd == 'minimap_check':
+        return cmd_minimap_check(rest[0], *rest[1:2])
     print(f'unknown command: {cmd}')
     return 1
 

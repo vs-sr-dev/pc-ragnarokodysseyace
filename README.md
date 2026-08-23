@@ -95,6 +95,9 @@ CMTM material    ->       91 files, 1,388 keys  tools/cmtm.py   0 errors
   hit geometry   ->        6 shapes; 2,194 of 2,253 second bones on one chain
   impact sounds  ->       25 of 26 cue ids       named in common.acb
 ATIH + fences    ->      163 stages, 5,934 marks tools/stage.py 0 errors
+  the minimap    ->      135 of 137 .map over their own collision mesh,
+                       median IoU 0.805, and 97.5% of the monster
+                       generators landing on a drawn pixel
 ELBN parameters  ->      707 files, 318 names   tools/elbn.py   0 errors
   body capsules  ->    1,172 col_hit, 1,148 of 1,148 bones resolving
   body regions   ->      315 named parts, 259 of 266 on a bone of that name

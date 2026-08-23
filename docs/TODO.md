@@ -27,7 +27,12 @@ skeleton, and read four more `.mkc` opcodes. Five things to carry:
 - **`region_data_brk` indexes `it_drop_break`**, positionally, 23 of 23
   monsters — which names one of [`params.md`](params.md)'s leftovers;
 - **`.mkc`'s `0400` is a show/hide on a locator** and `0807`'s argument is
-  which foot, 28 of 28 on the players. See [`format_mkc.md`](format_mkc.md).
+  which foot, 28 of 28 on the players. See [`format_mkc.md`](format_mkc.md);
+- **the minimap has a transform.** `.map` had been a picture since session 8.
+  It is now a picture with a place: no rotation, world `+z` down the image,
+  the collision footprint's area centroid on pixel 127.5, and 1.31 to 1.33
+  pixels a metre. 97.5 % of the monster generators land on a drawn pixel and
+  the fit never looked at them. See [`format_stage.md`](format_stage.md).
 
 ### 1. The other three `ELBN` populations.
 
@@ -73,8 +78,10 @@ missing, and it is the cheapest way to find out.
    `destructible.bin`, `mapexception.bin` and the `q<NNNNN>.bin` header. The
    `CCLS` surface codes 1 to 13 are the other well-posed one, and the pose
    layer says where a foot is, so the triangle under it is a lookup away.
-6. **The minimap transform.** 137 `.map` images, each visibly the silhouette
-   of its own stage's collision. A small job that gives the UI layer a map.
+6. **Where the minimap's scale is declared.** Session 19 measured the
+   transform — see [`format_stage.md`](format_stage.md) — and it is not in
+   `stageparam.bin`. The orientation and the anchor are settled; the scale is
+   a band, 1.31 to 1.33 px/m, and per-stage fitting still buys real accuracy.
 7. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
    `+0x0a`. Bit fields; they correlate with whether the row carries a locator
    and whether it carries an offset, and the obvious reading is a space or
@@ -274,6 +281,28 @@ missing, and it is the cheapest way to find out.
   the eight that miss are two scuffing damage reactions, a cutscene where
   neither foot is near the floor, and one monster that also uses 2 and 3.
 
+
+- **The minimap is a minimap and not just a picture.** `stage.py` gains
+  `minimap`, `minimap_png` and `minimap_check`, and
+  [`format_stage.md`](format_stage.md) gains the transform. The method is
+  intersection over union between a texture's alpha channel and a collision
+  mesh drawn under a candidate transform — two files that share nothing else.
+  135 stages, **median IoU 0.805**, 95 at 0.75 or better, 2 below 0.5.
+- **The anchor is exact and the scale is a band.** Over the 47 best fits the
+  footprint's area centroid lands on pixel **127.5, 127.5** — the centre of a
+  256×256 image — with a standard deviation of 4 px in x. The scale's spread
+  collapses as the fit improves (sd 0.147 over all 135, 0.098 over the best
+  47, **0.059 over the best 25**), which is a constant plus noise; the best
+  estimate is 1.31 to 1.33 px/m and the disc does not declare it anywhere
+  found. Pinned with no free parameter at all the median IoU is still 0.65.
+- **The markers confirm it and were not part of the fit.** `hta.bin` places
+  the monster generators, props and arrival points in world coordinates.
+  Pushed through the transform, **1,376 of 1,411 `emgen_pos` (97.5 %)**, 399
+  of 421 `obj` and 167 of 178 `appear` land on a drawn pixel. The kinds that
+  miss are the effect emitters, and **`ef_B` and `ef_C` are outside the drawn
+  map on every one of their 43 and 89 instances**.
+- Two stages ship a second map: `060_01_01_2.map` and `060_01_02_2.map` are
+  the same silhouette **with half of it hatched off behind a dashed line**.
 
 ## Session 18 — 2026-08-23
 
