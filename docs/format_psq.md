@@ -441,6 +441,38 @@ and only six carry script, so the `.cnut` are a Rosetta stone for whatever the
 `.par` are — `checkRangeParam`, `check_term_param` and `getTime(n)` are named
 on one side of that border and unread on the other.
 
+## And it runs
+
+**Session 22 wrote the interpreter**:
+[`../engine/squirrel.py`](../engine/squirrel.py), a Squirrel 2.2 VM over the
+`Function` objects this file parses. It implements 48 opcodes - the 41 the
+disc emits plus seven obvious neighbours - and raises on the other 13, so
+that a zero means something.
+
+    python engine/squirrel.py sweep extract/tree
+
+    3011 files, 8167 functions on the table, 8085 ran to a stop,
+    1464 of them into a suspend
+    387884 instructions retired, 39 of the 41 opcodes the disc contains
+    0 VM faults, 82 script errors
+
+Every file's `main()` runs and then every function it put on the table is
+called with zero arguments against a stub host. The 82 remaining failures are
+the script objecting to what a stub handed it, in five classes and no others;
+the two opcodes never reached are `_OP_JNZ`, emitted four times, and
+`_OP_POSTFOREACH`, which is stepped over unless the container is a generator
+and `_bgenerator` is 0 on all 11,232 functions.
+
+**Running it settled one thing reading it could not.** A vararg function keeps
+*all* its declared parameters and only the surplus goes to `vargv`: this build
+does not add the `vargv` parameter that Squirrel's later versions add and then
+step back over. `prt_select(rand, ...)` in the boss AI is the proof - under
+the other reading `rand` itself becomes the first vararg, every index slides
+by one, the eleven weights no longer sum to 10,000 and the function divides by
+zero. That was **447 failures across the six bosses, and 0 after**. See
+[`milestone_stage.md`](milestone_stage.md), which is where the rest of what
+executing this bytecode settled is written down.
+
 ## What is open
 
 - ~~**control flow is not structured.**~~ **Done in session 21** - see above.
@@ -449,9 +481,11 @@ on one side of that border and unread on the other.
   `if (90 != 1)` as two `_OP_LOADINT` and a compare, and `setDemoID` is called
   with `((3000 + 10) + 0)` computed at runtime. So the constants in the
   disassembly are macro arguments, and the macro names are gone;
-- **`_OP_COMPARITH`'s packed `_arg1`** — `(self << 16) | value` — is exercised
+- **`_OP_COMPARITH`'s packed `_arg1`** — `(self << 16) | value` — is emitted
   three times on the whole disc and the reading is taken from the interpreter
-  rather than confirmed against anything;
+  rather than confirmed against anything. Session 22's sweep *executes* it
+  once without faulting, which is still not a confirmation: a wrong operand
+  order computes the wrong number rather than raising;
 - ~~**the 289 native names have arities and nothing else.**~~ **Read in
   session 18** — see [`format_api.md`](format_api.md). `cfSetCameraType`'s five
   camera types are still among the handful that are not.
