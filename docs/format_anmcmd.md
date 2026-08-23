@@ -323,6 +323,8 @@ The families also fall where the monster does. `b02_00` and `b07_00` reach for
 - **Thirty-odd opcodes with no correlation yet**, most of them rare: 7, 15, 16,
   18, 20, 23, 25, 26, 28, 31, 32, 34, 36, 37, 42 to 49, 51, 54, 55, 57, 60, 62.
 - Why 554 files name no motion. Some are plainly not animations at all
-  (`stick_bullet`, `soul_breaker_bullet`); the rest may key through the 2,690
-  `.mkc` files, which sit beside the `CNOM` in the same `.pac`.
+  (`stick_bullet`, `soul_breaker_bullet`). **`.mkc` is not the key**: session
+  15 read it, and it is named by its motion the way a `CNOM` is - 2,170 of its
+  2,556 stems are a `CNOM` and exactly three are an `.anmcmd`. See
+  [`format_mkc.md`](format_mkc.md).
 - `+0x35`'s unit, and why players and monsters use different ranges of it.
