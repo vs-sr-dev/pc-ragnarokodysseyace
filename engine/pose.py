@@ -206,6 +206,20 @@ class Play:
             self._cache[key] = got
         return got
 
+    def matrix(self, node: str, frame: float) -> list:
+        """One node's whole world matrix at one frame, not just its origin.
+
+        `at` returns positions because that is all a footfall needs. A hit
+        volume needs the orientation too: its offsets are written in the
+        bone's own frame, so placing one means turning it as well as moving
+        it. The two readings only separate once the bone has turned, which is
+        why this exists here and not in the rest pose.
+        """
+        m = IDENTITY
+        for i in self.body.chain_of(node):
+            m = mul(m, self.local(i, frame))
+        return m
+
     def at(self, frame: float) -> dict[str, tuple[float, float, float]]:
         """Every contact node's position in model space, at one frame."""
         out = {}
@@ -802,6 +816,74 @@ def cmd_emitter(root) -> int:
     return 0
 
 
+
+SIDE = 0x0807             # `.mkc`'s unread one-argument opcode
+
+
+def cmd_foot(root) -> int:
+    """`.mkc` opcode `0807`, against which foot is actually on the ground.
+
+    `7ffa` says a foot landed and names a surface, not a side; that was the
+    last thing this document had open about it. `0807` is a one-argument
+    opcode nothing had read, it occurs on 31 files and all of them are
+    locomotion, and its argument takes 0 and 1 in about equal numbers. If it
+    is the side, the foot that is lowest on that frame should be the right one
+    when the argument is 0 and the left one when it is 1 - and the skeleton is
+    the only thing that can say.
+    """
+    root = pathlib.Path(root)
+    tally: collections.Counter = collections.Counter()
+    players: collections.Counter = collections.Counter()
+    with_ = collections.Counter()
+    rows: list = []
+    total = 0
+    for mkc_path, cnom_path, skel in pairs(root):
+        recs = list(Mkc(mkc_path.read_bytes(), str(mkc_path)).records)
+        fired = [r for r in recs if r.op == SIDE]
+        if not fired:
+            continue
+        total += len(fired)
+        at: dict[int, set] = collections.defaultdict(set)
+        for r in recs:
+            at[r.frame].add(r.op)
+        for r in fired:
+            s = at[r.frame]
+            with_['7ffa' if 0x7FFA in s else
+                  '7ffb' if 0x7FFB in s else 'neither'] += 1
+        if cnom_path is None or skel is None:
+            continue
+        body = Body(skel)
+        if len(body.contact) != 2:
+            continue
+        play = Play(body, Cnom(cnom_path.read_bytes(), cnom_path.name))
+        track = play.track()
+        job = 'job.cpk' in str(mkc_path) or 'character.cpk' in str(mkc_path)
+        for r in fired:
+            if r.frame >= len(track):
+                continue
+            h = {n: track[r.frame][n][1] - body.floor(n) for n in body.contact}
+            low = min(h, key=h.get)
+            side = 'l' if '_l_' in low else 'r'
+            tally[(r.args[0], side)] += 1
+            if job:
+                players[(r.args[0], side)] += 1
+            rows.append((mkc_path.stem, r.frame, r.args[0], low, h[low]))
+
+    print(f'{total} firings of 0807, on a frame that also carries '
+          + '  '.join(f'{k} x{v}' for k, v in with_.most_common()))
+    for label, c in (('every actor', tally), ('the players', players)):
+        print(f'  {label}')
+        for (arg, side), n in sorted(c.items()):
+            foot = 'left' if side == 'l' else 'right'
+            print(f'    argument {arg}   the {foot}'
+                  f" foot is the lower one   {n}")
+    print()
+    for stem, frame, arg, low, h in rows[:16]:
+        print(f'  {stem:<20s} f{frame:<4d} argument {arg}   {low:<14s} '
+              f'{h:+.3f} m')
+    return 0
+
+
 def main() -> int:
     a = sys.argv[1:]
     if not a:
@@ -818,6 +900,8 @@ def main() -> int:
         return cmd_locomotion(rest[0], rest[1])
     if cmd == 'emitter':
         return cmd_emitter(rest[0])
+    if cmd == 'foot':
+        return cmd_foot(rest[0])
     print(f'unknown command: {cmd}')
     return 1
 
