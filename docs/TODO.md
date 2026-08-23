@@ -5,31 +5,63 @@
 
 ---
 
-# Next session — give the capsule its skeleton
+# Next session — close the format column: `.mkc`, then the movies
 
-Session 14 closed `.PTP` and then reached milestone 1: a capsule with the
-game's numbers crosses `010_01_01` in 405 frames without leaving the collision
-mesh. See [`milestone_numbers.md`](milestone_numbers.md) and
-[`../engine`](../engine). Phase 2 has no bounded unknowns left — `.mkc` and the
-PAMF video, and neither blocks anything — and Phase 4 has started.
+Session 14 closed `.PTP` and reached milestone 1. Two entries are left in the
+[`STRATEGY.md`](STRATEGY.md) format table and neither blocks anything, which
+is exactly why they are worth finishing: after them Phase 2 has no entries at
+all, and every session after this one is building rather than reading.
 
-### 1. Play the motion on the body that is now moving.
+Both were scouted at the end of session 14, so neither starts cold.
 
-`engine/` has a body that runs, turns and stands on the ground. It has no
-pose. [`CNOM`](format_cnom.md) has 3.0M keys bound to skeletons by name,
-[`format_cmdl.md`](format_cmdl.md) already does the forward kinematics
-(`cmdl.py gait`), and [`.anmcmd`](format_anmcmd.md) says what happens on which
-frame. Joining those to `Actor` gives three things at once:
+### 1. `.mkc` — a second per-motion sidecar, and it is small.
 
-- **locomotion that cannot foot-slide**, because
-  [`units.md`](units.md) showed the cycles were authored against `run_sp`;
-- **which of the hit record's three vectors is which** — open since session 9,
-  and the note there says posing the skeleton and drawing the capsule would
-  settle it in an afternoon;
-- a second, harder use for the thirty uncorrelated `.anmcmd` opcodes, which
-  the positional method has run out of road on.
+**2,690 files, 2 to 1,076 bytes, every one of even length, every one ending on
+`0xffff`.** 256 are nothing but that terminator. What was established:
 
-### 2. The 289 native script functions.
+- **it is named by its motion, like `.anmcmd` is.** 2,304 of the 2,690 share a
+  stem with a [`CNOM`](format_cnom.md) — `com051emo_1.mkc` beside
+  `com051emo_1.CNOM` — and they sit in the same `.pac`. Only 3 share a stem
+  with an `.anmcmd`, so this is a *different* sidecar and not a variant of
+  that one. The player motion sets carry the most: 125 each for `fmg` and
+  `mmg`, 113 for `mcl`;
+- **it is a `u16` stream and the vocabulary is tight.** Above `0x0800` only
+  eleven distinct values occur at all: `0x7ff9` (6,251 uses), `0x7ffb`,
+  `0x7ffa`, `0x7ffd`, `0x7ffc`, five singletons between `0x797c` and `0x7c38`,
+  and `0xffff` the terminator. A second family sits lower — `0x0801` (3,926),
+  `0x0802`, `0x0806`, `0x105e`, `0x0c6c`, `0x620c`;
+- **the records are not fixed width.** File lengths are spread evenly over all
+  four even residues mod 8, so a uniform 8-byte record does not fit and the
+  stream is variable-length, the way an `.anmcmd` command is;
+- a file opens with a small `u16` — 0, 1 or 3 — and then a value from that
+  vocabulary: `(0, 0x0400)` on 645 files, `(0, 0x0801)` on 214,
+  `(3, 0x7ff9)` on 148.
+
+**The method is the one that worked on `.anmcmd`**: assign a length to each
+opcode, walk the stream, and require it to land exactly on the `0xffff` on all
+2,434 non-empty files. Nothing else in the file declares a size, so landing
+exactly is the whole proof. `0x7ff9` at 6,251 uses is the one to solve first.
+
+The prize, if there is one, is the 554 `.anmcmd` that name no motion — the
+note in [`format_anmcmd.md`](format_anmcmd.md) has always said these are the
+obvious place they might key through.
+
+### 2. The movies — and they need 3.4 GB of disc first.
+
+46 `.pam` files, `PS3_GAME/USRDIR/movie/`, MPEG-4 AVC in a Sony container.
+**They are not in `extract/` on this machine**: `iso.py sets` declares `movie`
+as its own set at 3.4 GB and only `archive`, `patch`, `boot`, `image` and
+`audio` have been pulled. So the first step is
+`python tools/iso.py extract movie`, and the second is `ffprobe`.
+
+This is the least interesting item on the whole list and it is on it for one
+reason: it is the last row of the format table, and the table should either be
+finished or say honestly that it never will be. Twenty minutes with a
+well-trodden container either way. If `ffprobe` opens them, write down what it
+says and mark the row solved; if the Sony wrapper needs stripping first, note
+the offset and move on — nothing in the project waits on a cutscene.
+
+### 3. The 289 native script functions.
 
 `psq.py api` gives each one a name and an arity histogram, and the call sites
 give the argument values. That is enough to write down what most of them do
@@ -46,11 +78,11 @@ needs first are still `cfSetEnableEmGen`, `cfSetEnableHitArea`,
 `cfSetEnableBorderline`, `cfMapJump`, `cfStartPieceLock`, `cfGetGlobalFlag`,
 `cfSetGlobalFlag`, `chrSetMotion`.
 
-### 3. The rest of the `.anmcmd` opcodes.
+### 4. The rest of the `.anmcmd` opcodes.
 
 Thirty of the fifty-two have no correlation. The positional method is close to
 exhausted; what would move it further is the geometry — pose the skeleton,
-draw the hit capsule — which is also item 4. Two new levers: an `.anmcmd` is
+draw the hit capsule — which is item 5. Two new levers: an `.anmcmd` is
 now known to be *named by the motion id an AI action picks*, so a command list
 can be read against the rule that fires it; and the player's own `.anmcmd` are
 named by the press string that reaches them, so a combo's command list is
@@ -58,20 +90,26 @@ addressable from the mercenary tables.
 
 ### Then
 
-4. **Which vector is which** in the hit record. Three signed vec3s; the natural
+5. **Give the capsule its skeleton.** `engine/` has a body that runs, turns and
+   stands on the ground, and no pose. [`CNOM`](format_cnom.md) has the keys,
+   `cmdl.py gait` already does the forward kinematics, and
+   [`.anmcmd`](format_anmcmd.md) says what happens on which frame. This was
+   session 14's own recommendation for what comes next and it is only below
+   `.mkc` because `.mkc` is bounded and this is not.
+6. **Which vector is which** in the hit record. Three signed vec3s; the natural
    readings are an offset, an end point and a direction. `cmdl.py gait` already
    does the forward kinematics that needs.
-5. **The `ELBN` records, field by field.** The container is solved and 318
+7. **The `ELBN` records, field by field.** The container is solved and 318
    names are addressable; not one record is described. `job.cpk/<class>/
    objbin.bin` is the best target, because it is the same territory as the
    JSON in [`params.md`](params.md).
-6. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
+8. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
    small, well-posed instances with known consumers: the `.psq` calls name
    their rows, so the columns can be read against the script that uses them.
    The `CCLS` surface codes 1 to 13 are the other one.
-7. **The minimap transform.** 137 `.map` images, each visibly the silhouette
+9. **The minimap transform.** 137 `.map` images, each visibly the silhouette
    of its own stage's collision. A small job that gives the UI layer a map.
-8. **Structure the `.psq` control flow.** `psq.py src` prints labels and
+10. **Structure the `.psq` control flow.** `psq.py src` prints labels and
    `goto`. Rebuilding `if`/`while`/`switch` is ordinary work and nobody needs
    it yet.
 
@@ -125,13 +163,8 @@ addressable from the mercenary tables.
   and no `PTCP` on the disc has that many slots — and the inside of a `PTB`,
   which nothing needs until something renders. See
   [`format_ptp.md`](format_ptp.md).
-- `.mkc` (2,690). They sit beside the `CNOM` files and may be what the
-  unmatched `.anmcmd` lists key through. Ten minutes of looking says they are
-  small, even-length and terminated: **all 2,690 end on `0xffff`**, 256 of them
-  are nothing but that terminator, sizes run from 2 bytes to a few hundred, and
-  581 open `00 00 04 00 00 02 00 00`. A `u16` stream with a sentinel, in other
-  words, and the obvious next step is to read one against the `CNOM` it is
-  named after.
+- `.mkc` (2,690) — promoted to next session's item 1, where what is known
+  about it is written down.
 - The AI's own leftovers: ten of the 76 condition terms, which the six
   `.cnut` predate and so cannot name; what the `2xx` action block means, given
   that its ids resolve to the same motions as the `1xx`; the `kind` byte of
@@ -267,9 +300,17 @@ addressable from the mercenary tables.
     nothing but float noise. It is not in the `.PTP` in any width or byte
     order either. So the bridge is a static table in the SELF — the first thing
     on the list that actually needs Phase 3, and a cosmetic one.
-- Opened `.mkc` far enough to see it is a short `u16` stream with a sentinel —
-  **all 2,690 end on `0xffff`** and 256 are nothing but that — and wrote the
-  shape down under "Open, unowned". Not read.
+- Scouted the two formats that are left, so that neither starts cold next
+  time. **`.mkc`**: 2,690 files, all of even length, all ending on `0xffff`,
+  256 of them nothing but that; **2,304 of the 2,690 share a stem with a
+  `CNOM`** and sit in the same `.pac`, while only 3 share one with an
+  `.anmcmd`, so it is a second per-motion sidecar rather than a variant of the
+  first. Above `0x0800` only eleven distinct values occur in the whole corpus,
+  `0x7ff9` leading at 6,251 uses, and file lengths spread over all four even
+  residues mod 8 — so the records are variable-length and the `.anmcmd` method
+  applies. **The movies**: 46 `.pam`, and they are not in `extract/` at all —
+  `iso.py sets` declares `movie` as its own 3.4 GB set and it has never been
+  pulled, which is the real cost of that item.
 
 ## Session 13 — 2026-08-22
 

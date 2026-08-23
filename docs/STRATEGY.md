@@ -87,14 +87,14 @@ Phase 3.
 | `CMTM` material | 91 | ✅ **solved** | [`format_cnom.md`](format_cnom.md) — `CNOM` with scalars; animates material colour |
 | `.psq` / `.cnut` | 3,011 | ✅ **solved** | [`format_psq.md`](format_psq.md) — **Squirrel 2.2 bytecode**; 11,232 functions decompile with their own names |
 | `.anmcmd` | 2,053 | ✅ **read** | [`format_anmcmd.md`](format_anmcmd.md) — the event lists; the hit record read and bound to the skeleton, 22 of 52 opcodes correlated |
-| `.mkc` | 2,690 | medium | |
+| `.mkc` | 2,690 | **next** | a second per-motion sidecar, named after its `CNOM`; a variable-length `u16` stream ending on `0xffff`. See [`TODO.md`](TODO.md) |
 | `.CTXT` | 1,151 | ✅ **solved** | plain text: hit capsules and springs, bound to a bone through the model's locator table; see [`format_cmdl.md`](format_cmdl.md) |
 | `.PTP` effects | 70 | ✅ **solved** | [`format_ptp.md`](format_ptp.md) — the container, and the `(category, slot)` pair three consumers address an effect with |
 | AI tables | 228 | ✅ **solved** | [`format_ai.md`](format_ai.md) — `ProbList.dat` and the decision scripts; 66 of 77 terms named off the game's own dispatch |
 | `.par` AI | 438 | ✅ **solved** | [`format_ai.md`](format_ai.md) — four record kinds and two structs, every sentinel exact |
 | mercenary AI | 48 | ✅ **solved** | [`format_merc.md`](format_merc.md) — four `ELBN` per class and the script that indexes them; the command runs are button presses |
 | CRI Atom audio | 274 | ✅ **read** | `@UTF` tables; `cpk.py` opens them, and `common.acb` names the hit record's sound |
-| PAMF video | 46 | low | ffmpeg territory |
+| PAMF video | 46 | **next** | ffmpeg territory, but the 3.4 GB `movie` set has never been extracted |
 | `.otf` font | 1 | ✅ **free** | ordinary OpenType |
 
 ## Phase 3 — The EBOOT as oracle
