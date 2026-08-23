@@ -9,7 +9,8 @@
 
 Session 15 read `.mkc`, the movies and the sound banks, and **Phase 2 now has
 no open rows**: every container the disc ships is read, and the chain from a
-frame of an animation to a PCM sample closes on 7,524 of 7,608 references.
+frame of an animation to a PCM sample closes on 7,592 of 7,608 references,
+with the other 16 accounted for.
 What is left inside the formats is columns and opcodes, not containers. From
 here the work is building.
 
