@@ -13,20 +13,27 @@ a body moving at `acc = 0.035` and arriving somewhere.
                               extract/tree/job.cpk/sw/sw.json
     python engine/run.py trace <stage dir> <class json> out.png
 
+    python engine/run.py stride <stage dir> <class json> extract/tree \\
+                               msw213run [gait] [start] [cycles]
+
     python engine/run.py check extract/tree/stage.cpk
     python engine/run.py sweep extract/tree/stage.cpk <class json>
 
 `numbers` needs no stage: it turns the parameter table into quantities a
 person can have an opinion about - seconds, metres, multiples of Earth
 gravity. `walk` runs the loop on a real stage and reports whether the body
-stayed on the ground the whole way. `trace` draws it. `check` asks the two
-questions across all 155 stages that only a simulation thinks to ask - is the
-marker table consistent with the collision mesh, and does the fence close.
+stayed on the ground the whole way. `trace` draws it. `stride` gives the body
+a skeleton - see [`pose.py`](pose.py) - and prints where its planted foot is
+against the mesh under it, which is the first thing here that has a shape and
+not just a position. `check` asks the two questions across all 155 stages that
+only a simulation thinks to ask - is the marker table consistent with the
+collision mesh, and does the fence close.
 """
 from __future__ import annotations
 
 import math
 import pathlib
+import statistics
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -218,6 +225,93 @@ def cmd_trace(stage_dir, json_path, out, start='appear01', goal='',
     return 0
 
 
+def cmd_stride(stage_dir, json_path, tree, motion, gait='run',
+               start='appear01', cycles='2') -> int:
+    """Play one animation on the walking capsule, and watch the foot.
+
+    This is the whole point of the pose layer stated as one number. The
+    animation slides its planted foot backwards at whatever rate it was
+    authored for; the actor carries the body forwards at whatever `walk_sp` or
+    `run_sp` says. If the two agree the foot stands still on the ground while
+    it is down, and if they do not it skates - which is the same test an
+    animator does by eye, done in arithmetic.
+
+    The height above the mesh is the other half: the foot is placed from the
+    skeleton and the ground is read from the collision mesh under it, and
+    nothing has arranged for the two to meet.
+    """
+    from pose import TOUCH, load as load_pose                 # noqa: PLC0415
+
+    w = World(stage_dir)
+    p = load(json_path)
+    body, play, path = load_pose(tree, motion)
+    a = w.marker(start)
+    act = Actor(p, a.position[0], a.position[1], a.position[2],
+                a.rotation[1])
+    frames = max(1, int(cycles)) * play.length
+    speed = p[{'walk': 'walk_sp', 'run': 'run_sp',
+               'fast': 'fast_sp'}.get(gait, 'run_sp')]
+
+    print(f'{w.name}, {pathlib.Path(json_path).stem} parameters, '
+          f'{path.stem} on {body.path.stem}')
+    print(f'  {play.declared} frames declared, {play.length} in the loop; '
+          f'the cycle slides {play.slide():.4f} m a frame and {gait} is '
+          f'{speed} m/frame')
+    print()
+    print('  frame        x         z   speed   the lower foot       '
+          'above the mesh    slips')
+    was = None
+    heights, slips = [], []
+    for f in range(1, frames + 1):
+        r = act.step(w, gait=gait)
+        at = play.at(float((f - 1) % play.length))
+        rad = math.radians(act.heading)
+        sin, cos = math.sin(rad), math.cos(rad)
+        world = {}
+        for n, (mx, my, mz) in at.items():
+            world[n] = (act.x + mx * cos + mz * sin, act.y + my,
+                        act.z - mx * sin + mz * cos)
+        low = min(world, key=lambda n: world[n][1])
+        fx, fy, fz = world[low]
+        ground = w.floor(fx, fz, fy + act.radius)
+        # A foot at its standing height while the body itself is falling is
+        # not planted on anything, so the actor has to be on the ground too.
+        down = at[low][1] - body.standing[low] <= TOUCH and act.grounded
+        slip = None
+        if was is not None and was[0] == low and down and was[3]:
+            slip = math.hypot(fx - was[1], fz - was[2])
+            slips.append(slip)
+        was = (low, fx, fz, down)
+        # what the ground has to meet is the sole, not the ankle joint, so
+        # the height the node stands at comes off it first.
+        over = None if ground is None else fy - body.standing[low] - ground
+        if over is not None and down:
+            heights.append(over)
+        if down:
+            state = ''
+        else:
+            state = '   falling' if not act.grounded else '   in the air'
+        print(f'  {f:5d} {act.x:9.3f} {act.z:9.3f} {r["speed"]:7.3f}   '
+              f'{low:<16} {"-" if over is None else f"{over:+8.3f}"}   '
+              f'{"" if slip is None else f"{slip:8.4f}"}{state}')
+    print()
+    if not heights:
+        print(f'  never planted in {frames} frames - the body spent them '
+              f'off the ground, so there was nothing to stand on')
+    if heights:
+        heights.sort()
+        print(f'  planted on {len(heights)} of {frames} frames, and while it '
+              f'is planted the foot sits')
+        print(f'    {statistics.median(heights):+.4f} m above the collision '
+              f'mesh, {heights[0]:+.4f} to {heights[-1]:+.4f}')
+    if slips:
+        slips.sort()
+        print(f'    and slides {statistics.median(slips):.4f} m a frame over '
+              f'the ground - the cycle is authored for')
+        print(f'    {play.slide():.4f} and the body is moving at {speed}, so '
+              f'{abs(play.slide() - speed):.4f} of that is the disagreement')
+    return 0
+
 def cmd_check(stage_root) -> int:
     """Two questions that only a running simulation can ask.
 
@@ -401,6 +495,9 @@ def main() -> int:
         return cmd_walk(rest[0], rest[1], *rest[2:])
     if cmd == 'trace':
         return cmd_trace(rest[0], rest[1], rest[2], *rest[3:])
+    if cmd == 'stride':
+        return cmd_stride(rest[0], rest[1], rest[2], rest[3],
+                          *rest[4:])
     if cmd == 'check':
         return cmd_check(rest[0])
     if cmd == 'sweep':
