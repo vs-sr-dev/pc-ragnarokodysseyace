@@ -5,57 +5,48 @@
 
 ---
 
-# Next session — the world under the questions
+# Next session — the player's half of the fight
 
-Session 22 reached **milestone 2**. `010_01_01` initialises itself out of its
-own compiled Squirrel, milestone 1's capsule crosses it, the trigger volume at
-the exit fires the function `trigger.trg` names, and the `cfMapJump` inside it
-loads `010_01_02` and starts that stage's script and its quest script. The
-report is [`milestone_stage.md`](milestone_stage.md). What to carry:
+Session 22 reached **milestone 2** and **milestone 3**. The game's own
+compiled Squirrel executes, a stage runs itself, and a monster decides out of
+its own tables and lands a blow. The reports are
+[`milestone_stage.md`](milestone_stage.md) and
+[`milestone_fight.md`](milestone_fight.md). What to carry:
 
 - **the scripts execute.** [`engine/squirrel.py`](../engine/squirrel.py) is a
-  Squirrel 2.2 VM over [`psq.py`](../tools/psq.py)'s output, 48 opcodes, and
-  every `.psq` on the disc runs through it: **3,011 files, 8,085 of 8,167
-  functions run to a stop, 387,884 instructions, 0 VM faults**. The 82
-  failures left are the script objecting to what a *stub* handed it, in five
-  classes and no others;
-- **the interface has an implementation.**
-  [`engine/host.py`](../engine/host.py) binds all 285 and **66 of them do the
-  work rather than record the call** - which is 17,635 of the 25,699 calls the
-  disc makes. The `suspend` vocabulary is a scheduler and the thirteen numbers
-  are in `RESUME`;
-- **three things running settled that reading could not.** A vararg function
-  keeps all its declared parameters - 447 boss-AI failures said so and the
-  weight tables summing to 10,000 confirmed it; **a cutscene's length is the
-  `u16` at `0x10` of its `.CSCM`**, and 68 of 68 cutscene scripts reach
-  `setDemoEnd` when driven by it; and the root table is one table shared by
-  the resident library and the loaded stage, which three name collisions in
-  155 stages settle from one side and 147 in one town's conversations from the
-  other;
-- **six names the engine holds are not functions** - `MONS_KIND_ORGA` and
-  `DEMO_S174_A`..`DEMO_S178_A`, read off the root table and defined by no
-  `.psq`. Same shape as `prowl_script`. See
-  [`format_api.md`](format_api.md).
+  Squirrel 2.2 VM, 48 opcodes, and every `.psq` on the disc runs through it:
+  **3,011 files, 8,085 of 8,167 functions run to a stop, 0 VM faults**;
+- **the interface has an implementation.** All 285 are bound and **115 of them
+  do the work** - 66 in [`host.py`](../engine/host.py), 50 in
+  [`brain.py`](../engine/brain.py) - which is 18,435 of the 25,699 calls the
+  disc makes;
+- **a monster decides and swings.** 83 of 83 decide on every one of 40 random
+  states; the chain action -> motion -> event list -> hit volume is
+  1,419 -> 1,109 -> 683 -> 545; and **`_act.par`'s range is a distance to the
+  target**, at correlation 0.590 with the reach of the same action's hit
+  volumes against a shuffled control of 0.051;
+- **running two implementations against each other is now a method here.**
+  The disc's own term dispatch checked this project's evaluator on 15,040
+  comparisons with 0 disagreements; it also showed two terms that are dead as
+  the shared include writes them, and settled the chance term's units by
+  making the OrcKing's table and its script agree 293 times in 300 instead of
+  217.
 
-### 1. Milestone 3 — *"a monster fights"*.
+### 1. The player's half of the fight.
 
-Now the head item, and like milestone 2 it is a build rather than a read. The
-six bosses' decision scripts **already execute**: given a real `getRand()`,
-the Orc King's `prt_44` returns 104 and 105 in equal numbers, which is its two
-5,000 weights. What is missing is the world underneath the questions - the
-**40-odd predicates** the terms call (`getHpRate`, `getTargetRange`,
-`isTargetJump`, `getPlaneRange` and the rest), which today are among the 219
-functions [`host.py`](../engine/host.py) records rather than answers.
-[`format_ai.md`](format_ai.md) names every one against the term id it
-implements, with its units, so the specifications are written. Beside them:
-the motion playback that [`CNOM`](format_cnom.md) and
-[`.anmcmd`](format_anmcmd.md) already describe, and which
-[`pose.py`](../engine/pose.py) can already play.
+The monster's side is done and the player's side is the same machinery
+pointed the other way: a player class's `.anmcmd` carries the same hit
+records, [`hitbox.py`](../engine/hitbox.py) already places them on the class
+skeleton, and a monster's body capsules are in its `objbin.bin`, read since
+session 15. What that produces is **a hit landing both ways**, which is the
+last thing before the damage expression - and the damage expression is
+[`combat_loop.md`](combat_loop.md) ledger item 1, one of the five that needs
+the EBOOT.
 
-**Do this one first**, and take the quest layer with it as far as it goes:
-`cfSetEnableEmGen`, `cfStartPieceLock` and `cfGetCntKillGenPieceLockOnly` are
-bound to state that nothing yet changes, and `enemy_gen.bin` says which
-monster comes out of which spawner ([`format_quest.md`](format_quest.md)).
+Two things fall out of it cheaply and neither needs the binary: **which body
+capsule a blow lands on**, which is what `region_data` indexes and therefore
+what a breakable part is; and **whether the player's reach matches its
+weapon**, the same join `fight.py reach` just made on the monster side.
 
 ### 2. What turns a trail on.
 
@@ -69,21 +60,19 @@ about in general, which makes it the cheapest way in.
 
 Thirty of fifty-two. Session 17's lesson still applies - a selector byte
 inside a payload changes what the rest of it means, and counting occurrences
-never sees that; `trace_par.bin`'s `+0x18` is the newest example, where 25 of
-523 records mean something else. `.mkc` is down to six (`0805`, `0806`,
-`080c`, `080d`, `080f`, `0406`) and each has a file set that says something:
-`080f`'s 32 files are all `appear` or `die`, `0406`'s fifteen are all loops,
-`080c`'s 35 are all emotes. See [`format_mkc.md`](format_mkc.md).
+never sees that. `.mkc` is down to six (`0805`, `0806`, `080c`, `080d`,
+`080f`, `0406`) and each has a file set that says something: `080f`'s 32 files
+are all `appear` or `die`, `0406`'s fifteen are all loops, `080c`'s 35 are all
+emotes. See [`format_mkc.md`](format_mkc.md).
 
 ### 4. The player's *base* defence and hit points, and the rest of the columns.
 
-[`combat_loop.md`](combat_loop.md) ledger item 2, narrowed by session 21.
-The modifier side is read and named - `DEF` is ability 1 of
-`it_db_ability.bin` and `MAX HP` is ability 3, each with the range it may move
-in, and `it_db_equip.bin` turns out to be **costumes and not armour**. What is
-missing is the starting value the modifiers apply to, and the level-up tables
-(`it_db_myorder*.bin`) are the next place to look. Beside it, the reward side
-of a quest pac is
+[`combat_loop.md`](combat_loop.md) ledger item 2. The modifier side is read
+and named - `DEF` is ability 1 of `it_db_ability.bin` and `MAX HP` is ability
+3, each with the range it may move in, and `it_db_equip.bin` turns out to be
+**costumes and not armour**. What is missing is the starting value the
+modifiers apply to, and the level-up tables (`it_db_myorder*.bin`) are the
+next place to look. Beside it, the reward side of a quest pac is
 `item_reward{,_multi,_region}.bin`, `weapon_decost.bin`, `destructible.bin`,
 `mapexception.bin` and the `q<NNNNN>.bin` header. The `CCLS` surface codes 1
 to 13 are the other well-posed one, and the pose layer says where a foot is,
@@ -100,23 +89,23 @@ closes, whose eleven interesting kinds `eff_hitlevel_tbl` already names.
 
 ### Then
 
-6. **The last two `ELBN` populations.** `stageparam.bin` is 154 files and only
+6. **The quest state machine, end to end.** The host binds
+   `cfSetEnableEmGen`, `cfStartPieceLock` and `cfGetCntKillGenPieceLockOnly`
+   to state that nothing yet changes, and `enemy_gen.bin` says which monster
+   comes out of which spawner ([`format_quest.md`](format_quest.md)). With a
+   monster that can fight and a stage that can run, a quest that can be
+   *completed* is a short step and it exercises the quest scripts the way the
+   cutscenes were exercised.
+7. **The last two `ELBN` populations.** `stageparam.bin` is 154 files and only
    its lights are read; `mot_param.bin` is 60 and only its motion id is.
-   `elbn.py records` is the instrument and it has now done three populations
-   with nothing but a stride and a column profile.
-7. **Where the minimap's scale is declared.** Session 19 measured the
+8. **Where the minimap's scale is declared.** Session 19 measured the
    transform - see [`format_stage.md`](format_stage.md) - and it is not in
-   `stageparam.bin`. The orientation and the anchor are settled; the scale is
-   a band, 1.31 to 1.33 px/m, and per-stage fitting still buys real accuracy.
-8. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
-   `+0x0a`. Bit fields; they correlate with whether the row carries a locator
-   and whether it carries an offset, and the obvious reading is a space or
-   follow mode. Nothing on the disc tests it; a renderer would.
-9. **Draw it.** `hitbox.py obj` writes a frame as Wavefront OBJ - bones, body
-   capsules and hit volumes together. Nobody has looked at one yet, and the
-   two things it would catch cheaply are a flag-4 shape read wrong and a
-   monster whose capsules do not cover it. A trail is two more line segments
-   on the same picture.
+   `stageparam.bin`. The scale is a band, 1.31 to 1.33 px/m.
+9. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
+   `+0x0a`. Bit fields; the obvious reading is a space or follow mode.
+10. **Draw it.** `hitbox.py obj` writes a frame as Wavefront OBJ - bones, body
+    capsules and hit volumes together. Nobody has looked at one yet, and a
+    fight is now something there would be a picture *of*.
 
 ---
 ## Deferred, with reasons
@@ -239,7 +228,13 @@ closes, whose eleven interesting kinds `eff_hitlevel_tbl` already names.
   [`pose.md`](pose.md). `7ffa`, the emitter and the effect index are all
   settled, leaving `z07` as the only pac that asks for something its table has
   not got: [`format_effect.md`](format_effect.md).
-- The AI's own leftovers: ten of the 76 condition terms, which the six
+- The AI's own leftovers: **the seven per-boss escape hatches** -
+  `checkB01Term` and its siblings - which nine tables call on 458 instructions
+  and which nothing on the disc defines, the same shape of hole as
+  `prowl_script`; **two terms that are dead as the shared include writes
+  them**, 103 (which throws on a non-zero operand) and 115 (which is never
+  true), both of which read cleanly if the engine's own predicate returns a
+  number rather than a flag; and ten of the 76 condition terms, which the six
   `.cnut` predate and so cannot name; what the `2xx` action block means, given
   that its ids resolve to the same motions as the `1xx`; the `kind` byte of
   `<name>.par` and the 1000-band ids in `_coop.par`; the five `ProbList` files
