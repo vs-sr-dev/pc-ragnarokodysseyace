@@ -10,7 +10,19 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-21 (2026-08-23). **Something runs, and now it has feet.** A capsule
+Sessions 1-22 (2026-08-23). **The game's own scripts run.** `010_01_01`
+initialises itself out of its own compiled Squirrel, a capsule with the game's
+own parameters crosses it, the trigger volume at the exit fires the function
+`trigger.trg` names, and the `cfMapJump` inside it loads the next stage and
+starts that one too. On the same machinery 68 of 68 cutscene scripts drive
+themselves to their own end, and a conversation with an NPC comes out as
+thirteen lines of English. That is [milestone
+2](docs/milestone_stage.md), *"a stage runs"* -
+[`engine/squirrel.py`](engine/squirrel.py) is a Squirrel 2.2 virtual machine
+and [`engine/host.py`](engine/host.py) binds all 285 functions the scripts
+call. Every `.psq` on the disc executes through it with **0 VM faults**.
+
+**And before that it had feet.** A capsule
 with the game's own acceleration, run speed, turn rate and radius crosses the
 first field of the game in 405 frames - 13.5 seconds - without leaving the
 collision mesh, and walks 135 stages, 127 of them with the body on legal
@@ -191,6 +203,12 @@ the combat loop  ->        8 files, 9 gaps     tools/combat.py
   the attack     ->      450 weapons, 6 kinds of 75, and none of it in a JSON
   the stats      ->      162 of 233 abilities named by the cards that move them
 
+the scripts run  ->    3,011 of 3,011 executing  engine/squirrel.py  0 faults
+  the interface  ->      285 bound, 66 doing the work    engine/host.py
+  a stage        ->      155 loaded and initialised, 507 of 507 triggers read
+  a cutscene     ->       68 of 68 running to their own setDemoEnd
+  a conversation ->       13 lines, resumed through the suspend protocol
+
 a capsule runs   ->      135 stages walked   engine/run.py  127 clean
   one crossing   ->      405 frames over 010_01_01, 13.5 s at a run
   speed          ->     5.05 m/s achieved against 5.10 flat out
@@ -228,7 +246,8 @@ tables](docs/format_quest.md),
 [the actor parameters](docs/params.md). How they fit together in a fight is
 [the combat loop](docs/combat_loop.md), which traces one hit end to end and
 ends in a ledger of what is still missing. What running it produced is in
-[milestone 1](docs/milestone_numbers.md) and [the pose](docs/pose.md), which
+[milestone 1](docs/milestone_numbers.md), [milestone
+2](docs/milestone_stage.md) and [the pose](docs/pose.md), which
 now covers the hit volume as well as the foot. The
 plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
@@ -416,13 +435,25 @@ read.
 
 ## Engine
 
-`engine/` is where the reading stops and the reimplementation starts. Five
-files, no renderer, no VM, no combat: a world that answers where the floor is
-and where the fence is, an actor that moves under the game's parameter table,
-a pose layer that puts a skeleton on the ground, a hitbox layer that puts a
-volume on the skeleton, and a driver that reports what comes out.
+`engine/` is where the reading stops and the reimplementation starts. Seven
+files, no renderer and no combat: a world that answers where the floor is and
+where the fence is, an actor that moves under the game's parameter table, a
+pose layer that puts a skeleton on the ground, a hitbox layer that puts a
+volume on the skeleton, a driver that reports what comes out - and, since
+session 22, a Squirrel 2.2 virtual machine and the 285 host functions the
+game's own scripts call into.
 
 ```
+python engine/host.py stage <tree> 010_01_01 q00101 job.cpk/sw/sw.json
+                                                   a stage, script and all
+python engine/host.py demo <tree> [pac]            a cutscene, to its own end
+python engine/host.py talk <tree> No13800.psq      a conversation, in English
+python engine/host.py stages <tree>                every stage initialised
+python engine/host.py api <tree>                   the interface, and how much
+                                                   of it is answered
+python engine/squirrel.py sweep <tree>             every script on the disc
+python engine/squirrel.py run <tree> <psq> [fn]    one script, one function
+
 python engine/run.py numbers <class json>          what the parameters produce
 python tools/combat.py hitlevel <dir>          the hit level, cues resolved
 python tools/combat.py cues|power <dir>       the hit record, by side
@@ -464,8 +495,11 @@ happens at a wall - are marked as the engine's choices in
 [`engine/actor.py`](engine/actor.py) rather than smoothed over, and the four
 the pose layer makes in [`engine/pose.py`](engine/pose.py) the same way. The
 reasoning, and what came out of running it, is in
-[`docs/milestone_numbers.md`](docs/milestone_numbers.md) and
-[`docs/pose.md`](docs/pose.md).
+[`docs/milestone_numbers.md`](docs/milestone_numbers.md),
+[`docs/milestone_stage.md`](docs/milestone_stage.md) and
+[`docs/pose.md`](docs/pose.md). The script layer makes its own three, and they
+are in the second of those: the root-table fallback, how long the host holds a
+talk line, and what a stubbed function returns.
 
 ## Licence
 

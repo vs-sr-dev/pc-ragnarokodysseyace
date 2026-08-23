@@ -1,6 +1,6 @@
 # PC-ROA — strategy
 
-*Aligned to the end of session 21 (2026-08-23). Detail and priorities live in
+*Aligned to the end of session 22 (2026-08-23). Detail and priorities live in
 [`TODO.md`](TODO.md); this document is the frame.*
 
 Goal: a **native PC reimplementation** of *Ragnarok Odyssey ACE*, the PS3
@@ -165,13 +165,22 @@ four for a frame picked at random. It also closed the `.mkc` sound record: its
 last unread field is a `CMDL` locator id, and 2,715 of 2,716 resolve. See
 [`pose.md`](pose.md).
 
+**Session 22 added the fifth and sixth, and they are the VM.**
+[`squirrel.py`](../engine/squirrel.py) executes Squirrel 2.2 bytecode - 48
+opcodes, and every script on the disc runs through it with **0 VM faults** -
+and [`host.py`](../engine/host.py) is the other side of
+[`format_api.md`](format_api.md): all 285 functions bound, 66 of them to real
+state, the `suspend` vocabulary turned into a scheduler, and the trigger
+volumes wired to the marker table. It was written rather than linked because
+the disc's reader is already in Python and complete, so the interpreter is the
+second half of a file that exists; a C Squirrel would need a build, a binding
+and a byte-swap to read a big-endian stream.
+
 The shape of the rest is settled: a data-driven engine whose
 tables come from `ECH`, whose display text comes from `TXT`, whose actor
-parameters come from the JSON, and which **hosts a Squirrel VM** and exposes
-285 named functions to it, described in [`format_api.md`](format_api.md). All four are readable today. Squirrel is small,
-permissively licensed and still maintained, so the fourth is a dependency
-rather than a project — and the sister project's decision, "build the engine to
-host the game's own scripts verbatim", applies here after all.
+parameters come from the JSON, and which hosts that VM. All four sources are
+readable today, and the sister project's decision, "build the engine to host
+the game's own scripts verbatim", applies here after all.
 
 ## Phase 5 — Bring-up by area
 
@@ -213,28 +222,34 @@ The stage this ran on has been readable since session 8: a ground mesh, 346
 collision triangles, a fence, four spawn points in formation at one end and a
 doorway at the other, and twenty-odd places monsters come from in between.
 
-### 2 and 3, and what they still need
+### 2. "A stage runs" — ✅ **reached, session 22**
 
-**As of session 10 the second has the stage's script.** The same stage's `.psq`
-decompiles, its triggers name functions that are in it, and the calls those
-functions make name the markers the stage already declared. The second
-milestone — *"a stage runs"* — needs a Squirrel VM, the 285 native functions
-stubbed, and nothing else that is not already read. **Session 18 wrote down
-what each of them does**, including the `suspend` protocol the host has to
-implement to resume a blocked script, so the stubs have specifications.
+`010_01_01`'s own script initialises it, milestone 1's capsule crosses it in
+**460 frames with 0 frames off the collision mesh**, the trigger volume at the
+exit fires the function `trigger.trg` names, and the `cfMapJump` inside it
+loads `010_01_02` and starts that stage's script and its quest script. On the
+same machinery **68 of 68 cutscene scripts run to their own `setDemoEnd`**,
+driven by a length read off their camera track, and a conversation with Norn
+comes out as 13 lines of English through the `suspend` protocol. Over the
+whole disc, **155 stages load and initialise and all 507 trigger lines
+parse**. The report is [`milestone_stage.md`](milestone_stage.md).
 
-**Session 21 finished the reading half of it.** The scripts now come back as
-source rather than as jump tables — 2,753 of 2,753 functions structured with
-nothing left over — so the phase machine a cutscene runs on, the AI's term
-dispatch and its weighted action selector can be read directly instead of
-reconstructed. Nothing between here and milestone 2 is a reading problem any
-more; what is left is the VM and the stubs.
+Three things came out of it that reading could not produce: a vararg function
+keeps all its declared parameters, which 447 boss-AI failures said and the
+weight tables summing to 10,000 confirmed; a cutscene's length is the `u16` at
+`0x10` of its `.CSCM`; and the root table is one table shared by the resident
+library and the loaded stage, which three name collisions in 155 stages and
+147 in one town's conversations settle from both sides.
 
-**As of session 12 the third has a monster that can act.** The AI's condition
-vocabulary, its action tables and its parameters are read, and an action id
-resolves to a named motion, so the loop *decide → pick → play* is describable
-end to end from the disc. The third milestone — *"a monster fights"* — now
-needs the 40-odd host predicates the terms call (`getHpRate`, `getTargetRange`,
-`isTargetJump` and the rest), which are small functions over state the engine
-would have anyway, plus the motion playback that `CNOM` and `.anmcmd` already
-describe.
+### 3. "A monster fights" — what it still needs
+
+**As of session 12 the third has a monster that can act**, and as of session
+22 it has somewhere to act. The AI's condition vocabulary, its action tables
+and its parameters are read, an action id resolves to a named motion, and the
+six bosses' decision scripts now *execute* - `prt_select` picks an action out
+of a weight table and returns it. What is missing is the world underneath the
+questions: the 40-odd predicates the terms call (`getHpRate`,
+`getTargetRange`, `isTargetJump` and the rest) are among the 219 functions
+[`host.py`](../engine/host.py) still records rather than answers, and they are
+small functions over state a running stage would have anyway. Plus the motion
+playback that `CNOM` and `.anmcmd` already describe.

@@ -1,6 +1,11 @@
 # The script interface — the functions the engine has to provide
 
-**Status: read.** 587 names are called on the root table; 296 of them are
+**Status: read, and since session 22 implemented.** All 285 are bound in
+[`../engine/host.py`](../engine/host.py), 66 of them to something that
+does the work rather than records the call - which is 17,635 of the 25,699
+calls the disc makes. See [`milestone_stage.md`](milestone_stage.md).
+
+587 names are called on the root table; 296 of them are
 defined by a `.psq` and **291 are not**. Five of the 291 are Squirrel's own
 standard library and one is a script that was never exported, so the engine's
 own interface is **285 functions**. This document says what they do. Tool:
@@ -609,6 +614,45 @@ declares itself, and the enumeration counts a constructor call as a root-table
 call. `cfTestVec3`, `getSampleFloatArray3`, `getSampleFloatArray4`,
 `getSampleIntArray2` and `SoundManager_getInstance` are test scaffolding, one
 call each, in a `misc.cpk` script that nothing runs.
+
+## Six names that are not functions
+
+Running the scripts turned up a second hole of `prowl_script`'s shape. Six
+names are *read* off the root table, never called, and defined by no `.psq`:
+
+```
+DEMO_S174_A  DEMO_S175_A  DEMO_S176_A  DEMO_S177_A  DEMO_S178_A
+MONS_KIND_ORGA
+```
+
+`setDemoID(DEMO_S177_A, 0)` is `quest.cpk/q07607.pac/010_01_01.psq`, where
+every other quest script writes the number; `MONS_KIND_ORGA` is a monster kind
+in a mercenary debug function. So **the root table carries named constants as
+well as functions**, and these six are the only ones the scripts still reach
+for. They are the whole of it: 25 names are read off `this` and the other 19
+are the reading script's own globals.
+
+## The library the interface sits under
+
+`misc.cpk/psq_common.pac` is not one file but five - `common`, `class`,
+`stage`, `quest` and `test` - and together they define **85 functions and no
+name twice**, which is what says they are all resident. The wrappers named
+throughout this document (`wait`, `talk`, `animeIcon`, the ten `shop_*`) are
+theirs.
+
+Two counts say the root table really is one table shared by the library and
+whatever stage is loaded:
+
+- `room_select`, in `common.psq`, calls **`mapjump_140_02_01`**, which only
+  `stage.cpk/140_01_01/param.pac/140_01_01.psq` defines;
+- over all 155 stages, loading the library and then that stage's own scripts
+  defines exactly **three** names twice - `Vec3` in `050_02_03` and
+  `checkQuestClearByIDFlag` in the two town stages.
+
+The town's *conversations* are the exception that proves it: the 460 scripts
+under `stage.cpk/140_02_01` collide on **147** names - seventeen of them
+define `talkNornThanks` - so one is loaded when a conversation starts and
+dropped when it ends.
 
 ## Still open
 

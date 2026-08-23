@@ -333,6 +333,15 @@ trigger names are markers in the same stage's `hta.bin`. The one exception is
 that has no such marker. So `hta.bin` places a named volume and `trigger.trg`
 hangs a script on it; neither file means anything without the other.
 
+**And all 508 of them are a sequence of calls with constant arguments.**
+Session 22 had to execute them and so had to parse them; `call_line` in
+[`../engine/host.py`](../engine/host.py) reads a name, a bracket and literal
+arguments and nothing else, and **507 of the 507 on the 155 stages that have a
+collision mesh come back**. 147 are `callQuestScript("<something>()")`, a line
+of source inside a string, so the bracket that closes the call has to be found
+with the quotes respected - a lazy regular expression stops inside the string
+and reads the trigger wrong. See [`milestone_stage.md`](milestone_stage.md).
+
 **The script is source text, not bytecode.**
 
 ```

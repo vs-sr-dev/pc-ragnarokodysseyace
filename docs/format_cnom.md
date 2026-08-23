@@ -26,6 +26,14 @@ file length == 16 + payload + 16 + POF0 payload + 16       on all 3,043
 0x4C  float 1000.0               constant on all 3,043
 ```
 
+**`CSCM` puts a cutscene's length in the same place.** The 78 camera tracks
+under `demo.cpk` open with the same header, and the `u16` at `0x10` runs 226
+to 1,081 - 7.5 to 36 seconds at 30 Hz. Session 22 checked it by running the
+cutscene scripts against it: all 68 that have both a track and a script reach
+`setDemoEnd()`, and none of them ends before its track does. See
+[`milestone_stage.md`](milestone_stage.md). The `u16` beside it is 0 on all 78
+where `CNOM` writes 1.
+
 Every `C___` format on the disc opens this way. What follows the payload sorts
 them in two:
 
