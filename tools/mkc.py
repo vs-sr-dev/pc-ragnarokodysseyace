@@ -101,6 +101,7 @@ Usage:
   python mkc.py banks <dir>              bank ids and the `.acb` they name
   python mkc.py cues <dir> <bank>        one bank's cue list
   python mkc.py effects <dir>            indices against `effect.bin`
+  python mkc.py toggles <dir>            `0400`/`0803`/`0804`, the switches
 """
 
 import collections
@@ -139,6 +140,10 @@ NAMES = {
     0x0404: 'on',
     0x0405: 'off',
     0x0802: 'shake?',
+    0x0400: 'article',
+    0x0803: 'article2',
+    0x0804: 'run cycle',
+    0x0807: 'which foot',
 }
 
 
@@ -452,6 +457,67 @@ def cmd_effects(root) -> int:
     return 0
 
 
+
+def cmd_toggles(root) -> int:
+    """`0400`, `0803` and `0804`, which turn out to be switches.
+
+    `0400` carries a state and a **locator id** - the same numbering as
+    [`CMDL`](cmdl.py)'s `S4`, the emitter of `7ff9` and the script's
+    `chrSetAttachArticle`. Grouped by (file, locator) the states strictly
+    alternate, which is what a show/hide pair looks like and what a parameter
+    does not. `0803` fires on the same frames with the opposite value, and
+    `0804` turns out to name a set of files rather than an event.
+    """
+    import collections                                        # noqa: PLC0415
+    import cmdl                                               # noqa: PLC0415
+
+    where: dict[int, collections.Counter] = {}
+    for pth, blob in cmdl.collect(root):
+        try:
+            m = cmdl.Cmdl(blob, pth)
+            names = m.names(5)
+        except (ValueError, struct.error):
+            continue
+        for i, node in m.locators():
+            where.setdefault(i, collections.Counter())[
+                names[node] if node < len(names) else '?'] += 1
+
+    groups = alternating = 0
+    locs: collections.Counter = collections.Counter()
+    pair: collections.Counter = collections.Counter()
+    runs: list[str] = []
+    for path, blob in collect(root):
+        if not path.lower().endswith('.mkc'):
+            continue
+        per: dict[int, list] = collections.defaultdict(list)
+        for r in Mkc(blob, path).records:
+            per[r.op].append(r)
+        by_frame = {r.frame: r.args[0] for r in per.get(0x0803, [])}
+        for r in per.get(0x0400, []):
+            locs[r.args[1]] += 1
+            if r.frame in by_frame:
+                pair[(r.args[0], by_frame[r.frame])] += 1
+        for lid in {r.args[1] for r in per.get(0x0400, [])}:
+            s = [r.args[0] for r in per[0x0400] if r.args[1] == lid]
+            groups += 1
+            alternating += all(a != b for a, b in zip(s, s[1:]))
+        if per.get(0x0804):
+            runs.append(path.rsplit('/', 1)[-1])
+
+    print(f'0400: {sum(locs.values())} records, and grouped by (file, '
+          f'locator) the state alternates on {alternating} of {groups}')
+    for lid, n in locs.most_common():
+        got = where.get(lid)
+        print(f'   locator {lid:<6d} {n:5d}   '
+              + (' '.join(f'{k} x{v}' for k, v in got.most_common(3))
+                 if got else 'no model declares it'))
+    print(f'\n0803 against the 0400 on its own frame: '
+          + '  '.join(f'{a}/{b} x{n}' for (a, b), n in sorted(pair.items())))
+    print(f'\n0804: {len(runs)} files, and they are a set, not an event:')
+    print('   ' + ' '.join(sorted(runs)))
+    return 0
+
+
 def main() -> int:
     a = sys.argv[1:]
     if not a:
@@ -470,6 +536,8 @@ def main() -> int:
         return cmd_banks(rest[0])
     if cmd == 'cues':
         return cmd_cues(rest[0], rest[1])
+    if cmd == 'toggles':
+        return cmd_toggles(rest[0])
     if cmd == 'effects':
         return cmd_effects(rest[0])
     print(f'unknown command: {cmd}')
