@@ -5,35 +5,22 @@
 
 ---
 
-# Next session — the hit record's geometry
+# Next session — write down what the engine's functions do
 
-Session 17 read [`effect.bin`](format_effect.md), the last unread link in the
-effect layer. The three numbers to carry are that **`.mkc`'s `0801` addresses
-a row's own id byte and not its position** — 4,187 of 4,190 references, which
-closes thirteen of the fourteen pacs that indexed past the end of their table
-— that **the `u32` at `+0x04` is a `CMDL` locator id**, so an effect hangs off
-the same sockets a sound comes out of, and that **`.PTP` category 2 is this
-file**, 96 of 96, which was the last unplaced piece of the effect addressing.
-The reader is [`tools/effect.py`](../tools/effect.py).
+Session 17 read [`effect.bin`](format_effect.md) and then named the hit
+record's geometry. Four things to carry: **`.mkc`'s `0801` addresses a row's
+own id byte**, not its position; **`effect.bin`'s `+0x04` is a `CMDL` locator
+id**, so an effect hangs off the same sockets a sound comes out of; **`.PTP`
+category 2 is `effect.bin` itself**, 96 of 96, which was the last unplaced
+piece of the effect addressing; and **the `.anmcmd` hit record's byte at
+`+0x01` is a shape**, which is why nothing had ever distinguished its three
+vectors — there is no one answer, there are six. See
+[`format_anmcmd.md`](format_anmcmd.md).
 
-What is left is the geometry, the script surface, and the opcodes.
+The geometry question that had been open since session 9 is closed. What is
+left is the script surface, the opcodes, and the tables nobody has described.
 
-### 1. Which of the hit record's three vectors is which.
-
-[`.anmcmd`](format_anmcmd.md) carries three signed vec3s per hit and the
-natural readings are an offset, an end point and a direction. The record names
-the bone it hangs off, and [`pose.py`](../engine/pose.py) can put that bone in
-world space on the frame the hit fires. An offset from the bone and a point in
-the actor's own space look nothing alike once both are plotted against the
-body's extent. Open since session 9, it was waiting on forward kinematics, and
-those have existed since session 16.
-
-It is also the *same shape of question* the effect table just answered from
-the other side: `effect.bin`'s offset is an offset **from a named locator**,
-in metres, with a rotation beside it. If the hit record turns out to read the
-same way, the two agree and the answer is cheap.
-
-### 2. The 289 native script functions.
+### 1. The 289 native script functions.
 
 `psq.py api` gives each one a name and an arity histogram, and the call sites
 give the argument values. That is enough to write down what most of them do
@@ -50,20 +37,22 @@ The ones a **stage** needs first are still `cfSetEnableEmGen`,
 `cfGetGlobalFlag`, `cfSetGlobalFlag`, `chrSetMotion`.
 
 `effStart`, `effSetPos`, `effSetRot` and `getHTAPos` can be crossed off in
-passing: [`format_effect.md`](format_effect.md) shows what each of them is
-handed and where it comes from.
+passing: [`format_effect.md`](format_effect.md) shows what each is handed and
+where it comes from.
 
-### 3. The opcodes that are left, in both event formats.
+### 2. The opcodes that are left, in both event formats.
 
 Thirty of `.anmcmd`'s fifty-two and ten of `.mkc`'s twenty-one. The positional
-method is close to exhausted on `.anmcmd`; what would move it further is the
-geometry, which is item 1. `.mkc`'s ten are easier and worth doing in the same
-pass, because six of them are players-only or monsters-only and that is where
-a correlation starts: `0803`, `0804`, `0805`, `080d` are the players'
+method looked exhausted on `.anmcmd` and the hit record has just shown what
+was missing from it — a selector byte inside a payload changes what the rest
+of the payload means, and counting occurrences of an opcode never sees that.
+Worth a second pass with that in mind. `.mkc`'s ten are easier and worth doing
+alongside, because six of them are players-only or monsters-only and that is
+where a correlation starts: `0803`, `0804`, `0805`, `080d` are the players'
 (624 records), `080f` is the monsters' (193), and `0802`'s four arguments are
 a camera shake whose roles are unread.
 
-### 4. The `ELBN` records, field by field.
+### 3. The `ELBN` records, field by field.
 
 The container is solved and 318 names are addressable; not one record is
 described. `job.cpk/<class>/objbin.bin` is the best target, because it is the
@@ -73,7 +62,7 @@ what the rest of them will cost.
 
 ### Then
 
-5. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
+4. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
    small, well-posed instances with known consumers: the `.psq` calls name
    their rows, so the columns can be read against the script that uses them.
    `effect.bin` is the worked example — its columns were named by its
@@ -83,8 +72,14 @@ what the rest of them will cost.
    a second consumer, since `7ffa` fires a footstep and the ground is what has
    to choose its sound. **The pose layer now says where that foot is**, so the
    triangle under it, and therefore its surface code, is a lookup away.
-6. **The minimap transform.** 137 `.map` images, each visibly the silhouette
+5. **The minimap transform.** 137 `.map` images, each visibly the silhouette
    of its own stage's collision. A small job that gives the UI layer a map.
+6. **Draw a hitbox on a posed skeleton.** Everything it needs now exists:
+   [`pose.py`](../engine/pose.py) puts the bone in world space on the firing
+   frame, and the hit record's shape, offsets and radii are named. It would
+   also settle the one thing the rest pose could not — whether an offset is
+   turned by its bone — because an animated frame with a bent elbow separates
+   the two readings that a bind pose does not.
 7. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
    `+0x0a`. They are bit fields, they correlate with whether the row carries a
    locator and whether it carries an offset, and the obvious reading is a
@@ -137,10 +132,13 @@ what the rest of them will cost.
   buffed state but the disc never names it, and a search of all 25,288 messages
   for "Fever" found nothing. Also the four unexplained elements of the `ab_*`
   status vectors.
-- `.anmcmd`: thirty of the fifty-two opcodes; which of the hit record's three
-  vectors is which; the unit of `+0x35`; why 554 of the 2,053 name no motion;
-  and opcode 10's effect id, which session 14 showed resolves nowhere on the
-  disc. See [`format_anmcmd.md`](format_anmcmd.md).
+- `.anmcmd`: thirty of the fifty-two opcodes; the unit of `+0x35`; why 554 of
+  the 2,053 name no motion; and opcode 10's effect id, which session 14 showed
+  resolves nowhere on the disc. **The hit record's three vectors are
+  settled** — `flag` at `+0x01` is a shape and it says which is which — but
+  two things about them are not: whether an offset is turned by its bone, and
+  what flag 4's three points bound. See
+  [`format_anmcmd.md`](format_anmcmd.md).
 - `.psq`: `_OP_COMPARITH`'s packed `_arg1`, exercised three times on the whole
   disc and read out of the interpreter rather than confirmed; and the `.ppcut`
   macro names, which the preprocessor consumed. See
@@ -258,6 +256,59 @@ what the rest of them will cost.
   bytes of a motion row as one `u32`; they are four one-byte fields, two of
   which are an address. Noted in [`format_ech.md`](format_ech.md), because it
   is the method that transfers, not the table.
+- **The hit record's three vectors are named, and the answer is that there is
+  no single answer.** See [`format_anmcmd.md`](format_anmcmd.md). The question
+  had been open since session 9 and was being asked the wrong way round:
+  **`flag` at `+0x01` is a shape**, and the shape says what the vectors are.
+  `python anmcmd.py shapes extract/tree`.
+  - **a flag never half-uses a vector.** Flags 0, 1 and 2 leave the third at
+    zero on all 5,616 of their records and flag 0 leaves the second at zero on
+    all 3,258. That is a field under a selector, not a field that happens to
+    be empty;
+  - **on flags 3 and 5 the second vector is a direction and the third is a
+    bare number.** All 131 second vectors have length exactly 1, 98 of them on
+    the `y` axis alone, and all 129 third vectors carry a value in `x` and
+    nothing in `y` or `z`. The tilted axes settle it beyond argument: 24
+    records carry `(-0.5144957304000854, 0.8574929237365723, 0)`, which is
+    `(-0.6, 1, 0)` normalised to the last bit of a float. Nobody types that.
+    So the shape is a cylinder — a centre, an axis and a radius — and the
+    files agree: `freezing_trap_bullet_active` is a disc of radius 4.5 m
+    standing on the ground, `quag_mire_bullet` the same with 3.0;
+  - **the second bone appears only where the second vector is a point.**
+    Flags 1, 2 and 4 name one on 2,253 records; flags 0, 3 and 5 name one on
+    none of their 3,390. A sphere needs one anchor, a disc needs one anchor,
+    a capsule needs two;
+  - **flags 2, 4 and 5 are monsters only** — one player record in 538. A
+    player gets a sphere or a capsule; the complicated shapes are the bosses'.
+- **`+0x04` is the anchor of the second vector, and it is a bone of the same
+  limb.** Over the 2,253 records that name one, **2,194 sit on one chain with
+  the first**: the same node 1,467 times, its parent 256, its child 201,
+  further up the chain 270, elsewhere 59. The pairs read as limb segments —
+  `node_r_forearm → node_r_hand`, `node_head → node_neck`,
+  `node_neck → node_neck2`, `node_hara → node_spine1`.
+  - **and the vectors are far too short to span the limb themselves.** Over
+    the 786 records naming two *different* nodes the joint separation is
+    6.41 m at the median while `|v1 - v0|` is 1.00 m — 16 % of it — under half
+    of it on 614 of 786 and within 30 % of it on 35. The limb supplies the
+    length. Read that way the capsule comes out 7.79 m long against a 6.41 m
+    limb, which is a hitbox a little longer than the arm it wraps.
+- **The offsets are lengths in the actor's own metres, and one of the two
+  "sizes" is not a length at all.** Median `|v0|` per actor rises with the
+  actor's standing height over 80 actors (r = 0.61), and so does `+0x2C`
+  (r = 0.75 over 88). **`+0x30` does not** — r = −0.04, a median of 1.00 from
+  the 1.9 m `z05` to the 35 m `b11`, and 5,160 of 6,193 values inside
+  [0.5, 2.0]. It is a ratio, and calling both fields "a size" was hiding that.
+- **What the rest pose could not settle, said plainly.** Whether an offset is
+  turned by its bone or only carried with it is still open, and two
+  measurements that looked decisive are not: the mirror test splits 141
+  `x`-negated against 102 identical *with the same bone giving both answers in
+  different files*, and the capsule-length test gives 1.25 limb-lengths turned
+  against 1.10 untuned, within a factor of two on 79 % either way — these
+  rigs' bind rotations sit too close to identity for a rest pose to separate
+  the readings. Both are written into the doc so the next reader does not
+  spend the afternoon on them again. The weapon case and a weak child-
+  direction measurement (29.3 % within 26° against 15.2 %) lean toward the
+  bone's own frame; an animated frame with a bent elbow would decide it.
 - **Still open here**: the three bit-field bytes at `+0x08`..`+0x0a` of a
   motion row, the two at `+0x08`..`+0x09` of a stage row, the `kind` byte that
   is 0 on 102 rows and 1 on 2,332 with nothing else splitting with it, and the
