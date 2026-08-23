@@ -5,55 +5,69 @@
 
 ---
 
-# Next session — Milestone 2 needs a VM, and nothing else read
+# Next session — the world under the questions
 
-Session 21 did two things: it wrote **[`combat_loop.md`](combat_loop.md)**,
-which had been item 1 for three sessions, and it **structured the `.psq`
-control flow**, which had been item 2 for two. Both are closed. What to carry:
+Session 22 reached **milestone 2**. `010_01_01` initialises itself out of its
+own compiled Squirrel, milestone 1's capsule crosses it, the trigger volume at
+the exit fires the function `trigger.trg` names, and the `cfMapJump` inside it
+loads `010_01_02` and starts that stage's script and its quest script. The
+report is [`milestone_stage.md`](milestone_stage.md). What to carry:
 
-- **the scripts come back as source.** `psq.py src` rebuilds `if`, `else`,
-  `switch`, `while`, `foreach`, `break` and the short-circuit operators, and
-  **2,753 of 2,753 functions that carry a jump structure with 0 jumps unplaced
-  and 0 statements stepped over**. Squirrel has no `goto`, so the target was
-  all of them and the shortfall is the measurement: `psq.py struct`;
-- **a `switch` is told from an `else if` by a jump no `if` ever makes** — a
-  case falls through into the *next case's body*, past its own test. A first
-  discriminator that counted chain links instead left 100 jumps stranded in 30
-  two-case switches, and the count is what said so;
-- **two holes were invisible until the arms became blocks.** `a && b` printed
-  as a branch on `b` alone and lost the left operand, on 2,635 sites; and a
-  liveness rule that gave up at the first jump dropped **3,004 statement
-  calls**. Both fixed — the second by real backward dataflow over the jump
-  graph, which the structurer is what made available;
-- **the hit level is three values and two tables agree**, `atk` is not in a
-  player's JSON, a boss takes no hit-stop, and the tension curves are per
-  class. See [`combat_loop.md`](combat_loop.md) and its ledger of nine;
-- **`it_db_ability.bin` is one row per stat an item can move** — `DEF` at 1,
-  `MAX HP` at 3, the critical rate at 9, its bonus at 10, the knockback
-  resistance at 8 — with the range each may move in, named by the 1,091 card
-  skills that index it. `it_db_equip.bin`, the obvious place to have looked
-  for armour, is **costumes**.
+- **the scripts execute.** [`engine/squirrel.py`](../engine/squirrel.py) is a
+  Squirrel 2.2 VM over [`psq.py`](../tools/psq.py)'s output, 48 opcodes, and
+  every `.psq` on the disc runs through it: **3,011 files, 8,085 of 8,167
+  functions run to a stop, 387,884 instructions, 0 VM faults**. The 82
+  failures left are the script objecting to what a *stub* handed it, in five
+  classes and no others;
+- **the interface has an implementation.**
+  [`engine/host.py`](../engine/host.py) binds all 285 and **66 of them do the
+  work rather than record the call** - which is 17,635 of the 25,699 calls the
+  disc makes. The `suspend` vocabulary is a scheduler and the thirteen numbers
+  are in `RESUME`;
+- **three things running settled that reading could not.** A vararg function
+  keeps all its declared parameters - 447 boss-AI failures said so and the
+  weight tables summing to 10,000 confirmed it; **a cutscene's length is the
+  `u16` at `0x10` of its `.CSCM`**, and 68 of 68 cutscene scripts reach
+  `setDemoEnd` when driven by it; and the root table is one table shared by
+  the resident library and the loaded stage, which three name collisions in
+  155 stages settle from one side and 147 in one town's conversations from the
+  other;
+- **six names the engine holds are not functions** - `MONS_KIND_ORGA` and
+  `DEMO_S174_A`..`DEMO_S178_A`, read off the root table and defined by no
+  `.psq`. Same shape as `prowl_script`. See
+  [`format_api.md`](format_api.md).
 
-### 1. Milestone 2 — *"a stage runs"*.
+### 1. Milestone 3 — *"a monster fights"*.
 
-Now the only thing in front of it, and no longer a reading problem.
-`010_01_01.psq` decompiles to readable Squirrel, its triggers name functions
-in it, and [`format_api.md`](format_api.md) specifies all 285 host functions
-including the `suspend` protocol. What it needs is a **Squirrel 2.2 VM** — a
-dependency, not a project — the 285 stubbed against
-[`engine/`](../engine)'s world, and the resume. **Do this one first.**
+Now the head item, and like milestone 2 it is a build rather than a read. The
+six bosses' decision scripts **already execute**: given a real `getRand()`,
+the Orc King's `prt_44` returns 104 and 105 in equal numbers, which is its two
+5,000 weights. What is missing is the world underneath the questions - the
+**40-odd predicates** the terms call (`getHpRate`, `getTargetRange`,
+`isTargetJump`, `getPlaneRange` and the rest), which today are among the 219
+functions [`host.py`](../engine/host.py) records rather than answers.
+[`format_ai.md`](format_ai.md) names every one against the term id it
+implements, with its units, so the specifications are written. Beside them:
+the motion playback that [`CNOM`](format_cnom.md) and
+[`.anmcmd`](format_anmcmd.md) already describe, and which
+[`pose.py`](../engine/pose.py) can already play.
+
+**Do this one first**, and take the quest layer with it as far as it goes:
+`cfSetEnableEmGen`, `cfStartPieceLock` and `cfGetCntKillGenPieceLockOnly` are
+bound to state that nothing yet changes, and `enemy_gen.bin` says which
+monster comes out of which spawner ([`format_quest.md`](format_quest.md)).
 
 ### 2. What turns a trail on.
 
 A weapon carries three `par_tbl` records and one `ref_tbl` entry to hang them
-on, so something outside the file picks between them — an `.anmcmd` or `.mkc`
+on, so something outside the file picks between them - an `.anmcmd` or `.mkc`
 opcode, most likely, and thirty of `.anmcmd`'s fifty-two are still unread.
 That is a well-posed question aimed at the same unread opcodes item 3 asks
 about in general, which makes it the cheapest way in.
 
 ### 3. The `.anmcmd` opcodes.
 
-Thirty of fifty-two. Session 17's lesson still applies — a selector byte
+Thirty of fifty-two. Session 17's lesson still applies - a selector byte
 inside a payload changes what the rest of it means, and counting occurrences
 never sees that; `trace_par.bin`'s `+0x18` is the newest example, where 25 of
 523 records mean something else. `.mkc` is down to six (`0805`, `0806`,
@@ -64,7 +78,7 @@ never sees that; `trace_par.bin`'s `+0x18` is the newest example, where 25 of
 ### 4. The player's *base* defence and hit points, and the rest of the columns.
 
 [`combat_loop.md`](combat_loop.md) ledger item 2, narrowed by session 21.
-The modifier side is read and named — `DEF` is ability 1 of
+The modifier side is read and named - `DEF` is ability 1 of
 `it_db_ability.bin` and `MAX HP` is ability 3, each with the range it may move
 in, and `it_db_equip.bin` turns out to be **costumes and not armour**. What is
 missing is the starting value the modifiers apply to, and the level-up tables
@@ -78,7 +92,7 @@ so the triangle under it is a lookup away.
 ### 5. Two joins the combat ledger names and the disc can answer.
 
 `se_hitlevel_tbl`'s **third word**, 0 to 8 across the fifteen player entries
-and per class rather than global — it is what a weapon or a skill declares to
+and per class rather than global - it is what a weapon or a skill declares to
 pick its cue block, and it is *not* `it_db_weapon.bin` column 5, whose six
 values are a different space. `it_db_skill.bin` is the obvious other side.
 And **`ht_arrow_tbl`**, 42 records at a stride of 80 that the repeat period
@@ -91,14 +105,14 @@ closes, whose eleven interesting kinds `eff_hitlevel_tbl` already names.
    `elbn.py records` is the instrument and it has now done three populations
    with nothing but a stride and a column profile.
 7. **Where the minimap's scale is declared.** Session 19 measured the
-   transform — see [`format_stage.md`](format_stage.md) — and it is not in
+   transform - see [`format_stage.md`](format_stage.md) - and it is not in
    `stageparam.bin`. The orientation and the anchor are settled; the scale is
    a band, 1.31 to 1.33 px/m, and per-stage fitting still buys real accuracy.
 8. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
    `+0x0a`. Bit fields; they correlate with whether the row carries a locator
    and whether it carries an offset, and the obvious reading is a space or
    follow mode. Nothing on the disc tests it; a renderer would.
-9. **Draw it.** `hitbox.py obj` writes a frame as Wavefront OBJ — bones, body
+9. **Draw it.** `hitbox.py obj` writes a frame as Wavefront OBJ - bones, body
    capsules and hit volumes together. Nobody has looked at one yet, and the
    two things it would catch cheaply are a flag-4 shape read wrong and a
    monster whose capsules do not cover it. A trail is two more line segments
@@ -186,13 +200,22 @@ closes, whose eleven interesting kinds `eff_hitlevel_tbl` already names.
   showed the offsets are turned by their bone. What is left of it is **what
   flag 4's three points bound**. See [`format_anmcmd.md`](format_anmcmd.md)
   and [`hitbox.py`](../engine/hitbox.py).
-- `.psq`: `_OP_COMPARITH`'s packed `_arg1`, exercised three times on the whole
-  disc and read out of the interpreter rather than confirmed; and the `.ppcut`
-  macro names, which the preprocessor consumed. **Control flow is no longer
-  among them** — 2,753 of 2,753 functions structure with nothing left over.
-  See [`format_psq.md`](format_psq.md).
-- The script interface: about a dozen of the 285 whose argument roles the disc
-  does not separate — `cfSetCameraType`'s five camera types, the second
+- `.psq`: `_OP_COMPARITH`'s packed `_arg1`, which the disc emits three times
+  and session 22's VM *executes* once without faulting - which is not the same
+  as confirming the operand order, since a wrong one computes a wrong number
+  rather than raising; and the `.ppcut` macro names, which the preprocessor
+  consumed. **Control flow is no longer among them** - 2,753 of 2,753
+  functions structure with nothing left over - and neither is the language:
+  every script on the disc runs, with 0 VM faults. See
+  [`format_psq.md`](format_psq.md) and
+  [`milestone_stage.md`](milestone_stage.md).
+- The script interface: **six names that are not functions** -
+  `MONS_KIND_ORGA` and `DEMO_S174_A`..`DEMO_S178_A`, read off the root table,
+  called by nobody and defined by no `.psq`, so the engine holds them as
+  constants; **how long the host holds a blocked script**, since the thirteen
+  `suspend` numbers are the disc's but the delays in `host.py`'s `RESUME` are
+  this repository's policy; and about a dozen of the 285 whose argument roles
+  the disc does not separate — `cfSetCameraType`'s five camera types, the second
   argument of the `cfSetCmr*` family, `cfDialogParamAll`'s seven numbers,
   `cfCmrQuake`'s four, `cfTutorialLineup`'s nine, `setDemoID`'s second, and
   whether `msg_emotion.bin` is `cfAnimeIcon`'s table. Also **`prowl_script`**,
