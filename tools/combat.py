@@ -24,6 +24,11 @@ Six of them, and each is one table meeting another:
 - **`weapons`** - `it_db_weapon.bin` against `it_db_name_weapon.rmsg`. Column 5
   is the weapon kind and it partitions 450 rows into **six values of seventy-
   five**; column 3 is the attack the player's JSON has not got;
+- **`abilities`** - `it_db_ability.bin` against the 1,091 card skills that
+  name it. The table is a **stat and its bounds** and carries no name of its
+  own; the skills give all 162 of them the game's own English, so `DEF`,
+  `MAX HP`, the critical rate and the knockback resistance are named where the
+  combat loop needs them;
 - **`stop`** - `dmg_stop_mul`, which is zero on 23 monsters and non-zero on 59,
   and the 23 are exactly the `b*`. A boss takes no hit-stop;
 - **`tension`** - the four `s_tension_revise_*` curves, printed six abreast
@@ -41,6 +46,7 @@ Usage:
   python combat.py cues <dir>        `+0x48` by side, and the empty range
   python combat.py power <dir>       `+0x35` by side
   python combat.py weapons <dir>     `it_db_weapon.bin`, kinds and attacks
+  python combat.py abilities <dir>   every stat an item can move, named
   python combat.py stop <dir>        the hit-stop split, boss against mob
   python combat.py tension <dir>     the four curves, and the bow's two
   python combat.py all <dir>         every one of them, in order
@@ -298,6 +304,97 @@ def cmd_weapons(root) -> int:
     return 0
 
 
+def cmd_abilities(root, limit=40) -> int:
+    """`it_db_ability.bin` against the skills that name it.
+
+    An ability is a **stat the game lets an item move**, and the row is
+    `(index, floor, ceiling, kind)`. It carries no name - but every card skill
+    names one, and the skill text is the game's own English for what that stat
+    is, so the join gives all 162 of them their words back."""
+    root = pathlib.Path(root)
+    ab = _ech(root, 'it_db_ability.bin')
+    sk = _ech(root, 'it_db_skill.bin')
+    name = _msgs(root, 'it_db_name_skill.rmsg')
+    text = _msgs(root, 'it_db_text_skill.rmsg')
+
+    def w(t, r, i):
+        return struct.unpack_from('>i', t.row(r), 4 * i)[0]
+
+    def fl(t, r, i):
+        return struct.unpack_from('>f', t.row(r), 4 * i)[0]
+
+    print(f'{ab.rows} abilities, {sk.rows} skills, '
+          f'{len(name)} names, {len(text)} texts')
+    print('  the ability index is the row on all '
+          f'{sum(w(ab, r, 0) == r for r in range(ab.rows))} of {ab.rows}')
+    users = collections.defaultdict(list)
+    for r in range(sk.rows):
+        a = w(sk, r, 5)
+        if 0 <= a < ab.rows:
+            users[a].append(r)
+    print(f'  {len(users)} of them are named by at least one skill')
+
+    inside = outside = flag = 0
+    stray = []
+    for a, rows in users.items():
+        lo, hi = fl(ab, a, 1), fl(ab, a, 2)
+        for r in rows:
+            v = fl(sk, r, 6)
+            if lo == hi == 0:
+                flag += 1
+            elif lo <= v <= hi:
+                inside += 1
+            else:
+                outside += 1
+                stray.append((a, r, v, lo, hi))
+    print(f'  skill magnitudes inside their ability\'s range   {inside}')
+    print(f'  outside it                                      {outside}')
+    print(f'  abilities with an empty range, so a flag         {flag}')
+
+    print()
+    print(f'  {"id":>4} {"floor":>8} {"ceiling":>8} {"kind":>8} {"n":>4}  '
+          f'what a skill calls it')
+    shown = 0
+    for a in sorted(users):
+        if shown >= limit:
+            print(f'  ... and {len(users) - shown} more')
+            break
+        shown += 1
+        first = text[users[a][0]] if users[a][0] < len(text) else ''
+        line = (first or '').replace('\n', ' ').strip()[:44]
+        print(f'  {a:4} {fl(ab, a, 1):8g} {fl(ab, a, 2):8g} '
+              f'{w(ab, a, 3):#8x} {len(users[a]):4}  {line}')
+
+    if stray:
+        print()
+        print('  the magnitudes that fall outside, and why they are not one')
+        by_ability = collections.Counter(a for a, _, _, _, _ in stray)
+        for a, n in by_ability.most_common():
+            ex = [s for s in stray if s[0] == a][:2]
+            what = ', '.join(f'{v:g}' for _, _, v, _, _ in ex)
+            print(f'    ability {a:3}  x{n:<3} e.g. {what}   '
+                  f'clamp ({ex[0][3]:g}, {ex[0][4]:g})')
+        print('    ability 175 is the tell: its values are 170001..170040, an')
+        print('    id in the skill band and not a magnitude at all, and its')
+        print('    range bounds the low part of it. The field means what the')
+        print('    ability says it means.')
+    return 0
+
+
+def _ech(root: pathlib.Path, leaf: str):
+    p = root / 'item.cpk/it_db.pac' / leaf
+    if not p.is_file():
+        raise SystemExit(f'not found: {p}')
+    return ech.Ech(p.read_bytes(), p.as_posix())
+
+
+def _msgs(root: pathlib.Path, leaf: str) -> list:
+    p = root / 'item.cpk/it_db.en.pac' / leaf
+    if not p.is_file():
+        return []
+    return [m[1] for m in rmsg.Rmsg(p.read_bytes(), p.as_posix()).messages]
+
+
 def cmd_stop(root) -> int:
     """The hit-stop families, and the split `dmg_stop_mul` makes."""
     zero, nonzero = [], []
@@ -395,21 +492,25 @@ def cmd_tension(root) -> int:
 def cmd_all(root) -> int:
     for name, fn in (('hitlevel', cmd_hitlevel), ('cues', cmd_cues),
                      ('power', cmd_power), ('weapons', cmd_weapons),
-                     ('stop', cmd_stop), ('tension', cmd_tension)):
+                     ('abilities', cmd_abilities), ('stop', cmd_stop),
+                     ('tension', cmd_tension)):
         print(f'\n{"=" * 74}\n== {name}\n{"=" * 74}')
         fn(root)
     return 0
 
 
 def main() -> int:
+    # 1,578 of the literals on this disc are Japanese, and a card's own text
+    # is among them.
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     a = sys.argv[1:]
     if not a:
         print(__doc__)
         return 1
     cmd, rest = a[0], a[1:]
     table = {'hitlevel': cmd_hitlevel, 'cues': cmd_cues, 'power': cmd_power,
-             'weapons': cmd_weapons, 'stop': cmd_stop,
-             'tension': cmd_tension, 'all': cmd_all}
+             'weapons': cmd_weapons, 'abilities': cmd_abilities,
+             'stop': cmd_stop, 'tension': cmd_tension, 'all': cmd_all}
     if cmd not in table:
         print(f'unknown command: {cmd}')
         return 1

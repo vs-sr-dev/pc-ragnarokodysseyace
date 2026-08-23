@@ -172,10 +172,15 @@ with 450 names, and column 5 is the weapon kind — six values, `0, 1, 3, 4, 5,
 ```
 
 Column 27 is an `f32` from 0 to 0.1, which is the same range and the same
-units as the class's own `cri`. **The defence and the hit points are still not
-located** — `it_db_equip.bin` is 146 rows against 146 names with nineteen
-unnamed columns, and column 16 (0..117) is the only defence-shaped one. See
-[`combat_loop.md`](combat_loop.md) §3.
+units as the class's own `cri`.
+
+**The defence and the hit points are a modifier system**, and it names itself:
+`it_db_ability.bin` is one row per stat an item may move, `DEF` at index 1 and
+`MAX HP` at index 3, and the 1,091 card skills of `it_db_skill.bin` index it
+and carry the English for each. `it_db_equip.bin`, the obvious place to have
+looked, is **costumes and not armour**. What is still missing is the *base*
+value the modifiers apply to. See [`combat_loop.md`](combat_loop.md) §3 and
+`combat.py abilities`.
 
 ## A boss takes no hit-stop, and the field says which is which
 

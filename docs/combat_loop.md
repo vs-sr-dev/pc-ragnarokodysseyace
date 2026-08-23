@@ -9,14 +9,14 @@ which it does not**.
 That was the whole point of writing it. Three sessions running, the TODO said
 the loop was describable and nobody had described it; the cost of finding out
 what is missing turned out to be one document, and the answer is at the end
-under [*The ledger*](#the-ledger). Seven things got settled on the way, and one
+under [*The ledger*](#the-ledger). Eight things got settled on the way, and one
 earlier claim got corrected, which is the usual return on laying a chain out
 end to end.
 
 Every figure below is a join between two things this repository had already
 read separately, and [`combat.py`](../tools/combat.py) is those joins —
-`hitlevel`, `cues`, `power`, `weapons`, `stop`, `tension`, or `all` — so the
-document can be re-derived rather than believed.
+`hitlevel`, `cues`, `power`, `weapons`, `abilities`, `stop`, `tension`, or
+`all` — so the document can be re-derived rather than believed.
 
 ---
 
@@ -180,10 +180,66 @@ Six classes, seventy-five weapons apiece, no row left over. The katar tops out
 at 123 against the hammer's 270, which is what a two-handed weapon should read
 next to a pair of daggers.
 
-**The player's defence and hit points are still not located.**
-`it_db_equip.bin` is 146 rows against 146 names and none of its nineteen
-columns is named; column 16 (0..117, 68 distinct) is the only candidate shaped
-like a defence. This is item 2 of the ledger.
+### The defence is a modifier system, and it names itself
+
+`it_db_equip.bin` was the obvious place to look for armour and it is **not
+armour**: 146 rows against 146 names, and the names are `Assassin`, `Bishop`,
+`Track Suit`, `Ryu Hayabusa`, `Lloyd Irving`, `Kasumi` — class outfits and
+crossover costumes. Its column 1 is 0 or 1, seventy-three each, and row *n*
+and row *n + 73* carry the same name, so it is a **sex**; its column 2 is the
+class in the same space `it_db_weapon.bin` column 5 uses — `0, 1, 3, 4, 5, 7`
+six times each, plus **8 on the 110 costumes that any class can wear**. There
+is no stat in the table at all.
+
+The stats are two tables further on, and they are named in the game's own
+English. **`it_db_skill.bin` is the card skills** — 1,091 rows pairing with
+1,091 names and 1,091 descriptions — and its column 5 is an index into
+**`it_db_ability.bin`, which is one row per stat the game lets an item move**:
+
+```
+  +0x00  u32   the index; it equals the row on all 233
+  +0x04  f32   a floor
+  +0x08  f32   a ceiling
+  +0x0C  u32   two u16, a kind
+```
+
+The ability table carries no name — but every skill that names it carries one,
+so the join gives all 162 used abilities their words back
+(`combat.py abilities`):
+
+```
+    id    floor  ceiling     kind    n  what a skill calls it
+     0     -150      250  0x20003   91  Raises ATK.
+     1    -9999      250  0x20003   25  Raises DEF.
+     3    -8000     8000  0x20003   41  Raises MAX HP.
+     4    -8000     8000  0x20003   22  Raises MAX AP.
+     5     -0.9        1  0x20003   25  Raises base tension level.
+     8     -100      200  0x20003   24  Raises resistance to knockback, launch
+     9       -1        1  0x20003   28  Raises percentage chance of a critical
+    10     -0.5      0.3  0x40003   16  Raises critical attack damage.
+    34     -150      500  0x20003   15  Raises DEF when guarding.
+```
+
+**So `DEF` is ability 1 and `MAX HP` is ability 3**, and what the disc gives
+is the *modifier* side of both, with the range each is allowed to move in.
+Ability 9 and ability 10 are the two fields §4 measures the trade between, and
+ability 8 is the stagger resistance §5 describes — the card system reaches
+every quantity in this document.
+
+**The base values are still not located**, which is why ledger item 2 narrows
+rather than closes: a class JSON has none of the three, the weapon table has
+`atk` and no `def`, and nothing found so far carries a starting `DEF` or
+`MAX HP` for a level-1 character.
+
+**968 of the 993 magnitudes lie inside their ability's range**, which is what
+says column 6 of the skill table is the magnitude and columns 1 and 2 of the
+ability table are its bounds. Of the 25 that do not, **eighteen are one
+ability**: 175's values are `170001` to `170040`, which are ids in the skill
+band and not magnitudes at all, and its range `(0, 41)` bounds the low part of
+them. The field means what the ability says it means — the selector trap
+again, in a table that had looked uniform. The remaining seven are single
+skills that exceed their own cap, which a cap on the accumulated total
+allows.
 
 ---
 
@@ -527,11 +583,13 @@ the order they would block an implementation.
    the monster's `def`, the region's flat modifier and six multipliers, `cri`
    and `dmg_critical_factor` — and the expression combining them is not.
    Nothing on the disc constrains it beyond the ranges. **EBOOT.**
-2. **The player's defence and hit points.** Absent from all six class JSONs.
-   `it_db_equip.bin` is 146 rows against 146 names with nineteen unnamed
-   columns; column 16 is the only defence-shaped one. **Readable from the
-   disc — an `ECH` column-naming job, the same one §5 of the TODO already
-   owns.**
+2. **The player's base defence and hit points.** Absent from all six class
+   JSONs. The *modifier* side is now read and named — `DEF` is ability 1 and
+   `MAX HP` is ability 3 of `it_db_ability.bin`, with the range each may move
+   in — and `it_db_equip.bin` turns out to be costumes and not armour. What is
+   missing is the **starting value** the modifiers apply to. **Still readable
+   from the disc if it is in a table at all; the level-up tables are the next
+   place to look.**
 3. **What `+0x35` is a strength of** — stagger points or a multiplier on a
    damage-derived value. §5 gives the measurement that separates them and the
    disc does not contain it. **A runtime settles this; the EBOOT settles it
@@ -567,7 +625,7 @@ and this document is the list of which ones.
 
 ## What this settled
 
-Seven things, none of which needed a new format:
+Eight things, none of which needed a new format:
 
 - **the player's impact sound is computed and the monster's is authored**, and
   the two never touch each other's cue range — 747 of 754 against 5,245 of
@@ -580,6 +638,9 @@ Seven things, none of which needed a new format:
   and non-zero on exactly the 59 `z*`;
 - **the player's attack is `it_db_weapon.bin` column 3** and its kind is column
   5, which partitions 450 rows into six classes of 75;
+- **`it_db_ability.bin` is one row per stat an item can move**, `DEF` at 1 and
+  `MAX HP` at 3, named by the 1,091 card skills that index it — and
+  `it_db_equip.bin`, the obvious place to have looked for armour, is costumes;
 - **record 1 of a player class is an empowered state**, plainly: no hit-stun,
   no stun, faster, better resistances — and record 2 is a global locomotion
   variant identical on all six;

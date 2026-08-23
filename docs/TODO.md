@@ -27,7 +27,12 @@ control flow**, which had been item 2 for two. Both are closed. What to carry:
   graph, which the structurer is what made available;
 - **the hit level is three values and two tables agree**, `atk` is not in a
   player's JSON, a boss takes no hit-stop, and the tension curves are per
-  class. See [`combat_loop.md`](combat_loop.md) and its ledger of nine.
+  class. See [`combat_loop.md`](combat_loop.md) and its ledger of nine;
+- **`it_db_ability.bin` is one row per stat an item can move** — `DEF` at 1,
+  `MAX HP` at 3, the critical rate at 9, its bonus at 10, the knockback
+  resistance at 8 — with the range each may move in, named by the 1,091 card
+  skills that index it. `it_db_equip.bin`, the obvious place to have looked
+  for armour, is **costumes**.
 
 ### 1. Milestone 2 — *"a stage runs"*.
 
@@ -56,12 +61,15 @@ never sees that; `trace_par.bin`'s `+0x18` is the newest example, where 25 of
 `080f`'s 32 files are all `appear` or `die`, `0406`'s fifteen are all loops,
 `080c`'s 35 are all emotes. See [`format_mkc.md`](format_mkc.md).
 
-### 4. The player's defence and hit points, and the rest of the `ECH` columns.
+### 4. The player's *base* defence and hit points, and the rest of the columns.
 
-[`combat_loop.md`](combat_loop.md) ledger item 2, and it merges with the item
-this list has carried for four sessions. `it_db_equip.bin` is 146 rows against
-146 names with nineteen unnamed columns and column 16 (0..117) the only
-defence-shaped one; the reward side of a quest pac is
+[`combat_loop.md`](combat_loop.md) ledger item 2, narrowed by session 21.
+The modifier side is read and named — `DEF` is ability 1 of
+`it_db_ability.bin` and `MAX HP` is ability 3, each with the range it may move
+in, and `it_db_equip.bin` turns out to be **costumes and not armour**. What is
+missing is the starting value the modifiers apply to, and the level-up tables
+(`it_db_myorder*.bin`) are the next place to look. Beside it, the reward side
+of a quest pac is
 `item_reward{,_multi,_region}.bin`, `weapon_decost.bin`, `destructible.bin`,
 `mapexception.bin` and the `q<NNNNN>.bin` header. The `CCLS` surface codes 1
 to 13 are the other well-posed one, and the pose layer says where a foot is,
@@ -158,9 +166,10 @@ closes, whose eleven interesting kinds `eff_hitlevel_tbl` already names.
   locomotion fields and **the same four with the same values on all six**, so
   it is a global movement state and not a class ability. The disc names
   neither, and a search of all 25,288 messages for "Fever" found nothing. The
-  **player's `def` and `hp` are not on the disc yet**: `atk` is
-  `it_db_weapon.bin` column 3 and the other two are not located —
-  [`combat_loop.md`](combat_loop.md) ledger item 2. Also the four unexplained
+  **player's base `def` and `hp` are not located**: `atk` is
+  `it_db_weapon.bin` column 3, and `def` and `hp` are abilities 1 and 3 of
+  `it_db_ability.bin` — which is the *modifier* side, with its bounds, and not
+  a starting value. See [`combat_loop.md`](combat_loop.md) ledger item 2. Also the four unexplained
   elements of the `ab_*` status vectors — **their order is settled**, since `isAbnormal(1, 3)` is the
   player frozen and index 3 is `ab_frz`: [`format_api.md`](format_api.md).
   **`it_drop_break` is settled**: it is indexed by `region_data_brk`, the
@@ -255,6 +264,33 @@ closes, whose eleven interesting kinds `eff_hitlevel_tbl` already names.
 ---
 
 # Log
+
+## Session 21c — 2026-08-23
+
+- **`it_db_equip.bin` is not armour, it is costumes.** 146 rows against 146
+  names, and the names are `Assassin`, `Bishop`, `Track Suit`, `Ryu Hayabusa`,
+  `Lloyd Irving`, `Kasumi`. Column 1 is a **sex** — 0 or 1, seventy-three
+  each, and row *n* and row *n + 73* carry the same name — and column 2 is the
+  class in the same space `it_db_weapon.bin` column 5 uses, with **8 on the
+  110 costumes any class can wear**. No stat anywhere in it.
+- **`it_db_ability.bin` is one row per stat the game lets an item move**, and
+  the row is `(index, floor, ceiling, kind)` with the index equal to the row
+  on all 233. It carries no name — but `it_db_skill.bin`'s 1,091 card skills
+  index it and pair positionally with 1,091 names and 1,091 descriptions, so
+  the join gives **all 162 used abilities the game's own English**.
+- **`DEF` is ability 1 and `MAX HP` is ability 3**, which is where the
+  player's two missing numbers enter the loop. The card system reaches every
+  quantity [`combat_loop.md`](combat_loop.md) describes: ability 9 is the
+  critical rate, 10 its bonus, 8 the knockback and stun resistance, 5 the base
+  tension level, 34 the defence while guarding. The **base** values are still
+  not located, so ledger item 2 narrows rather than closes.
+- **968 of the 993 magnitudes lie inside their ability's range**, which is
+  what says the skill's column 6 is the magnitude and the ability's two floats
+  are its bounds. **Eighteen of the 25 that do not are one ability**: 175's
+  values are `170001` to `170040`, ids in the skill band and not magnitudes,
+  and its range `(0, 41)` bounds the low part of them. The selector trap
+  again, in a table that had looked uniform.
+- `combat.py abilities` is the join.
 
 ## Session 21b — 2026-08-23
 

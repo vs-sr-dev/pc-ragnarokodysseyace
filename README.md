@@ -189,6 +189,7 @@ the combat loop  ->        8 files, 9 gaps     tools/combat.py
   the impact cue ->      747 of 754 player records empty, 5,245 of 5,439 not
   hit-stop       ->       23 of 23 bosses take none, 59 of 59 mobs do
   the attack     ->      450 weapons, 6 kinds of 75, and none of it in a JSON
+  the stats      ->      162 of 233 abilities named by the cards that move them
 
 a capsule runs   ->      135 stages walked   engine/run.py  127 clean
   one crossing   ->      405 frames over 010_01_01, 13.5 s at a run
@@ -426,6 +427,7 @@ python engine/run.py numbers <class json>          what the parameters produce
 python tools/combat.py hitlevel <dir>          the hit level, cues resolved
 python tools/combat.py cues|power <dir>       the hit record, by side
 python tools/combat.py weapons <dir>          the attack the JSON has not got
+python tools/combat.py abilities <dir>        every stat an item can move
 python tools/combat.py stop|tension <dir>     the reaction, and what it earns
 python tools/combat.py all <dir>              every join in the combat loop
 
