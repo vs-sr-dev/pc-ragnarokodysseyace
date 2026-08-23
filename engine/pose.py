@@ -1,21 +1,22 @@
 """
-pose.py - the skeleton, and where it touches the ground.
+pose.py - the skeleton, and where things are on it.
 
 `actor.py` moves a capsule at the numbers the parameter table declares and
 `world.py` says where the floor is. Neither of them has a body. This file is
 the join: it plays a [`CNOM`](../tools/cnom.py) on a
-[`CMDL`](../tools/cmdl.py) skeleton, finds the node that touches the ground,
-and answers the one question a pose can be checked against - **is the foot
-where the animation says it is**.
+[`CMDL`](../tools/cmdl.py) skeleton and answers the questions a pose can be
+checked against - **is the foot where the animation says it is**, and **is
+the limb where the sound says it is**.
 
     python engine/pose.py body <tree> <model>
     python engine/pose.py track <tree> <motion>
     python engine/pose.py footfall <tree>
     python engine/pose.py locomotion <tree> <class json>
+    python engine/pose.py emitter <tree>
 
 `body` prints a skeleton's contact nodes and the height they stand at. `track`
 plays one animation and prints, per frame, where those nodes are. The other
-two are the checks, and neither of them could be run by a reader:
+three are the checks, and none of them could be run by a reader:
 
 - `footfall` measures the skeleton against [`.mkc`](../docs/format_mkc.md)
   opcode `7ffa`, which fires on the frame a foot lands. A hand-authored byte
@@ -24,8 +25,10 @@ two are the checks, and neither of them could be run by a reader:
 - `locomotion` measures every named walk, run and dash against the `walk_sp`,
   `run_sp` and `fast_sp` the parameter table declares - `cmdl.py gait`'s one
   measurement, done on all 48 cycles the disc ships.
+- `emitter` names the last unread field of `7ff9`. It is a `CMDL` locator id,
+  and the limb the locator binds to is the one arriving on that frame.
 
-`run.py stride` is the third: it puts the animation on the moving capsule and
+`run.py stride` is the fourth: it puts the animation on the moving capsule and
 prints the planted foot's height above the collision mesh, frame by frame.
 
 ## The contact node, and the height it stands at
@@ -68,9 +71,10 @@ here is fitted: `standing` is a number read out of the model.
 """
 from __future__ import annotations
 
-
+import collections
 import pathlib
 import statistics
+import struct
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -81,7 +85,7 @@ from actor import load as load_params                         # noqa: E402
 from cmdl import (Cmdl, IDENTITY, compose, from_euler,        # noqa: E402
                   from_quaternion, mul)
 from cnom import KIND, Cnom                                   # noqa: E402
-from mkc import Mkc                                           # noqa: E402
+from mkc import Disc, Mkc                                     # noqa: E402
 
 TOUCH = 0.03                # metres; `cmdl.py` calls the same number PLANTED
 TOLS = (0.01, TOUCH, 0.05)  # and what the answer does either side of it
@@ -113,9 +117,17 @@ class Body:
         toes = [n for n in self.names if n.endswith(TOE)]
         feet = [n for n in self.names if n.endswith(FOOT)]
         self.contact = sorted(toes or feet)
-        rest = self.cmdl.world()
-        self.standing = {n: rest[self.index[n]][1][3] for n in self.contact}
+        self.rest = self.cmdl.world()
+        self.standing = {n: self.rest[self.index[n]][1][3]
+                         for n in self.contact}
         self.chain = {n: self._chain(self.index[n]) for n in self.contact}
+
+    def chain_of(self, node: str) -> list[int]:
+        """The node's ancestry, root first, for a node outside `contact`."""
+        got = self.chain.get(node)
+        if got is None:
+            got = self.chain[node] = self._chain(self.index[node])
+        return got
 
     def _rest_local(self, i: int) -> list:
         n = self.cmdl.node(i)
@@ -130,8 +142,16 @@ class Body:
         return list(reversed(out))
 
     def floor(self, node: str) -> float:
-        """The height this node sits at when the body is standing."""
-        return self.standing[node]
+        """The height this node sits at when the body is standing.
+
+        Read off the rest pose, which on a player model is a standing one.
+        On a monster whose rest pose is not - `b19`'s horse hangs two metres
+        over it - this is a reference and not a floor, which is why the
+        emitter check measures a descent rather than a height."""
+        got = self.standing.get(node)
+        if got is None:
+            got = self.standing[node] = self.rest[self.index[node]][1][3]
+        return got
 
 
 # --------------------------------------------------------------------------
@@ -141,12 +161,13 @@ class Play:
     """A `CNOM` on a `Body`, sampled only along the chains that reach the
     ground - the rest of the skeleton costs time and answers nothing here."""
 
-    def __init__(self, body: Body, cnom: Cnom):
+    def __init__(self, body: Body, cnom: Cnom, nodes=None):
         self.body, self.cnom = body, cnom
         self.name = cnom.name or ''
+        self.nodes = list(nodes) if nodes else list(body.contact)
         need: set[int] = set()
-        for n in body.contact:
-            need.update(body.chain[n])
+        for n in self.nodes:
+            need.update(body.chain_of(n))
         self.animated = {}
         for t, name in enumerate(cnom.names()):
             i = body.index.get(name)
@@ -188,9 +209,9 @@ class Play:
     def at(self, frame: float) -> dict[str, tuple[float, float, float]]:
         """Every contact node's position in model space, at one frame."""
         out = {}
-        for n in self.body.contact:
+        for n in self.nodes:
             m = IDENTITY
-            for i in self.body.chain[n]:
+            for i in self.body.chain_of(n):
                 m = mul(m, self.local(i, frame))
             out[n] = (m[0][3], m[1][3], m[2][3])
         return out
@@ -198,7 +219,7 @@ class Play:
     def height(self, frame: float) -> dict[str, float]:
         """Each contact node's height above where it stands, at one frame."""
         p = self.at(frame)
-        return {n: p[n][1] - self.body.standing[n] for n in p}
+        return {n: p[n][1] - self.body.floor(n) for n in p}
 
     def track(self) -> list[dict[str, tuple[float, float, float]]]:
         if self._track is None:
@@ -212,14 +233,14 @@ class Play:
         An animation whose feet never leave the floor cannot be asked when a
         foot lands, so `footfall` asks it only of the ones that do."""
         t = self.track()
-        return max(max(r[n][1] - self.body.standing[n]
-                       for n in self.body.contact) for r in t)
+        return max(max(r[n][1] - self.body.floor(n)
+                       for n in self.nodes) for r in t)
 
     def down(self, tol: float = TOUCH) -> dict[str, list[bool]]:
         """Per node, whether it is on the ground on each frame."""
         t = self.track()
-        return {n: [r[n][1] - self.body.standing[n] <= tol for r in t]
-                for n in self.body.contact}
+        return {n: [r[n][1] - self.body.floor(n) <= tol for r in t]
+                for n in self.nodes}
 
     def landings(self, tol: float = TOUCH) -> list[tuple[int, str]]:
         """The frames a node comes down, as `(frame, node)`.
@@ -306,10 +327,8 @@ def pairs(root):
     root = pathlib.Path(root)
     for mkc in sorted(root.rglob('*.mkc')):
         cnom = mkc.parent.parent / (mkc.stem + '.CNOM')
-        if not cnom.is_file():
-            yield mkc, None, None
-            continue
-        yield mkc, cnom, skeleton_for(cnom, root)
+        skel = skeleton_for(cnom, root)
+        yield mkc, (cnom if cnom.is_file() else None), skel
 
 
 def find(root, name: str) -> pathlib.Path:
@@ -605,6 +624,184 @@ def cmd_locomotion(root, json_path) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------
+# the emitter, which is a place on the body
+
+SOUND = (0x7FF9, 0x7FFD)
+
+
+def family(stem: str) -> str:
+    """The models that are one actor: `b09_00`, `b09_01`, `b09_02`.
+
+    A monster ships in two or three sets of armour and they share a rig, so
+    an emitter may name a node only one of them declares."""
+    if len(stem) == 6 and stem[0] in 'bz' and stem[1:3].isdigit() \
+            and stem[3] == '_' and stem[4:].isdigit():
+        return stem[:3]
+    return stem
+
+
+def _end(text: str, front: tuple, rear: tuple) -> str:
+    """Which end of an animal a cue name or a node name is talking about."""
+    if any(k in text for k in front):
+        return 'front'
+    if any(k in text for k in rear):
+        return 'rear'
+    return ''
+
+
+def twin(name: str) -> str:
+    """The node's mirror image, or an empty string when it has none."""
+    for a, b in (('_l_', '_r_'), ('_r_', '_l_')):
+        if a in name:
+            return name.replace(a, b, 1)
+    return ''
+
+
+def cmd_emitter(root) -> int:
+    """`7ff9`'s third argument, against the model's own locator table.
+
+    The `.mkc` says a sound comes from emitter 1700 and stops there. `CMDL`
+    section `S4` is a list of `(id, node)` pairs - numeric attachment points,
+    the same ids the `.CTXT` collision and spring files are named after. The
+    two are the same namespace, and once they are joined the vocabulary reads
+    itself: 1300 is the head and carries the voice, 1100 and 1200 are the
+    hands and carry the cues that end `_L` and `_R`, 1700 and 1800 are the
+    feet and carry `STEP`.
+
+    Then the skeleton says the same thing a second time. If the id really is
+    the limb the sound comes from, that limb should be the one arriving on
+    that frame - and it is, while its mirror twin is not moving at all.
+    """
+    root = pathlib.Path(root)
+    # An id may bind to more than one node: `b09_00` declares 6100 twice,
+    # once for its head mesh and once for the damaged one, and an actor's
+    # armour variants share the rig. All of them are kept.
+    tables: dict[str, dict[int, list]] = {}
+    for p in sorted(root.rglob('*.CMDL')):
+        try:
+            body = Cmdl(p.read_bytes(), p.name)
+            names = body.names(5)
+        except (ValueError, struct.error):
+            continue
+        t = tables.setdefault(family(p.stem), {})
+        for i, n in body.locators():
+            name = names[n] if n < len(names) else ''
+            got = t.setdefault(i, [])
+            if name and name not in got:
+                got.append(name)
+
+    disc = Disc(root)
+    bodies: dict[str, Body] = {}
+    refs = 0
+    fore = collections.Counter()
+    by_id: dict[int, collections.Counter] = {}
+    stray: list[str] = []
+    fell: dict[str, list[tuple[float, float]]] = {}
+
+    for mkc_path, cnom_path, skel in pairs(root):
+        recs = [r for r in Mkc(mkc_path.read_bytes(), str(mkc_path)).records
+                if r.op in SOUND and len(r.args) >= 3]
+        refs += len(recs)
+        recs = [r for r in recs if r.args[2]]
+        table = tables.get(family(skel.stem), {}) if skel else {}
+        mirrored = []
+        for r in recs:
+            node = table.get(r.args[2], [])
+            if node:
+                # A cue that says which end of the animal it comes from is a
+                # second, independent reading of the same id - and the rig
+                # calls a quadruped's forelimb a hand.
+                cue = disc.cue(r.args[0], r.args[1]) or ''
+                if 'STEP' in cue:
+                    said = _end(cue, ('_F', 'FRONT'), ('_B', 'REAR'))
+                    got = _end(node[0], ('hand', 'finger'),
+                               ('toe', 'foot', 'claw'))
+                    if said and got:
+                        fore[(said, got)] += 1
+                by_id.setdefault(r.args[2],
+                                 collections.Counter())[tuple(node)] += 1
+                if twin(node[0]):
+                    mirrored.append((r, node[0], twin(node[0])))
+            else:
+                stray.append(f'{mkc_path.stem} frame {r.frame}, '
+                             f'emitter {r.args[2]}')
+        if not mirrored or cnom_path is None:
+            continue
+        body = bodies.get(str(skel)) or bodies.setdefault(str(skel),
+                                                          Body(skel))
+        want = sorted({n for _, a, b in mirrored for n in (a, b)
+                       if n in body.index})
+        mirrored = [m for m in mirrored
+                    if m[1] in body.index and m[2] in body.index]
+        if not mirrored:
+            continue
+        play = Play(body, Cnom(cnom_path.read_bytes(), cnom_path.name), want)
+        t = play.track()
+        for r, node, other in mirrored:
+            if r.frame > play.declared:
+                continue
+            g = max(0, r.frame - BACK)
+            key = 'hand' if 'hand' in node or 'finger' in node else \
+                'foot' if any(k in node for k in ('toe', 'foot', 'claw')) \
+                else 'elsewhere'
+            fell.setdefault(key, []).append(
+                (t[g][node][1] - t[r.frame][node][1],
+                 t[g][other][1] - t[r.frame][other][1]))
+
+    told = sum(sum(c.values()) for c in by_id.values())
+    print(f'{refs:,} sound references; {refs - told - len(stray):,} leave the '
+          f'emitter at 0 and {told + len(stray):,} name one')
+    print(f'  {told:,} of those are a locator id on the actor own model - '
+          f'CMDL section S4,')
+    print('  the same table the .CTXT collision and spring files are named '
+          'after')
+    print()
+    print('  emitter      n   the node its locator binds to')
+    for e in sorted(by_id):
+        c = by_id[e]
+        print(f'  {e:>8} {sum(c.values()):>6}   '
+              + ' | '.join(', '.join(n) + (f' x{k}' if len(c) > 1 else '')
+                           for n, k in c.most_common(3)))
+    if stray:
+        print()
+        print(f'  and {len(stray)} that resolve to nothing: '
+              + '; '.join(stray[:4]))
+
+    if fore:
+        n = sum(fore.values())
+        same = sum(v for k, v in fore.items() if k[0] == k[1])
+        print()
+        print(f'  {n} of them carry a cue whose name says which end of the '
+              f'animal it is,')
+        print(f'  and the locator is the matching pair on {same} '
+              f'({100.0 * same / n:.1f}%):')
+        for k in sorted(fore):
+            print(f'    the cue says {k[0]:<6} and the locator is the '
+                  f'{k[1]:<6} pair {fore[k]:>5}')
+
+    if not fell:
+        return 0
+    print()
+    print(f'  and the limb it names is the one that has just come down. '
+          f'Over the {sum(len(v) for v in fell.values()):,}')
+    print('  references whose emitter names a node with a mirror twin, how '
+          'far each')
+    print(f'  of the two fell over the {BACK} frames into the event:')
+    print('    family          n   the named node   its twin   named fell '
+          'further')
+    for k in ('hand', 'foot', 'elsewhere'):
+        v = fell.get(k)
+        if not v:
+            continue
+        a = statistics.median(x[0] for x in v)
+        b = statistics.median(x[1] for x in v)
+        more = 100.0 * sum(1 for x in v if x[0] > x[1]) / len(v)
+        print(f'    {k:<10} {len(v):>6}   {a:>+12.4f}   {b:>+9.4f}   '
+              f'{more:>11.1f}%')
+    return 0
+
+
 def main() -> int:
     a = sys.argv[1:]
     if not a:
@@ -619,6 +816,8 @@ def main() -> int:
         return cmd_footfall(rest[0])
     if cmd == 'locomotion':
         return cmd_locomotion(rest[0], rest[1])
+    if cmd == 'emitter':
+        return cmd_emitter(rest[0])
     print(f'unknown command: {cmd}')
     return 1
 

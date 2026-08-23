@@ -10,8 +10,8 @@ is the layer that gives it one — a [`CNOM`](format_cnom.md) played on a
 [`CMDL`](format_cmdl.md) skeleton, placed on the moving actor, with the
 collision mesh underneath.
 
-The reason to build it now is that **it can be checked**, and by two
-independent things at once:
+The reason to build it now is that **it can be checked**, and by three
+independent things:
 
 - [`.mkc`](format_mkc.md) opcode `7ffa` fires on the frame a foot lands. That
   is a byte an animator put in a presentation track by hand. The skeleton's
@@ -24,7 +24,11 @@ independent things at once:
   in question — which makes it the right thing to hand this layer's own,
   different definition of *planted* and see whether it comes back.
 
-The first is new and the second is a control, and neither was fitted.
+- `7ff9`'s emitter says which limb a sound comes from, in a numbering nothing
+  on the disc was known to define. It turns out to be the model's own locator
+  table, and the limb it names is the one arriving on that frame.
+
+The first and third are new, the second is a control, and none was fitted.
 
 ---
 
@@ -112,6 +116,50 @@ and a landing arrives from thirty-five. **`DRESS` does not arrive at all**,
 and it is the only one of the four that lives on the emote set —
 `com051emo_1`, `com064emo_14_st` and the rest. Three of the four cues are the
 ground; the fourth is cloth, and the skeleton is what says so.
+
+---
+
+## And the sound comes from a limb
+
+    python engine/pose.py emitter extract/tree
+
+`7ff9`'s third argument was the last unread field of the sound record. It is
+0 four times in five, and where it is not it takes one of 23 values that
+nothing on the disc was known to define. **It is a `CMDL` locator id** — a
+`(u16 id, u16 node)` pair out of section `S4`, the same numeric attachment
+points the 1,151 `.CTXT` collision and spring files are named after — and
+**2,715 of the 2,716 references resolve** against the locator table of the
+actor's own model. The full table is in
+[`format_mkc.md`](format_mkc.md#it-is-a-cmdl-locator-id); the short version is
+that 1300 is the head and carries the voice, 1100 and 1200 are the hands, 1700
+and 1800 are the feet, 10600 is the tail, and `b19`'s 6200 is its shield.
+
+That finding needs no pose at all — it is one table against another. What the
+pose adds is a third opinion. If the id really is the limb a sound comes from,
+that limb should be the one *arriving* on that frame. Over the 1,737
+references whose emitter names a node with a mirror twin, how far each of the
+two fell over the three frames into the event:
+
+| | n | the named node fell | its twin fell | named fell further |
+|---|---:|---:|---:|---:|
+| a hand | 1,075 | **+0.502 m** | +0.022 m | 69.8 % |
+| a foot | 615 | **+0.340 m** | +0.000 m | 80.8 % |
+| elsewhere | 47 | +0.471 m | +0.176 m | 68.1 % |
+
+**The named foot drops a third of a metre into the event and its twin does not
+move at all.** On `b19213run` all four hooves are exact: `HORSE_STEP_F` from
+31200 on the frame the right fore comes down, from 31100 on the frame the left
+fore does, and the two `HORSE_STEP_B` on their own hind feet.
+
+This one is worth reading twice for how it failed first. Measured as *height
+above where the node stands in the rest pose* — the definition the footfall
+check uses, and the one that works on every player model — the answer came
+back at 50.0 %, exactly chance. The rest pose of a monster is not a standing
+pose: `b19`'s horse hangs two metres above its own, so *height above standing*
+is not a height above anything. Measuring a **descent** instead cancels the
+offset, and the same data goes from nothing to 80.8 %. The reference was
+wrong, not the pose, and the null result was three lines of code away from the
+real one.
 
 ---
 
@@ -246,10 +294,10 @@ Four things, all of them stated in
 - **`7ffb`, the matching second event.** It fires one frame either side of
   `7ffa` — after it in `fas213run`, before it in `fas211walk` — and this
   measurement does not touch it.
-- **Which foot.** `7ffa` names a surface kind and not a side, while `7ff9`'s
-  emitter argument alternates 1700 and 1800 on `STEP`, which is plainly left
-  and right. The skeleton knows which foot landed, so the emitter vocabulary
-  of [`format_mkc.md`](format_mkc.md) now has something to be tested against.
+- **Which foot `7ffa` means.** `7ffa` names a surface kind and not a side.
+  `7ff9`'s emitter is settled — it is a locator id — but `7ffa` has no such
+  field, and nothing on the disc says whether the engine tracks the side
+  itself or simply plays one cue for either foot.
 - **Four pacs resolve to no skeleton**: `bird_a`, `recycle_box`, `shield` and
   `treasure_big`, all of them stage props whose model sits somewhere the
   three arrangements in `skeleton_for` do not look.
@@ -261,6 +309,7 @@ Four things, all of them stated in
     python engine/pose.py body       extract/tree fas213run
     python engine/pose.py track      extract/tree fas213run
     python engine/pose.py footfall   extract/tree
+    python engine/pose.py emitter    extract/tree
     python engine/pose.py locomotion extract/tree extract/tree/job.cpk/sw/sw.json
     python engine/run.py  stride     <stage dir> <class json> extract/tree \
                                      msw213run [gait] [start] [cycles]

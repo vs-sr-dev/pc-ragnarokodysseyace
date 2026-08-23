@@ -165,9 +165,10 @@ idle — plays `DYING_1` then `DYING_2`.
 ### The emitter
 
 The third argument is 0 on 4,233 of the 6,949 references, and the 2,716 that
-name something are **all on the sixteen big monsters** — no player motion, no
-small monster and no prop ever uses one. Where it is named it says **where on
-the body the sound comes from**, and the disc proves it by naming the cues:
+name something are **all on the big monsters** — fifteen of the sixteen, every
+one but `b08`. No player motion, no small monster and no prop ever uses one.
+Where it is named it says **where on the body the sound comes from**, and the
+disc proves it by naming the cues:
 
 | emitter | cue on `b09` |
 |---|---|
@@ -186,15 +187,99 @@ fifth. The vocabulary is 23 values wide across the disc:
     10100 10201 10300 10302 10303 10400 10503 10508 10600
     31100 31200 31300 31700 31800
 
-The `31xxx` band is the `1xxx` band plus 30000 and is used by `b19` alone,
-which is what a second body on the same actor would look like. All 1,196 of
-the players' references leave the field at 0, because a player's sounds come
-from the player.
+All 1,196 of the players' references leave the field at 0, because a player's
+sounds come from the player.
 
 **It is not the `.anmcmd` effect catalogue.** Two of the 23 values (10503,
 10508) also occur as opcode 10 effect ids and the other 21 do not, which is
 too little to be the same namespace and is written down here so the next
 reader does not spend the afternoon on it a second time.
+
+#### It is a `CMDL` locator id
+
+*Session 16.* `CMDL` section `S4` is a list of `(u16 id, u16 node)` pairs —
+numeric attachment points on the skeleton, the ids the 1,151
+[`.CTXT`](format_cmdl.md#the-locator-table-and-what-ctxt-is) collision and
+spring files are named after. **The emitter is drawn from that table**, and
+`python engine/pose.py emitter extract/tree` resolves **2,715 of the 2,716**
+against the locator table of the actor's own model:
+
+| emitter | n | the node its locator binds to |
+|---|---:|---|
+| 1100 | 449 | `node_l_hand` ×446, `node_human_l_hand` ×3 |
+| 1200 | 554 | `node_r_hand` |
+| 1300 | 678 | `node_head` ×645, `node_human_head` ×33 |
+| 1600 / 1601 | 14 / 14 | `node_head` and `eff_10600`, `eff_10601` |
+| 1700 | 285 | `node_l_toe` ×136, `node_l_foot` ×84, `node_l_claw` ×42 |
+| 1800 | 269 | `node_r_toe` ×128, `node_r_foot` ×85, `node_r_claw` ×39 |
+| 4000 | 25 | `node_r_weapon` |
+| 6200 | 8 | `b19_00_shield`, and its damaged mesh |
+| 10100 … 10400 | 252 | `eff_10100`, `eff_10201`, `eff_10300`, `eff_10302`, `eff_10303`, `eff_10400` |
+| 10503 / 10508 | 11 / 11 | `node_r_wing30` / `node_l_wing30` |
+| 10600 | 8 | `node_tail4`, `node_tail3` |
+| 31100 / 31200 | 38 / 36 | `node_l_finger` / `node_r_finger` |
+| 31700 / 31800 | 30 / 33 | `node_l_toe` / `node_r_toe` |
+
+So the vocabulary reads itself. 1300 is the head, which is why it carries the
+voice and the sounds a beak makes. 1100 and 1200 are the hands, which is why
+they carry the cues that end `_L` and `_R`. 1700 and 1800 are the feet — and
+note that they are the *left* and *right* one whether the model calls it a
+toe, a foot or a claw, which is the sort of thing only the table can say.
+6200 is `b19`'s shield. The `10xxx` band binds to nodes named `eff_*`, which
+are the rig's own effect sockets and have no anatomy to give away.
+
+**On a quadruped the hands are the front feet**, and the cue names say so
+without being asked. Three of the big monsters give their step cues a front
+and a rear form — `b18`'s `FRONT_STEP` and `REAR_STEP`, `b10`'s
+`GRENDEL_STEP_F_S` and `STEP_B_S`, `b19`'s `HORSE_STEP_F` and `HORSE_STEP_B` —
+and over the **514 references that carry one, the locator is the matching
+pair 508 times (98.8 %)**:
+
+| | the locator is the front pair | the rear pair |
+|---|---:|---:|
+| the cue says **front** | **286** | 6 |
+| the cue says **rear** | 0 | **222** |
+
+The front pair is 1100/1200, the hands; the rear pair is 1700/1800, the toes.
+The rig has one naming scheme and the sound designer had another, and the
+locator table is what joins them — which is also why `b11`'s `HAND_ON_L` and
+`HAND_ON_S` come out of 1100 and 1200 while its `LEG_DRAG_S` comes out of
+1700 and 1800.
+
+The `31xxx` band is **not** `1xxx` plus 30000 on a second body. `b19` is a
+rider on a horse, and it declares both bands in one table: 1100, 1200 and
+1300 are the rider's hands and head — `node_human_l_hand`, `node_human_head` —
+and 31100, 31200, 31700 and 31800 are the horse's. `HORSE_ASHIBUMI` comes
+from 31800 and `VC_ATTACK` from 10302.
+
+**The one reference that resolves to nothing** is `b19501at1` frame 42, cue
+`HORSE_STEP_F` from emitter 31300. `b19` declares 31100, 31200, 31700 and
+31800 and no 31300, so it is a horse's footstep aimed at a socket its model
+does not carry.
+
+#### And the skeleton says it a third time
+
+The table resolves and the cue names agree with it. The last check needs the
+pose: if the id really is the limb the sound comes from, that limb should be
+the one *arriving* on that frame. Over the 1,737 references whose emitter
+names a node that has a mirror twin, [`pose.py`](../engine/pose.py) measures
+how far each of the two fell over the three frames into the event:
+
+| | n | the named node fell | its twin fell | named fell further |
+|---|---:|---:|---:|---:|
+| a hand | 1,075 | **+0.502 m** | +0.022 m | 69.8 % |
+| a foot | 615 | **+0.340 m** | +0.000 m | 80.8 % |
+| elsewhere | 47 | +0.471 m | +0.176 m | 68.1 % |
+
+The named foot drops a third of a metre into the event while the other foot
+does not move at all. On `b19213run` all four hooves are exact —
+`HORSE_STEP_F` from 31200 on the frame the right fore comes down, from 31100
+on the frame the left fore does, and the two `HORSE_STEP_B` on their own
+hind feet. On `b02213run`, the wolf's, the two front paws are exact and the
+two rear ones fire nine frames early with the named paw at the top of its
+swing: the run has two contact moments and four hoofbeats, so two of the four
+are placed for the rhythm rather than for the pose. That is what the 20 % is
+made of.
 
 ---
 

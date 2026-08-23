@@ -117,6 +117,23 @@ declared by a model sitting in the same directory; the 32 that are not are
 `hair_800x` on detachable hair, which presumably resolve against the head that
 wears them.
 
+**Session 16 found the table a second consumer, and it is not a file.**
+[`.mkc`](format_mkc.md)'s sound record carries a third argument that says
+where on the body the sound comes from, in a numbering nothing on the disc was
+known to define. It is these ids: **2,715 of the 2,716 references resolve
+against the locator table of the actor's own model**, and once joined the
+vocabulary reads itself — 1300 is the head and carries the voice, 1100 and
+1200 are the hands, 1700 and 1800 are the feet, 10600 is the tail. So `S4` is
+not a sidecar index, it is **the model's public numbering of places on
+itself**, and `.CTXT` and `.mkc` are two different things looking it up. See
+[`format_mkc.md`](format_mkc.md#it-is-a-cmdl-locator-id).
+
+Two details of the table that only that use made visible: **an id may bind to
+more than one node** — `b09_00` declares `6100` twice, once for its head mesh
+and once for the damaged one — and the ids are **per actor, not per model
+file**, since a monster's armour variants share a rig and an emitter may name
+a node only one of them carries.
+
 **Character collision is therefore not in `CCLS`.** It is here, in the clear,
 one small text file per capsule, and it needs no reader at all.
 
