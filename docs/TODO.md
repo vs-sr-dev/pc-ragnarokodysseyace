@@ -5,44 +5,40 @@
 
 ---
 
-# Next session — the tables nobody has opened, and the loop
+# Next session — the loop, on paper, and the script's shape
 
-Session 19 opened the `ELBN` records, placed a hit volume on a moving
-skeleton, read four more `.mkc` opcodes and measured the minimap's transform.
-Six things to carry:
+Session 20 read `trace_par.bin`, the second of the four `ELBN` populations.
+Three things to carry:
 
-- **`objbin.bin` is the actor's body and the class's skill list.**
-  [`format_elbn.md`](format_elbn.md) now describes `col_hit` (a capsule per
-  bone), `jostle_data` (the same with two radii), `pgs_data` (a sphere),
-  `region_data` (the monster's named body parts) and `region_data_brk` (its
-  breakable ones);
-- **the chain closes on itself.** A region names `col_hit` capsules by index,
-  a capsule names a node, and the node's name is the region's own — 259 of the
-  266 the reader's table has a word for. That is three files agreeing and none
-  of them declaring it;
-- **an offset is turned by its bone.** The question `.anmcmd` left open for two
-  sessions is settled by [`hitbox.py`](../engine/hitbox.py) on an animated
-  frame: 13.5 % of turned offsets land within 26° of the direction to the
-  bone's child against a **chance baseline of 5.1 %**, and the other reading
-  scores 5.6 %, which is chance;
-- **`region_data_brk` indexes `it_drop_break`**, positionally, 23 of 23
-  monsters — which names one of [`params.md`](params.md)'s leftovers;
-- **`.mkc`'s `0400` is a show/hide on a locator** and `0807`'s argument is
-  which foot, 28 of 28 on the players. See [`format_mkc.md`](format_mkc.md);
-- **the minimap has a transform.** `.map` had been a picture since session 8.
-  It is now a picture with a place: no rotation, world `+z` down the image,
-  the collision footprint's area centroid on pixel 127.5, and 1.31 to 1.33
-  pixels a metre. 97.5 % of the monster generators land on a drawn pixel and
-  the fit never looked at them. See [`format_stage.md`](format_stage.md).
+- **`trace_par.bin` is the weapon trail**, 207 files, and both its names are
+  read. `ref_tbl` is two points in the space of a locator on the actor —
+  **351 of 357 non-zero ids resolve**, 156 of them to `node_r_weapon` — and
+  the points measure the blade: 0.74 m in each of the assassin's two hands,
+  1.80 m from a sword's guard to its tip, and two crossing segments for the
+  hammer's head. `par_tbl` is how the ribbon looks, and its first word is
+  **which texture in the same `trace.pac`, 523 of 523**. See
+  [`format_elbn.md`](format_elbn.md) and `elbn.py trace`;
+- **a packed colour's byte order is a per-format fact.** `trace_par.bin`'s are
+  `ARGB` where [`CMTM`](format_cnom.md)'s and the stage lights' are `RGBA`,
+  and the only thing that says so is the template pair `ff808080` fading to
+  `00808080`. Third format, third convention, nothing declaring it;
+- **a `trace.pac` sits beside the `bowstring.pac`** the hunter's 25 bows ship,
+  and `bowstring_data`'s first 48 bytes are identical on all 25 while its
+  twelve `ARGB` colours are not. The string is shaped once and coloured per
+  bow.
 
-### 1. The other three `ELBN` populations.
+### 1. The combat loop, on paper.
 
-`objbin.bin` is 89 of the 707 files. `trace_par.bin` is **207** and its two
-names — `par_tbl`, `ref_tbl` — still have no guess at all; `stageparam.bin` is
-154 and only its lights are read; `mot_param.bin` is 60 and only its motion id
-is. `elbn.py records` is the instrument and it took one session to do the
-first population with it. Also `statusData` and `statusDataHeader`, 89 files,
-which the session never reached.
+Third session on this list and it has not moved, while everything it needs has
+been described twice over. A hit is: an `.anmcmd` record placing a volume on a
+frame ([`hitbox.py`](../engine/hitbox.py)), against a monster's `col_hit`
+capsules; the capsule belongs to a `region_data`; the region carries a defence
+and six multipliers and hit points by `region_lv`; the actor's `.json` carries
+`atk`, the stagger thresholds and the status vectors; `s_tension_revise_*`
+says what the hit does to tension; and `se_hitlevel_tbl` and `eff_hitlevel_tbl`
+say what it sounds and looks like. Writing that down as one document would say
+exactly which numbers are still missing, and it is the cheapest way to find
+out. **Do this one first.**
 
 ### 2. Structure the `.psq` control flow, and then Milestone 2.
 
@@ -53,44 +49,46 @@ prose. **Milestone 2 is specified rather than described**: *"a stage runs"*
 needs a Squirrel VM — a dependency, not a project — the 285 functions stubbed
 and the `suspend` resume. Nothing else has to be read first.
 
-### 3. The combat loop, on paper.
+### 3. What turns a trail on.
 
-Everything it needs is now described and nothing has been assembled. A hit is:
-an `.anmcmd` record placing a volume on a frame ([`hitbox.py`](../engine/hitbox.py)),
-against a monster's `col_hit` capsules; the capsule belongs to a `region_data`;
-the region carries a defence and six multipliers and hit points by
-`region_lv`; the actor's `.json` carries `atk`, the stagger thresholds and the
-status vectors; `s_tension_revise_*` says what the hit does to tension; and
-`se_hitlevel_tbl` and `eff_hitlevel_tbl` say what it sounds and looks like.
-Writing that down as one document would say exactly which numbers are still
-missing, and it is the cheapest way to find out.
+A weapon carries three `par_tbl` records and one `ref_tbl` entry to hang them
+on, so something outside the file picks between them — an `.anmcmd` or `.mkc`
+opcode, most likely, and thirty of `.anmcmd`'s fifty-two are still unread.
+That is a well-posed question aimed at the same unread opcodes item 4 asks
+about in general, which makes it the cheapest way in.
 
 ### Then
 
 4. **The `.anmcmd` opcodes.** Thirty of fifty-two. Session 17's lesson still
    applies — a selector byte inside a payload changes what the rest of it
-   means, and counting occurrences never sees that. `.mkc` is down to six
-   (`0805`, `0806`, `080c`, `080d`, `080f`, `0406`) and each has a file set
-   that says something: `080f`'s 32 files are all `appear` or `die`, `0406`'s
-   fifteen are all loops, `080c`'s 35 are all emotes. See
+   means, and counting occurrences never sees that; `trace_par.bin`'s `+0x18`
+   is the newest example, where 25 of 523 records mean something else.
+   `.mkc` is down to six (`0805`, `0806`, `080c`, `080d`, `080f`, `0406`) and
+   each has a file set that says something: `080f`'s 32 files are all `appear`
+   or `die`, `0406`'s fifteen are all loops, `080c`'s 35 are all emotes. See
    [`format_mkc.md`](format_mkc.md).
 5. **Name the rest of the `ECH` columns.** What is left in a quest pac is the
    reward side: `item_reward{,_multi,_region}.bin`, `weapon_decost.bin`,
    `destructible.bin`, `mapexception.bin` and the `q<NNNNN>.bin` header. The
    `CCLS` surface codes 1 to 13 are the other well-posed one, and the pose
    layer says where a foot is, so the triangle under it is a lookup away.
-6. **Where the minimap's scale is declared.** Session 19 measured the
+6. **The last three `ELBN` populations.** `stageparam.bin` is 154 files and
+   only its lights are read; `mot_param.bin` is 60 and only its motion id is;
+   `statusData` and `statusDataHeader` are 89 and nobody has looked.
+   `elbn.py records` is the instrument.
+7. **Where the minimap's scale is declared.** Session 19 measured the
    transform — see [`format_stage.md`](format_stage.md) — and it is not in
    `stageparam.bin`. The orientation and the anchor are settled; the scale is
    a band, 1.31 to 1.33 px/m, and per-stage fitting still buys real accuracy.
-7. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
+8. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
    `+0x0a`. Bit fields; they correlate with whether the row carries a locator
    and whether it carries an offset, and the obvious reading is a space or
    follow mode. Nothing on the disc tests it; a renderer would.
-8. **Draw it.** `hitbox.py obj` writes a frame as Wavefront OBJ — bones, body
+9. **Draw it.** `hitbox.py obj` writes a frame as Wavefront OBJ — bones, body
    capsules and hit volumes together. Nobody has looked at one yet, and the
    two things it would catch cheaply are a flag-4 shape read wrong and a
-   monster whose capsules do not cover it.
+   monster whose capsules do not cover it. A trail is two more line segments
+   on the same picture.
 
 ---
 ## Deferred, with reasons
@@ -218,8 +216,11 @@ missing, and it is the cheapest way to find out.
   read as a defence and not proved; `region_data_brk`'s two `u16[4]` arrays,
   whose ids come from a family keyed on the part and resolve against nothing
   on the disc; `s_region_group_data`'s three angles and its eight empty index
-  slots; and everything in `trace_par.bin`, `stageparam.bin` past the lights
-  and `mot_param.bin` past the motion id. See
+  slots; and `stageparam.bin` past the lights, `mot_param.bin` past the motion
+  id and `statusData` entire. `trace_par.bin` is read, and what it leaves is
+  **which of a weapon's three `par_tbl` records is used when**, the two counts
+  at `+0x19` and `+0x1a`, and `bowstring_data`'s first 48 bytes, identical on
+  all 25 bows and so carrying no evidence. See
   [`format_elbn.md`](format_elbn.md).
 - What the 14 empty `.cpk.patch` stubs would have overlaid, and whether a
   shipped title update exists that fills them.
@@ -227,6 +228,40 @@ missing, and it is the cheapest way to find out.
 ---
 
 # Log
+
+## Session 20 — 2026-08-23
+
+- **`trace_par.bin` is the weapon trail**, and both its names are read. 207
+  files — 154 weapons, which is `weapon.cpk` entire, and 53 monsters — and
+  every one of them sits in a directory called `trace.pac` with the textures
+  it is drawn with. [`format_elbn.md`](format_elbn.md) gains a chapter and
+  [`elbn.py`](../tools/elbn.py) gains `trace`.
+- **`ref_tbl` is two points in the space of a locator**, the third format to
+  use the dual numbering after `.anmcmd` and `col_hit`: **351 of the 357
+  non-zero ids are a locator on the actor's own model**, 156 of them
+  `node_r_weapon` and 30 `node_l_weapon`, the rest hands, feet, eyes and the
+  `eff_*` locators [`effect.bin`](format_effect.md) already uses. The six
+  misses are all `b18`, which asks for two ids it does not declare.
+- **The points are the weapon, measured.** The assassin's pair reads
+  `(0,0,0) -> (-0.74,0,0)` on each hand, which is two daggers; the sword
+  warrior's runs `y = 0.20` to `y = 2.00`, guard to tip, and 25 of its 26
+  models reach within a quarter of that; the hammersmith's two records cross
+  at right angles, which is a hammer head drawn as two ribbons.
+- **A weapon's trail is authored once per class.** 207 files hold 43 distinct
+  `par_tbl` blobs, and on the player side the grouping is exactly the class —
+  so a difference between two swords would have been read as meaning, and
+  there is none.
+- **`par_tbl`'s first word indexes the textures beside it**, 523 of 523, in
+  the container's own order; `b12` ships a body texture and a `_foot` one and
+  hangs four of its six ribbons off `node_l_foot` and `node_r_foot`.
+- **Packed colour, third format, third convention.** These are `ARGB` where
+  [`CMTM`](format_cnom.md)'s and the stage lights' are `RGBA`. The tell is the
+  template pair, `ff808080` fading to `00808080`, which differs in one byte;
+  496 of 523 head colours open at `0xff` and 449 tails close at `0x00`.
+- The selector trap again, in a new place: `+0x18`'s first byte is 0 on 244
+  records, 2 on 254 and **4 on 25**, and on those 25 the colour words are `0`
+  and `1` rather than colours. Averaging the columns across all 523 would have
+  gone straight through it.
 
 ## Session 19 — 2026-08-23
 

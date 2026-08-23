@@ -97,12 +97,12 @@ alongside whatever it inferred, and leaves the choice to the reader.
 
 ## Where it is used
 
-    trace_par.bin       207   ref_tbl, par_tbl
+    trace_par.bin       207   par_tbl, ref_tbl: the weapon trail
     stageparam.bin      154   the stage's own parameters; see stage.py
     objbin.bin           89   clip_distance, col_hit, jostle_data
     stobjbin.bin         89
     mot_param.bin        60   motionDataHeader and _dataA, per character class
-    bowstring.bin        25
+    bowstring.bin        25   one per bow, beside its trace.pac
     objbin.cpp           13
     command_data.bin     12   with select_action, select_target, target_data
     ...                       and 55 more names, one to a handful of files each
@@ -122,6 +122,7 @@ that is where the AI's own tables are.
     records   one name's records, profiled column by column over the disc
     capsules  `col_hit`, `jostle_data` and `pgs_data` with their bones named
     regions   a monster's body regions, joined to the bones and the drops
+    trace     `trace_par.bin`, the weapon trail: its textures and its bones
 """
 
 from __future__ import annotations
@@ -702,6 +703,178 @@ def name_agrees(region: str, bones: list[str]) -> bool | None:
     return None
 
 
+# --------------------------------------------------------------------------
+# the weapon trail
+
+def _trace_owner(d: str) -> str:
+    """`character.cpk/weapon.cpk/wp_as1.pac/trace.pac` -> `wp_as1`."""
+    o = d.rsplit('/', 2)[-2] if '/' in d else d
+    return o[:-4] if o.endswith('.pac') else o
+
+
+def _class_of(owner: str) -> str:
+    """The player model a weapon's trail is measured against, or the actor."""
+    return owner[3:5] if owner.startswith('wp_') else owner
+
+
+def _locator_table(blob: bytes, label: str) -> dict[int, str]:
+    from cmdl import Cmdl                                   # noqa: PLC0415
+    m = Cmdl(blob, label)
+    names = m.names(5)
+    return {i: (names[n] if n < len(names) else f'node {n}')
+            for i, n in m.locators()}
+
+
+def trace_sets(root):
+    """Every `trace.pac`: its owner, its `trace_par.bin`, its textures.
+
+    The textures come back **in the container's own order**, because that is
+    what a `par_tbl` record's first word indexes. A directory tree cannot
+    preserve that order, so reading the unpacked tree sorts them instead and
+    the caller is told which it got.
+    """
+    root = pathlib.Path(root)
+    packed = any(p.is_file() for p in root.glob('*.cpk'))
+    groups: dict[str, list] = {}
+    loc: dict[str, dict[int, str]] = {}
+    if packed:
+        for path, blob in leaves(root, ''):
+            if path.endswith('.CMDL'):
+                try:
+                    loc[path.rsplit('/', 1)[-1][:-5]] = _locator_table(
+                        blob, path)
+                except (ValueError, struct.error, IndexError):
+                    pass
+                continue
+            if '/trace.pac/' not in path:
+                continue
+            d, leaf = path.rsplit('/', 1)
+            g = groups.setdefault(d, [None, []])
+            if leaf == 'trace_par.bin':
+                g[0] = blob
+            elif leaf.endswith('.CTEX') and leaf[:-5] not in g[1]:
+                g[1].append(leaf[:-5])       # a pac reachable twice
+    else:
+        for p in sorted(root.rglob('trace_par.bin')):
+            groups[p.parent.as_posix()] = [
+                p.read_bytes(),
+                sorted(q.stem for q in p.parent.glob('*.CTEX'))]
+        for p in sorted(root.rglob('*.CMDL')):
+            loc.setdefault(p.stem, None)                    # parsed on demand
+            loc[p.stem] = p
+    out = []
+    for d, (blob, tex) in sorted(groups.items()):
+        if blob is None:
+            continue
+        owner = _trace_owner(d)
+        cls = _class_of(owner)
+        table: dict[int, str] = {}
+        for stem in (cls, f'f{cls}1', f'm{cls}1'):
+            v = loc.get(stem)
+            if v is None:
+                continue
+            if not isinstance(v, dict):
+                try:
+                    v = _locator_table(v.read_bytes(), v.name)
+                except (ValueError, struct.error, IndexError):
+                    continue
+                loc[stem] = v
+            table.update(v)
+        out.append((owner, Elbn(blob, owner), tex, table))
+    return out, packed
+
+
+def trace_records(f: Elbn):
+    """`(par, ref)`, each a list of 32-byte records read out as fields."""
+    par, ref = [], []
+    d = f.by_name()
+    e = d.get('par_tbl')
+    for i in range(e.size // 32 if e else 0):
+        o = e.offset + i * 32
+        w = [f.word(o + j) for j in range(0, 32, 4)]
+        par.append({'tex': w[0], 'one': w[1], 'head': w[2], 'tail': w[3],
+                    'a': struct.unpack('>f', struct.pack('>I', w[4]))[0],
+                    'b': struct.unpack('>f', struct.pack('>I', w[5]))[0],
+                    'lane': w[6].to_bytes(4, 'big'), 'zero': w[7]})
+    e = d.get('ref_tbl')
+    for i in range(e.size // 32 if e else 0):
+        o = e.offset + i * 32
+        v = struct.unpack_from('>6f', f.buf, HEADER + o + 0)
+        w = f.word(o + 24)
+        ref.append({'a': v[:3], 'b': v[3:6], 'loc0': w >> 16,
+                    'loc1': w & 0xFFFF, 'zero': f.word(o + 28)})
+    return par, ref
+
+
+def _argb(w: int) -> str:
+    b = w.to_bytes(4, 'big')
+    return f'{w:08x} a{b[0]:<3d} rgb {b[1]:3d} {b[2]:3d} {b[3]:3d}'
+
+
+def cmd_trace(root, want: str = '*') -> int:
+    """`trace_par.bin`, the weapon trail, with its textures and its bones.
+
+    Two tables, both 32 bytes to a record. `par_tbl` is how the ribbon looks
+    and its first word is which texture in the same `trace.pac`; `ref_tbl` is
+    where the ribbon is, as two points in the space of a locator on the actor
+    that carries it.
+    """
+    sets, packed = trace_sets(root)
+    if not sets:
+        print(f'no trace.pac under {root}')
+        return 1
+    shown = 0
+    hit = miss = same = differ = 0
+    ntex = nact = inrange = npar = 0
+    bad = []
+    for owner, f, tex, table in sets:
+        par, ref = trace_records(f)
+        nact += not owner.startswith('wp_')
+        ntex += len(par) == len(tex) and not owner.startswith('wp_')
+        npar += len(par)
+        inrange += sum(r['tex'] < len(tex) for r in par)
+        for r in ref:
+            same += r['loc0'] == r['loc1']
+            differ += r['loc0'] != r['loc1']
+            for v in {r['loc0'], r['loc1']} - {0}:
+                if v in table:
+                    hit += 1
+                else:
+                    miss += 1
+                    bad.append((owner, v))
+        if not (fnmatch.fnmatch(owner, want) or want in owner):
+            continue
+        shown += 1
+        print(f'== {owner}   {" ".join(tex)}'
+              f'{"" if packed else "   (sorted, not the container order)"}')
+        for i, r in enumerate(par):
+            name = tex[r['tex']] if r['tex'] < len(tex) else '?'
+            L = r['lane']
+            print(f'   par [{i}]  tex {r["tex"]} {name:<20s} '
+                  f'{_argb(r["head"])} -> {_argb(r["tail"])}  '
+                  f'{r["a"]:g} {r["b"]:g}   lane {L[0]} {L[1]} {L[2]}')
+        for i, r in enumerate(ref):
+            a, b = r['a'], r['b']
+            d = sum((b[k] - a[k]) ** 2 for k in range(3)) ** 0.5
+            node = table.get(r['loc0'], '-' if r['loc0'] == 0 else '?')
+            print(f'   ref [{i}]  {r["loc0"]:5d} {node:<16s} '
+                  f'({a[0]:+.2f} {a[1]:+.2f} {a[2]:+.2f}) -> '
+                  f'({b[0]:+.2f} {b[1]:+.2f} {b[2]:+.2f})   {d:.2f} m')
+        print()
+    print(f'{len(sets)} trace.pac, {shown} shown')
+    print(f'{inrange} of {npar} par_tbl records name a texture that is there')
+    print(f'{ntex} of the {nact} monsters carry one par_tbl record per '
+          f'texture; every weapon carries three for two')
+    print(f'{hit} of {hit + miss} non-zero locator ids are a locator on the '
+          f'actor')
+    print(f'{same} ref records name the same locator twice, {differ} name two')
+    if bad:
+        c = collections.Counter(bad)
+        print('  misses: '
+              + ' '.join(f'{o} {v}x{n}' for (o, v), n in c.most_common(12)))
+    return 0
+
+
 def cmd_regions(root, want: str = '*') -> int:
     """Every monster's body regions, joined to the bones they hang off.
 
@@ -799,6 +972,8 @@ def main() -> int:
         return cmd_capsules(rest[0], rest[1])
     if cmd == 'regions':
         return cmd_regions(rest[0], *rest[1:2])
+    if cmd == 'trace':
+        return cmd_trace(rest[0], *rest[1:2])
     print(f'unknown command: {cmd}')
     return 1
 

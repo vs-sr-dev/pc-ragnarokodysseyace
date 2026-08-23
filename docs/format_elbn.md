@@ -1,12 +1,12 @@
 # `ELBN` — the named-parameter container
 
-**Status: the container is solved and `objbin.bin`'s records are read.** 707
-files, 3,983 entries, **318 distinct parameter names, 13,437 relocations, 0
-unreadable**, every check closing on every file. Reader:
-[`../tools/elbn.py`](../tools/elbn.py). *The records* below describes the
-geometry, the monster body regions and the player skill parameters; the other
-three populations — `trace_par.bin`, `stageparam.bin`, `mot_param.bin` — are
-still only containers.
+**Status: the container is solved, and two of its four populations are read.**
+707 files, 3,983 entries, **318 distinct parameter names, 13,437 relocations,
+0 unreadable**, every check closing on every file. Reader:
+[`../tools/elbn.py`](../tools/elbn.py). *The records* describes `objbin.bin` —
+the geometry, the monster body regions and the player skill parameters — and
+*The weapon trail* describes `trace_par.bin`. What is left is `stageparam.bin`
+past its lights, `mot_param.bin` past its motion id, and `statusData`.
 
 `ELBN` sat on the deferred list for six sessions as *"unidentified, no consumer
 waiting"*. It is the format on this disc that **names its own contents**: the
@@ -108,12 +108,12 @@ at -4e37 and was obvious; here it comes out at 27610.5 and is not.
 ## Where it is used
 
 ```
-trace_par.bin       207   ref_tbl, par_tbl
+trace_par.bin       207   par_tbl, ref_tbl: the weapon trail
 stageparam.bin      154   the stage's own parameters; see format_stage.md
 objbin.bin           89   clip_distance, col_hit, jostle_data, se_hitlevel_tbl
 stobjbin.bin         89
 mot_param.bin        60   motionDataHeader and _dataA, per character class
-bowstring.bin        25
+bowstring.bin        25   one per bow, beside its trace.pac
 objbin.cpp           13
 command_data.bin     12   with select_action, select_target, target_data
 select_action.bin    12
@@ -142,7 +142,7 @@ per class. *The records* below reads both it and the monsters' side.
 says who the parameter belongs to, since the name alone rarely does:
 
 ```
-par_tbl, ref_tbl                     207   trace_par.bin
+par_tbl, ref_tbl                     207   trace_par.bin, per weapon
 stage_param, waterparam              155   stageparam.bin, per stage
 character_clipping_distance          154   stageparam.bin
 shadow_offset, shadow_param          154   stageparam.bin
@@ -482,6 +482,189 @@ hitlevel` already joins it.
 - **`chuck_off_param`'s third word**, which is not one field: it reads
   `04 64 00 00`, `03 64 00 00`, `02 1e 00 00` — a small index and a 100 or a
   30, the four-`u8`-in-a-lane trap [`ech.py`](format_ech.md) warns about.
-- **`trace_par.bin`'s `par_tbl` and `ref_tbl`**, 207 files and still no guess.
-- Everything in the other three populations: `stageparam.bin` past the lights,
-  `mot_param.bin` past the motion id, and the mercenary AI's four tables.
+- Everything in the other two populations: `stageparam.bin` past the lights
+  and `mot_param.bin` past the motion id, and the mercenary AI's four tables.
+  `trace_par.bin` is *The weapon trail* below.
+
+---
+
+# The weapon trail
+
+*Session 20.* `trace_par.bin` is the second-largest `ELBN` population — **207
+files** — and its two names, `par_tbl` and `ref_tbl`, had no guess at all
+after session 19. Both are 32 bytes to a record, and between them they are the
+**swoosh a blade leaves behind**: `par_tbl` is how the ribbon looks and
+`ref_tbl` is where it is. Tool: `elbn.py trace`.
+
+The path says it first. Every one of the 207 sits in a directory called
+`trace.pac`, and the textures the trail is drawn with sit in it too — `zan`,
+in the player-side names, is a cut:
+
+```
+character.cpk/weapon.cpk/wp_sw1.pac/trace.pac/
+    trace_par.bin
+    ef_zan_dain001.CTEX
+    ef_zan_sw001.CTEX
+monster.cpk/b09_00/trace.pac/
+    trace_par.bin
+    ef_N_trace_b09_00_tail.CTEX
+    ef_N_trace_b09_00_wing.CTEX
+```
+
+**154 of the files are weapons** — 26 each for `as`,
+`hs`, `mg` and `sw`, 25 each for `cl` and `ht`, which is `weapon.cpk` entire —
+and **53 are monsters**, the ones with something worth trailing. That split is
+the format's own statement of what it is for.
+
+**Every weapon of a class ships the same table.** 207 files hold 43 distinct
+`par_tbl` blobs and 30 distinct `ref_tbl` ones, and on the player side the
+grouping is exactly the class: all 25 `wp_cl*` are one blob, all 25 `wp_hs*`
+another. So the trail is authored once per class and copied into all
+twenty-five weapon packs — which is worth knowing before reading a difference
+between two swords as meaningful, because there is none.
+
+## `ref_tbl` — two points on a bone
+
+```
++0x00  f32[3]  one end of the ribbon
++0x0C  f32[3]  the other end
++0x18  u16     the locator the points are measured in
++0x1A  u16     the same locator again, on all 382 records
++0x1C  u32     zero on all 382
+```
+
+The `u16` is the dual numbering the rest of the disc uses, and this is the
+third format to use it after [`.anmcmd`](format_anmcmd.md) and `col_hit`:
+**351 of the 357 non-zero ids are a locator on the actor's own model**. On a
+weapon the actor is whoever holds it, so the ids resolve against the player
+models, and what they resolve to is the point:
+
+```
+4000  node_r_weapon  156, and node_r_sword 3 on a rig that renames it
+4100  node_l_weapon   30
+1100  node_l_hand     23      1200  node_r_hand     23
+1700  node_l_foot      4      1800  node_r_foot      4
+10100 .. 10109  eff_10100 ..  95     10200 .. 10205  node_r_eye4 ..  6
+0     nothing         25      -- the twenty-five bows
+```
+
+`node_r_weapon` and `node_l_weapon` are where a weapon is hung, and the
+`eff_*` locators are the ones [`effect.bin`](format_effect.md) already uses,
+which is the same table read by a second consumer. The six misses are all
+`b18`, which asks for `10100` and `10101` and declares neither — ids that
+exist on the humanoid monsters and not on the dragon.
+
+**The two points are the weapon, measured.** The `as` pair reads
+`(0, 0, 0) -> (-0.74, 0, 0)` on locator 4000 and again on 4100, which is a
+0.74 m blade in each hand: the assassin's two daggers, and the only class with
+two `ref_tbl` records for that reason. The rest, one line each:
+
+```
+as   4000 + 4100  (0,0,0) -> (-0.74,0,0)          0.74 m   two daggers
+cl   4000         (0,0,0) -> (0,1.14,0)           1.14 m
+hs   4000         (0.28,0.3,0) -> (0.28,1.05,0)   0.75 m   the shaft
+     4000         (0.28,0.67,0.35) -> (0.28,0.67,-0.35)  0.70 m   the head
+mg   4000         (0,-1,0) -> (0,0.9,0)           1.90 m   a staff, both ends
+sw   4000         (0,0.2,0) -> (0,2,0)            1.80 m   guard to tip
+ht   0            (0,1.38,0) -> (0,0,-0.13)       1.39 m
+```
+
+The hammersmith's two records **cross**: a 0.75 m segment up the shaft and a
+0.70 m one straight across it at right angles, which is a hammer head drawn as
+two ribbons. The sword warrior's segment starts at `y = 0.20` and not at zero,
+which is where a blade starts and a grip stops.
+
+They are the right size for the models they belong to. Projecting every vertex
+of each weapon onto its own class's segment direction: the 26 swords reach
+1.88 m on the median against a segment of 1.80, and **25 of 26 land within a
+quarter of the segment's length of its far end**; the 25 bows reach 1.51
+against 1.39, 23 of 25. The looser classes are the ones whose models are not
+one shape — `mg`'s staves and `hs`'s hammers run from 1.14 m to 2.81 m along
+the same authored segment, so a long staff trails short of its own tip.
+
+`ht` is the only class whose locator is **0**, and the bow is also the only
+weapon carrying a second `ELBN`: `bowstring.pac/bowstring.bin`, 25 files, one
+per bow. Its single record is 96 bytes, and the **first 48 are identical on
+all 25** while the last 48 are twelve `ARGB` colours in four `(a, b, a)`
+triples that differ from bow to bow — an edge, a centre and an edge again, per
+band. So the string is drawn per bow and shaped once.
+
+## `par_tbl` — the ribbon
+
+```
++0x00  u32     which texture in this trace.pac, counting from 0
++0x04  f32     1.0 on all 523 records
++0x08  u32     ARGB at one end of the ribbon's life
++0x0C  u32     ARGB at the other
++0x10  f32     a width or a scale, 0 to 2
++0x14  f32     the same, at the other end
++0x18  u8[4]   a selector and two counts, the fourth byte zero on all 523
++0x1C  u32     zero on all 523
+```
+
+**The first word indexes the textures beside it.** In the container's own
+order — `trace_par.bin` first, then the `.CTEX` — **523 of 523 records name a
+texture that is there**, and where a file has two textures the
+names line up with where the ribbons are. `b12` ships `ef_N_trace_b12` and
+`ef_N_trace_b12_foot`, and its six `ref_tbl` records are two on the body's
+`eff_10300` and **four on `node_l_foot` and `node_r_foot`**; `b09` ships a
+`_tail` and a `_wing` texture against one 3.10 m segment and four of 0.4 to
+0.5 m; `z16` an `_eye` and a `_nail`. What neither table says is which record
+is drawn with which texture — the correspondence is in the names and not in a
+field. **50 of the 53
+monsters carry exactly one record per texture.** Every weapon carries three
+for two, and the third is the disabled one described below.
+
+An unpacked directory tree cannot preserve the container's order, so
+`elbn.py trace` says which order it is showing; run it against
+`extract/PS3_GAME/USRDIR` to get the real one.
+
+**The colours are `ARGB`, not the `RGBA` the rest of this disc packs.** The
+tell is the pair a template leaves behind: `ff808080` at `+0x08` and
+`00808080` at `+0x0C`, which differ in the first byte only. Read as `ARGB`
+that is one grey fading to nothing, which is what a trail does; read as
+`RGBA` it is red at half alpha becoming teal at half alpha, which nobody
+authors. The population agrees: **496 of 523 records carry `0xff` in the first
+byte of the head colour and 449 carry `0x00` in the first byte of the tail**,
+and 268 carry the same three low bytes in both. This is the third packed
+colour on the disc after [`CMTM`](format_cnom.md)'s and the stage lights'
+above, and the third convention — so the byte order is a per-format fact and
+nothing declares it.
+
+The three bytes at `+0x18` are **a selector and two counts**, and the selector
+is the failure [`.anmcmd`](format_anmcmd.md) keeps producing: byte 0 takes 0
+on 244 records, 2 on 254 and **4 on 25**, and on all 25 of the fours the other
+two bytes are zero and the colour words are `0` and `1` rather than colours.
+That is one record meaning something else, and counting the other columns
+across all 523 would have averaged straight through it. The 25 are the sword
+warrior's second record, on `wp_sw1` to `wp_sw25`. Bytes 1 and 2 read 6 and 6,
+6 and 4, 16 and 1, 40 and 2 — small counts, plausibly a sample count and a
+subdivision, and nothing on the disc tests it.
+
+**A weapon's three records are two live ones and a template.** Records 0 and 1
+point at the class's own texture, record 2 at `ef_zan_dain001`, the one
+texture every class ships; record 2 is grey `ff808080` fading to `00808080`
+on all 154, which is the default nobody edited. What picks between record 0
+and record 1 is not in this file — the assassin has one per dagger and the
+other five classes have two records against a single `ref_tbl` entry, two of
+them identical, so it is a state the animation selects and not a place.
+
+The 26th weapon of `as`, `hs`, `mg` and `sw` is the same story from the other
+side: all four carry the assassin's table, one trail per hand at 0.74 m, and
+all four models are dagger-shaped. A weapon's trail follows the weapon, not
+the class that owns the folder.
+
+## What the trail does not say
+
+- **Which `par_tbl` record is used when.** A weapon has three and one
+  `ref_tbl` entry to hang them on, so the choice is made outside this file —
+  by the animation, most likely, which means an
+  [`.anmcmd`](format_anmcmd.md) or [`.mkc`](format_mkc.md) opcode nobody has
+  read yet. The same question in the other direction is which of a monster's
+  many `ref_tbl` records a given record's texture belongs to.
+- **The two counts at `+0x19` and `+0x1a`**, and what the selector at
+  `+0x18` selects. Nothing on the disc varies with them.
+- **The two floats at `+0x10` and `+0x14`**, read here as a width at each end
+  because they sit either side of the two colours and run 0 to 6.
+- **`bowstring_data`'s first 48 bytes**, identical on all 25 bows and so
+  carrying no evidence at all.

@@ -84,7 +84,7 @@ Phase 3.
 | `CCLS` collision | 155 | ✅ **solved** | [`format_ccls.md`](format_ccls.md) — the walkable ground, one welded triangle mesh per stage |
 | `.map` | 137 | ✅ **solved** | not the world layout at all: a 256x256 minimap, and a [`CTEX`](format_ctex.md) |
 | stage layout | 163 | ✅ **solved** | [`format_stage.md`](format_stage.md) — `ATIH` markers, the fences and the trigger scripts |
-| `ELBN` params | 707 | ✅ **solved** | [`format_elbn.md`](format_elbn.md) — the named-parameter container, 318 names |
+| `ELBN` params | 707 | ✅ **solved** | [`format_elbn.md`](format_elbn.md) — the named-parameter container, 318 names; `objbin.bin` and `trace_par.bin` read |
 | `CNOM` motion | 3,043 | ✅ **solved** | [`format_cnom.md`](format_cnom.md) — 3.0M keys, quaternion rotations, bound to skeletons by name |
 | `CMTM` material | 91 | ✅ **solved** | [`format_cnom.md`](format_cnom.md) — `CNOM` with scalars; animates material colour |
 | `.psq` / `.cnut` | 3,011 | ✅ **solved** | [`format_psq.md`](format_psq.md) — **Squirrel 2.2 bytecode**; 11,232 functions decompile with their own names |

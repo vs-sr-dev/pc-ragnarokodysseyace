@@ -10,7 +10,7 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-19 (2026-08-23). **Something runs, and now it has feet.** A capsule
+Sessions 1-20 (2026-08-23). **Something runs, and now it has feet.** A capsule
 with the game's own acceleration, run speed, turn rate and radius crosses the
 first field of the game in 405 frames - 13.5 seconds - without leaving the
 collision mesh, and walks 135 stages, 127 of them with the body on legal
@@ -25,6 +25,18 @@ and `<stage>.col` agree to a centimetre across 1,432 markers, a join nobody
 had reason to make while both were only being read. And a `borderline` is a
 closed loop - 105 of 145 stages - which had been an open question since
 session 8.
+
+Session 20 gave the blade a swoosh. `trace_par.bin` - 207 files, the second
+largest `ELBN` population and one nobody had a guess about - is **the weapon
+trail**, and it is two tables: where the ribbon is and how it looks. Where it
+is turns out to be two points in the space of a locator on the actor, the
+third format on this disc to use that numbering, and the points are the
+weapon measured - 0.74 m in each of the assassin's two hands, guard to tip on
+a sword, two crossing segments for a hammer's head. How it looks begins with
+which texture in the same directory, and **523 of 523 records name one that is
+there**. Its colours are `ARGB` where two other formats here pack `RGBA`, and
+the only thing that says so is a template that fades `ff808080` to `00808080`.
+See [`ELBN`](docs/format_elbn.md).
 
 Session 19 gave it a shape to be hit on. The `ELBN` `objbin.bin` turns out to
 carry **the actor's body as capsules on bones** and, for a monster, **its
@@ -102,6 +114,8 @@ ELBN parameters  ->      707 files, 318 names   tools/elbn.py   0 errors
   body capsules  ->    1,172 col_hit, 1,148 of 1,148 bones resolving
   body regions   ->      315 named parts, 259 of 266 on a bone of that name
   breakable parts->       87 over 23 monsters, indexing it_drop_break 23/23
+  the weapon trail->     207 files, 351 of 357 locator ids on the actor,
+                       523 of 523 textures named in the pac beside them
 Squirrel script  ->    3,011 files, 315k insns tools/psq.py    0 errors
   engine API     ->      285 native functions  named and described
   their arguments->   10,787 message ids, 1,220 motion ids, every cue id
@@ -178,9 +192,8 @@ plan is in
 What is still unread: no format at all - the disc's last container was opened
 in session 15. What is left is inside them. Ten of the AI's 76 condition
 terms, because the shipped tables turned out to be newer than the scripts
-that document them; three of the four `ELBN` populations, now that
-`objbin.bin`'s records are described and `trace_par.bin`'s 207 files still
-have no guess; thirty of the fifty-two `.anmcmd` opcodes, though the two
+that document them; two of the four `ELBN` populations, now that `objbin.bin`
+and `trace_par.bin` are read; thirty of the fifty-two `.anmcmd` opcodes, though the two
 commonest are read and they are the hitbox; six of `.mkc`'s twenty-one; and a
 dozen of the engine's 285 script functions whose argument roles the disc does
 not separate.
@@ -281,6 +294,9 @@ python tools/elbn.py check|survey <dir>      the named parameters
 python tools/elbn.py names <dir> <file>      the entries of one file
 python tools/elbn.py dump <dir> <file> [entry]
 python tools/elbn.py field <dir> <name>      where a parameter occurs
+python tools/elbn.py records <dir> <name>    one name, profiled over the disc
+python tools/elbn.py capsules|regions <dir> <actor>  the body and its parts
+python tools/elbn.py trace <dir> [actor]     the weapon trail
 
 python tools/anmcmd.py check|survey <dir>    the animation commands
 python tools/anmcmd.py census <dir>          every opcode, with its size
