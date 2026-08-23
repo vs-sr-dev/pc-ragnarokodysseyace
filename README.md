@@ -83,6 +83,11 @@ mercenary AI     ->       12 classes, 48 tables tools/merc.py   0 errors
 PTCP effects     ->       67 files, 1,108 blocks tools/ptp.py    0 errors
   resources      ->    2,002 assets, 4,451 references, named in the clear
   addressing     ->      104 of 104 (category, slot) pairs resolving
+.mkc sound track ->    2,690 files, 19,724 recs tools/mkc.py    0 errors
+  sound cues     ->    7,540 of 7,608 references naming a cue in an .acb
+  effects        ->       69 effect.bin tables, indexed 1-based from here
+PAMF movies      ->       46 files, 22.7 minutes tools/pam.py    0 errors
+  video          ->    720p29.97 MPEG-2, and no audio track on any of them
 
 a capsule runs   ->      135 stages walked   engine/run.py  127 clean
   one crossing   ->      405 frames over 010_01_01, 13.5 s at a run
@@ -99,18 +104,17 @@ survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 [the units](docs/units.md),
 [`ELBN`](docs/format_elbn.md), [`.anmcmd`](docs/format_anmcmd.md), [the script
 layer](docs/format_psq.md), [the monster AI](docs/format_ai.md), [the
-mercenary AI](docs/format_merc.md), [`.PTP`](docs/format_ptp.md), [the actor
-parameters](docs/params.md). What running it produced is in [milestone
+mercenary AI](docs/format_merc.md), [`.PTP`](docs/format_ptp.md),
+[`.mkc`](docs/format_mkc.md), [the actor parameters](docs/params.md). What running it produced is in [milestone
 1](docs/milestone_numbers.md). The plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
 
-What is still unread: `.mkc` (2,690 files, a short `u16` stream ending on
-`0xffff`) and the PAMF video, neither of which blocks anything; ten of the
-AI's 76 condition terms, because the shipped tables turned out to be newer
-than the scripts that document them; the `ELBN` records, addressable by name
-but not described field by field; and thirty of the fifty-two `.anmcmd`
-opcodes, though the two commonest are read and they are the hitbox.
+What is still unread: the `.awb` waveforms, which block nothing; ten of the AI's 76 condition terms, because the shipped
+tables turned out to be newer than the scripts that document them; the `ELBN`
+records, addressable by name but not described field by field; and thirty of
+the fifty-two `.anmcmd` opcodes, though the two commonest are read and they
+are the hitbox.
 
 Two things listed here for several sessions turned out to be something else,
 which is worth keeping visible. `.map` was down as the world layout and is the
@@ -236,6 +240,15 @@ python tools/ptp.py check|survey <dir>       the particle effect banks
 python tools/ptp.py list <dir> <name>        one bank, slot by slot
 python tools/ptp.py slot <dir> <name> <n>    one block, hex and assets
 python tools/ptp.py refs <dir>               where the (category, slot) pairs go
+
+python tools/mkc.py check|census <dir>       the presentation track
+python tools/mkc.py survey <dir>             every file, one line each
+python tools/mkc.py list <dir> <name>        one file, with the cue names
+python tools/mkc.py banks|effects <dir>      the sound banks, the effect table
+python tools/mkc.py cues <dir> <bank>        one bank's cue list
+
+python tools/pam.py check|list <dir>         the movies
+python tools/pam.py mpg <dir> <name> <out>   write the MPEG-2 stream out
 
 python tools/params.py census|tiers <dir>     the actor parameters
 python tools/params.py classes <dir>          the six player classes compared

@@ -5,61 +5,42 @@
 
 ---
 
-# Next session — close the format column: `.mkc`, then the movies
+# Next session — the capsule gets a skeleton
 
-Session 14 closed `.PTP` and reached milestone 1. Two entries are left in the
-[`STRATEGY.md`](STRATEGY.md) format table and neither blocks anything, which
-is exactly why they are worth finishing: after them Phase 2 has no entries at
-all, and every session after this one is building rather than reading.
+Session 15 read `.mkc` and the movies, and **Phase 2 now has no open rows**:
+every container the disc ships is read. What is left inside them is columns
+and opcodes, not formats. From here the work is building.
 
-Both were scouted at the end of session 14, so neither starts cold.
+### 1. Pose the body.
 
-### 1. `.mkc` — a second per-motion sidecar, and it is small.
+`engine/` has a capsule that runs, turns, slides along a fence and falls, and
+no pose at all. Everything it needs is read and none of it has ever been put
+in the same place at the same time:
 
-**2,690 files, 2 to 1,076 bytes, every one of even length, every one ending on
-`0xffff`.** 256 are nothing but that terminator. What was established:
+- [`CNOM`](format_cnom.md) has 3.0M keys and binds to a skeleton by name;
+- `cmdl.py gait` already does the forward kinematics, and `cmdl.py obj` already
+  writes a posed model out;
+- [`.anmcmd`](format_anmcmd.md) says what happens on which frame, and its hit
+  record names the bone it hangs off;
+- and [`.mkc`](format_mkc.md) now says which frame the foot lands on. That is
+  the one that makes a pose checkable rather than merely visible: **`7ffa`
+  fires on the frame the foot plants**, so the animation's own footfall can be
+  measured against the root motion `cmdl.py gait` derives, over 3,043
+  animations, and the two either agree or the pose is wrong.
 
-- **it is named by its motion, like `.anmcmd` is.** 2,304 of the 2,690 share a
-  stem with a [`CNOM`](format_cnom.md) — `com051emo_1.mkc` beside
-  `com051emo_1.CNOM` — and they sit in the same `.pac`. Only 3 share a stem
-  with an `.anmcmd`, so this is a *different* sidecar and not a variant of
-  that one. The player motion sets carry the most: 125 each for `fmg` and
-  `mmg`, 113 for `mcl`;
-- **it is a `u16` stream and the vocabulary is tight.** Above `0x0800` only
-  eleven distinct values occur at all: `0x7ff9` (6,251 uses), `0x7ffb`,
-  `0x7ffa`, `0x7ffd`, `0x7ffc`, five singletons between `0x797c` and `0x7c38`,
-  and `0xffff` the terminator. A second family sits lower — `0x0801` (3,926),
-  `0x0802`, `0x0806`, `0x105e`, `0x0c6c`, `0x620c`;
-- **the records are not fixed width.** File lengths are spread evenly over all
-  four even residues mod 8, so a uniform 8-byte record does not fit and the
-  stream is variable-length, the way an `.anmcmd` command is;
-- a file opens with a small `u16` — 0, 1 or 3 — and then a value from that
-  vocabulary: `(0, 0x0400)` on 645 files, `(0, 0x0801)` on 214,
-  `(3, 0x7ff9)` on 148.
+The first deliverable is small: play one `CNOM` on the walking capsule and
+print, per frame, the height of the planted foot above the collision mesh.
 
-**The method is the one that worked on `.anmcmd`**: assign a length to each
-opcode, walk the stream, and require it to land exactly on the `0xffff` on all
-2,434 non-empty files. Nothing else in the file declares a size, so landing
-exactly is the whole proof. `0x7ff9` at 6,251 uses is the one to solve first.
+### 2. `effect.bin` — 69 tables that just acquired a consumer.
 
-The prize, if there is one, is the 554 `.anmcmd` that name no motion — the
-note in [`format_anmcmd.md`](format_anmcmd.md) has always said these are the
-obvious place they might key through.
-
-### 2. The movies — and they need 3.4 GB of disc first.
-
-46 `.pam` files, `PS3_GAME/USRDIR/movie/`, MPEG-4 AVC in a Sony container.
-**They are not in `extract/` on this machine**: `iso.py sets` declares `movie`
-as its own set at 3.4 GB and only `archive`, `patch`, `boot`, `image` and
-`audio` have been pulled. So the first step is
-`python tools/iso.py extract movie`, and the second is `ffprobe`.
-
-This is the least interesting item on the whole list and it is on it for one
-reason: it is the last row of the format table, and the table should either be
-finished or say honestly that it never will be. Twenty minutes with a
-well-trodden container either way. If `ffprobe` opens them, write down what it
-says and mark the row solved; if the Sony wrapper needs stripping first, note
-the offset and move on — nothing in the project waits on a cutscene.
+[`.mkc`](format_mkc.md) opcode `0801` indexes them, 1-based, 3,926 times. They
+are `ECH` tables of 60-byte rows of which the last 44 are usually zero, and
+nobody has named a column. The head reads as two `u16` ids, a `u32` that is 0
+or 10000, a `0x40`/`0xff` pair and a float at `+0x0C` that is 1.0, 0.8 or 0.7.
+The obvious question is whether one of the two ids is a `(category, slot)`
+half of the [`.PTP`](format_ptp.md) address, which would join the effect layer
+end to end — and 14 pacs index past the end of their own table, which is the
+other half of the same question.
 
 ### 3. The 289 native script functions.
 
@@ -73,43 +54,38 @@ them is a small function over state the engine has to keep anyway. Writing
 those down is the shortest route to *"a monster fights"*. The mercenary AI
 adds 19 more of the same shape — `getRange`, `getNumOfEnemy`, `getTargetType`,
 `isAvailableAceSkill` — and its whole interface is only those 19 plus `print`.
-The ones a **stage**
-needs first are still `cfSetEnableEmGen`, `cfSetEnableHitArea`,
-`cfSetEnableBorderline`, `cfMapJump`, `cfStartPieceLock`, `cfGetGlobalFlag`,
-`cfSetGlobalFlag`, `chrSetMotion`.
+The ones a **stage** needs first are still `cfSetEnableEmGen`,
+`cfSetEnableHitArea`, `cfSetEnableBorderline`, `cfMapJump`, `cfStartPieceLock`,
+`cfGetGlobalFlag`, `cfSetGlobalFlag`, `chrSetMotion`.
 
-### 4. The rest of the `.anmcmd` opcodes.
+### 4. The opcodes that are left, in both event formats.
 
-Thirty of the fifty-two have no correlation. The positional method is close to
-exhausted; what would move it further is the geometry — pose the skeleton,
-draw the hit capsule — which is item 5. Two new levers: an `.anmcmd` is
-now known to be *named by the motion id an AI action picks*, so a command list
-can be read against the rule that fires it; and the player's own `.anmcmd` are
-named by the press string that reaches them, so a combo's command list is
-addressable from the mercenary tables.
+Thirty of `.anmcmd`'s fifty-two and ten of `.mkc`'s twenty-one. The positional
+method is close to exhausted on `.anmcmd`; what would move it further is the
+geometry, which is item 1. `.mkc`'s ten are easier and worth doing in the same
+pass, because six of them are players-only or monsters-only and that is where
+a correlation starts: `0803`, `0804`, `0805`, `080d` are the players'
+(624 records), `080f` is the monsters' (193), and `0802`'s four arguments are
+a camera shake whose roles are unread.
 
 ### Then
 
-5. **Give the capsule its skeleton.** `engine/` has a body that runs, turns and
-   stands on the ground, and no pose. [`CNOM`](format_cnom.md) has the keys,
-   `cmdl.py gait` already does the forward kinematics, and
-   [`.anmcmd`](format_anmcmd.md) says what happens on which frame. This was
-   session 14's own recommendation for what comes next and it is only below
-   `.mkc` because `.mkc` is bounded and this is not.
-6. **Which vector is which** in the hit record. Three signed vec3s; the natural
+5. **Which vector is which** in the hit record. Three signed vec3s; the natural
    readings are an offset, an end point and a direction. `cmdl.py gait` already
    does the forward kinematics that needs.
-7. **The `ELBN` records, field by field.** The container is solved and 318
+6. **The `ELBN` records, field by field.** The container is solved and 318
    names are addressable; not one record is described. `job.cpk/<class>/
    objbin.bin` is the best target, because it is the same territory as the
    JSON in [`params.md`](params.md).
-8. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
+7. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
    small, well-posed instances with known consumers: the `.psq` calls name
    their rows, so the columns can be read against the script that uses them.
-   The `CCLS` surface codes 1 to 13 are the other one.
-9. **The minimap transform.** 137 `.map` images, each visibly the silhouette
+   The `CCLS` surface codes 1 to 13 are the other one — and `.mkc` gives them
+   a second consumer, since `7ffa`/`7ffb` fire a footstep and the ground is
+   what has to choose its sound.
+8. **The minimap transform.** 137 `.map` images, each visibly the silhouette
    of its own stage's collision. A small job that gives the UI layer a map.
-10. **Structure the `.psq` control flow.** `psq.py src` prints labels and
+9. **Structure the `.psq` control flow.** `psq.py src` prints labels and
    `goto`. Rebuilding `if`/`while`/`switch` is ordinary work and nobody needs
    it yet.
 
@@ -122,10 +98,12 @@ addressable from the mercenary tables.
   needs it** — the table that maps `.anmcmd` opcode 10's effect id to a `PTB`
   slot is not on the disc, and 32,600 leaves were searched for it. It is a
   cosmetic lookup, so it still does not justify the phase on its own.
-- **Audio and video** — the `.acb` half is no longer deferred: an `.acb` is an
-  `@UTF` table and `cpk.py` opens it, which is how the hit record's sound got
-  named. What is still deferred is decoding the waveforms in the `.awb`, and
-  PAMF video, both well-trodden.
+- **Audio and video** — no longer deferred except for one half. An `.acb` is an
+  `@UTF` table that `cpk.py` opens, and [`.mkc`](format_mkc.md) now addresses
+  those banks by id, so 7,540 of 7,608 cue references resolve to a name. The
+  46 movies are read too, by [`pam.py`](../tools/pam.py). What is left is
+  **decoding the waveforms in the `.awb`** — HCA and ATRAC, well-trodden, and
+  nothing in the project waits on it.
 
 ## Open, unowned
 
@@ -163,8 +141,10 @@ addressable from the mercenary tables.
   and no `PTCP` on the disc has that many slots — and the inside of a `PTB`,
   which nothing needs until something renders. See
   [`format_ptp.md`](format_ptp.md).
-- `.mkc` (2,690) — promoted to next session's item 1, where what is known
-  about it is written down.
+- `.mkc`: ten of the twenty-one opcodes, the argument roles of the camera
+  shake, what banks 1140 and 1170 name, the emitter namespace, the fourteen
+  pacs that index past the end of their own `effect.bin`, and whether `7ff9`
+  and `7ffd` differ at all. See [`format_mkc.md`](format_mkc.md).
 - The AI's own leftovers: ten of the 76 condition terms, which the six
   `.cnut` predate and so cannot name; what the `2xx` action block means, given
   that its ids resolve to the same motions as the `1xx`; the `kind` byte of
@@ -187,6 +167,86 @@ addressable from the mercenary tables.
 ---
 
 # Log
+
+## Session 15 — 2026-08-23
+
+- **`.mkc` opens, and it turns out to be the sound.** See
+  [`format_mkc.md`](format_mkc.md) and `mkc.py`. **2,690 files, 19,724
+  records, 0 unreadable**, every one landing exactly on its `0xffff`.
+  - **the grammar is three words and a count**: `(frame, opcode, argc,
+    args[argc])`, terminated by `0xffff`. The count is explicit, which is why
+    the records are not a fixed width — the thing session 14 noticed and could
+    not explain. Walking by that count closes on all 2,690;
+  - **the frame is absolute and the disc settles it.** Of the 2,085 non-empty
+    files paired with a `CNOM`, the absolute reading stays inside the
+    animation's declared length on 2,077 and the delta reading overruns on
+    1,471. Frames never step backwards on any file;
+  - **a bank id is an `.acb` and the id is arithmetic**: 100 is
+    `common.acb`, `200 + 10k` is `job.cpk/<class>/se.acb` over the eight
+    classes alphabetically, `3000 + 10n` and `4000 + 10n` are the monsters.
+    The two unused class slots, 230 and 270, are `cm` and `nn` — the two
+    classes with no directory in `job.cpk`, which is what confirms the rule;
+  - **the cue is a `CueId`, not a row number**, and that is the whole
+    difference between nonsense and prose: 225 of `common.acb`'s 529 rows
+    carry an id that is not their index. Read properly, **6,881 of 6,949
+    sound references and 659 of 659 voice references name a cue**;
+  - and then the game reads back in words. `mht361at_l` draws the bow on
+    frame 4 (`DRAW_L`), releases on 18 with an `ATK_L` grunt, and fires
+    `ARROW_DUMMY_L` on 20. `mht301jump` plays `JUMP`, `mht220escape_f_st`
+    plays `AVOID`, `mht204wait_4` — the low-health idle — plays `DYING_1`
+    then `DYING_2`, and `com060emo_10` claps four times;
+  - **the first semantic test failed and that was the useful part.** Opcode
+    `0801`'s argument looked like a cue index because it ascends through a
+    monster's motions in the same order the cue list does. Probing it against
+    the names — does a `*die*` motion reference a `*DEAD*` cue — said no. The
+    same probe against `7ff9`'s *second* argument said yes at 100% on turns,
+    84% on runs and 71% on damage, with every apparent miss being a better
+    name than the regex asked for: `WOLF_L_V_DEATH_1`, `GRENDEL_V_TETTAI`,
+    `LEG_DRAG_L` and `SUPER_RUMBLE` for a giant crawling;
+  - **`effect.bin` acquires a consumer.** `0801` is a 1-based index into the
+    `ECH` table sitting beside the `.mkc.pac` — 69 of them, never opened
+    before. On 29 of the 54 pacs that use it the largest index is *exactly*
+    the row count, and it is never 0 on any file;
+  - **`7ffc` is the player's voice**, and it resolves against the 57-cue
+    `v{m,f}NN.acb`: 23 `ATK_S` 114 times, 25 `ATK_L` 86, 24 `ATK_M` 69, 22
+    `JUMP`, 15 `DASH`, 17 `DMG_S`. Players and the emote set use it and
+    nothing else does;
+  - **`7ffa`/`7ffb` are the foot**, and the argument picks one of the four
+    cues in the character model's own `.acb` — `WALK`, `RUN`, `LANDING`,
+    `DRESS`. Over the whole disc `kind = 0` is what walks fire, 1 what runs
+    fire, 2 never appears in a walk or a run, and 3 in no walk, run, dash or
+    landing at all;
+  - **`0802` is the camera shaking.** 1,207 of its 1,275 records are on the
+    big monsters, where it fires on the footsteps — and all 64 player uses
+    are the impact frame of a big skill: `back_stab`, `hammer_fall`,
+    `drill_cannon`, `sharp_shooting`, `fire_ball`, `frost_wave`, and nothing
+    else in the move list;
+  - **the emitter is a place on the body.** Non-zero only on the sixteen big
+    monsters, and Hraesvelgr names it for us: `BLAST_L` and `SWOOPED_L` take
+    1100, `_R` takes 1200, sixteen of the seventeen voice cues take 1300, the
+    steps take 1700 and 1800, and the three tail sounds take 10100;
+  - **a motion set can be shared.** `z18`, `z19`, `z20` and `z27` ship the
+    *same* `z19.mkc.pac` and all four fire bank 4190 — one animation set and
+    one sound bank across four palette swaps;
+  - and one negative worth writing down: the emitter vocabulary is **not** the
+    `.anmcmd` effect catalogue. Two of its 23 values also occur there and the
+    other 21 do not.
+
+- **The movies, and they are simpler than the row implied.** See `pam.py`.
+  **46 files, 3.4 GB extracted, 22.7 minutes, 0 unreadable.** A `.pam` is a
+  2 KB-aligned Sony header over a plain **MPEG-2 program stream** — not AVC,
+  which is what the row had guessed — and `file length == 0x800 * header
+  sectors + 2048 * packs` on all 46. Every one is 1280x720 at 29.97 fps,
+  BT.709, one elementary stream at `0xE0`. **There is no audio**: all
+  1,778,690 PES packets on the disc are video, system header, private stream 2
+  or padding, and no audio stream id appears anywhere, so the cutscene
+  soundtrack is played by the game beside the film rather than inside it.
+  ffmpeg reads them once told twice — `-f mpeg` because the extension collides
+  with Netpbm's, and `-skip_initial_bytes 2048`.
+
+- **Phase 2 is closed.** Every container the disc ships is read. What is left
+  is columns and opcodes: the `ELBN` records, the `ECH` column names, thirty
+  `.anmcmd` opcodes, ten of `.mkc`'s, and the `.awb` waveforms.
 
 ## Session 14 (part two) — 2026-08-23
 
