@@ -7,8 +7,8 @@
 
 # Next session — the loop, on paper, and the script's shape
 
-Session 20 read `trace_par.bin`, the second of the four `ELBN` populations.
-Three things to carry:
+Session 20 read `trace_par.bin` and `stobjbin.bin`, which are the second and
+third of the four `ELBN` populations. Four things to carry:
 
 - **`trace_par.bin` is the weapon trail**, 207 files, and both its names are
   read. `ref_tbl` is two points in the space of a locator on the actor —
@@ -22,6 +22,11 @@ Three things to carry:
   `ARGB` where [`CMTM`](format_cnom.md)'s and the stage lights' are `RGBA`,
   and the only thing that says so is the template pair `ff808080` fading to
   `00808080`. Third format, third convention, nothing declaring it;
+- **`statusData` is in `stobjbin.bin` and not `objbin.bin`**, which is what
+  the vocabulary table said. Its header gives `(count, pointer, stride)` and
+  `count * stride` closes on all 89; the stride is 28 for a monster and 60 for
+  a class, the first 24 bytes are the same struct in both, and the id is
+  `16 * group + variant`. Which state each id is stays open;
 - **a `trace.pac` sits beside the `bowstring.pac`** the hunter's 25 bows ship,
   and `bowstring_data`'s first 48 bytes are identical on all 25 while its
   twelve `ARGB` colours are not. The string is shaped once and coloured per
@@ -72,10 +77,10 @@ about in general, which makes it the cheapest way in.
    `destructible.bin`, `mapexception.bin` and the `q<NNNNN>.bin` header. The
    `CCLS` surface codes 1 to 13 are the other well-posed one, and the pose
    layer says where a foot is, so the triangle under it is a lookup away.
-6. **The last three `ELBN` populations.** `stageparam.bin` is 154 files and
-   only its lights are read; `mot_param.bin` is 60 and only its motion id is;
-   `statusData` and `statusDataHeader` are 89 and nobody has looked.
-   `elbn.py records` is the instrument.
+6. **The last two `ELBN` populations.** `stageparam.bin` is 154 files and only
+   its lights are read; `mot_param.bin` is 60 and only its motion id is.
+   `elbn.py records` is the instrument and it has now done three populations
+   with nothing but a stride and a column profile.
 7. **Where the minimap's scale is declared.** Session 19 measured the
    transform — see [`format_stage.md`](format_stage.md) — and it is not in
    `stageparam.bin`. The orientation and the anchor are settled; the scale is
@@ -216,12 +221,13 @@ about in general, which makes it the cheapest way in.
   read as a defence and not proved; `region_data_brk`'s two `u16[4]` arrays,
   whose ids come from a family keyed on the part and resolve against nothing
   on the disc; `s_region_group_data`'s three angles and its eight empty index
-  slots; and `stageparam.bin` past the lights, `mot_param.bin` past the motion
-  id and `statusData` entire. `trace_par.bin` is read, and what it leaves is
-  **which of a weapon's three `par_tbl` records is used when**, the two counts
-  at `+0x19` and `+0x1a`, and `bowstring_data`'s first 48 bytes, identical on
-  all 25 bows and so carrying no evidence. See
-  [`format_elbn.md`](format_elbn.md).
+  slots; and `stageparam.bin` past the lights and `mot_param.bin` past the
+  motion id. `trace_par.bin` is read, and what it leaves is **which of a
+  weapon's three `par_tbl` records is used when**, the two counts at `+0x19`
+  and `+0x1a`, and `bowstring_data`'s first 48 bytes, identical on all 25 bows
+  and so carrying no evidence. `statusData` is read as records and **its ids
+  are not named** — 99 of them, `16 * group + variant`, with no second
+  consumer on the disc. See [`format_elbn.md`](format_elbn.md).
 - What the 14 empty `.cpk.patch` stubs would have overlaid, and whether a
   shipped title update exists that fills them.
 
@@ -262,6 +268,14 @@ about in general, which makes it the cheapest way in.
   records, 2 on 254 and **4 on 25**, and on those 25 the colour words are `0`
   and `1` rather than colours. Averaging the columns across all 523 would have
   gone straight through it.
+- **`statusData` lives in `stobjbin.bin`, not `objbin.bin`.** Its header is
+  `(count, pointer, stride)` and `count * stride` closes on all 89 files; the
+  stride is **28 for a monster and 60 for a class**, the first 24 bytes are the
+  same struct in both, and the id is `16 * group + variant` — 99 distinct ids
+  over 3,070 monster records and 109 over 630 player ones. The row count
+  correlates with a monster's `.anmcmd` files at 0.71 and equals it on none of
+  the 83, so it is a state list of the same order as the motion list and is
+  not the motion list. What the states are stays open.
 
 ## Session 19 — 2026-08-23
 

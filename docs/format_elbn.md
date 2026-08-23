@@ -1,12 +1,13 @@
 # `ELBN` — the named-parameter container
 
-**Status: the container is solved, and two of its four populations are read.**
+**Status: the container is solved, and three of its populations are read.**
 707 files, 3,983 entries, **318 distinct parameter names, 13,437 relocations,
 0 unreadable**, every check closing on every file. Reader:
 [`../tools/elbn.py`](../tools/elbn.py). *The records* describes `objbin.bin` —
-the geometry, the monster body regions and the player skill parameters — and
-*The weapon trail* describes `trace_par.bin`. What is left is `stageparam.bin`
-past its lights, `mot_param.bin` past its motion id, and `statusData`.
+the geometry, the monster body regions and the player skill parameters — *The
+weapon trail* describes `trace_par.bin`, and *`stobjbin.bin` and the state
+table* describes the last per-actor file. What is left is `stageparam.bin`
+past its lights and `mot_param.bin` past its motion id.
 
 `ELBN` sat on the deferred list for six sessions as *"unidentified, no consumer
 waiting"*. It is the format on this disc that **names its own contents**: the
@@ -146,7 +147,7 @@ par_tbl, ref_tbl                     207   trace_par.bin, per weapon
 stage_param, waterparam              155   stageparam.bin, per stage
 character_clipping_distance          154   stageparam.bin
 shadow_offset, shadow_param          154   stageparam.bin
-statusData, statusDataHeader          89   monster.cpk/*/objbin.bin
+statusData, statusDataHeader          89   stobjbin.bin, per actor
 pgs_data                              88   monster.cpk/*/objbin.bin
 region_data, region_data_tbl          83   monster.cpk/*/objbin.bin
 s_region_group_data, ..._tbls         82   monster.cpk/*/objbin.bin
@@ -668,3 +669,74 @@ the class that owns the folder.
   because they sit either side of the two colours and run 0 to 6.
 - **`bowstring_data`'s first 48 bytes**, identical on all 25 bows and so
   carrying no evidence at all.
+
+---
+
+# `stobjbin.bin` and the state table
+
+*Session 20.* `statusData` and `statusDataHeader` are 89 files, and the first
+thing to fix about them is where they live: **`stobjbin.bin`, not
+`objbin.bin`** — 83 monsters and the six player classes, one file each. The
+two names sit beside each other in the vocabulary and in the same directory,
+which is how the survey came to put them in the wrong one.
+
+The header is the shape *The records* already describes, and it closes:
+
+```
+statusDataHeader   12 bytes   (count, pointer, stride)
+                              stride 28 on the 83 monsters
+                              stride 60 on the six player classes
+```
+
+**`count * stride == statusData`'s own size on all 89 files**, so neither the
+stride nor the record count had to be guessed — which matters here, because
+reading the monsters' 28 into the players' file produces plausible garbage and
+nothing complains.
+
+## The record, and what is shared between the two shapes
+
+```
++0x00  u32     an id; see below
++0x04  u32     30 or 60 or 10, and 15 on 22 monsters
++0x08  u32     1, occasionally 2, 5, 100 or 1000
++0x0C  u32     30 or 10 or 5
++0x10  u32     1, occasionally 2, 3 or 5
++0x14  u32     a bit field: 0x2c000000, 0x2d000000, 0x28000000, 0xec200000,
+               0xcc8b0000 — and the low sixteen bits are zero on all 3,700
+--- the monster's record ends with one more word ---
++0x18  f32     -2.01562, -2, 0, 2 or -0.0
+--- the player's continues ---
++0x18  u32     0, or 125 to 750
++0x1C  u32     0, 1, 2, 5
++0x20  u32     0, 1, 8, 10, 15
++0x24  u32     a second bit field of the same kind
++0x28  f32[5]  1, 1, 0.4, 1, 0.4 on 582 of the 630 records
+```
+
+The first 24 bytes are the same struct in both, and the two bit fields draw
+from the same family — `0x2c000000` and `0x2d000000` appear in monsters and
+players alike. So this is one record type that the player build extends,
+rather than two records that share a name.
+
+## The id is two levels
+
+3,070 monster records carry **99 distinct ids** and 630 player records carry
+**109**, and both sets are the same shape: `16 * group + variant`.
+
+```
+monsters   0  16 17  112 113  144  160 161  176..180  192 193  208  224 225
+           256  304  1024..1120  4128  8192..8640
+players    0  16 17  32..37  48..50  64..75  ...
+```
+
+Twenty-three ids are on all 83 monsters, which is the common core, and the
+`0x2000` band — 8192 to 8640, stepping by sixteen with up to six variants
+apiece — is the part that differs from monster to monster. **A monster carries
+24 to 64 records and a class carries 101 to 107.**
+
+That is a state machine's enumeration and not a motion list: the row count
+correlates with the number of [`.anmcmd`](format_anmcmd.md) files a monster
+ships at 0.71 and **is never equal to it** on any of the 83, so the states are
+of the same order as the motions and are not them. Which state each id is
+stays open, and the disc offers no second consumer for the numbers — this is
+the shape read, not the table named.

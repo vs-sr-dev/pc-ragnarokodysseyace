@@ -116,6 +116,7 @@ ELBN parameters  ->      707 files, 318 names   tools/elbn.py   0 errors
   breakable parts->       87 over 23 monsters, indexing it_drop_break 23/23
   the weapon trail->     207 files, 351 of 357 locator ids on the actor,
                        523 of 523 textures named in the pac beside them
+  the state table->       89 files, count x stride closing on every one
 Squirrel script  ->    3,011 files, 315k insns tools/psq.py    0 errors
   engine API     ->      285 native functions  named and described
   their arguments->   10,787 message ids, 1,220 motion ids, every cue id
@@ -193,7 +194,8 @@ What is still unread: no format at all - the disc's last container was opened
 in session 15. What is left is inside them. Ten of the AI's 76 condition
 terms, because the shipped tables turned out to be newer than the scripts
 that document them; two of the four `ELBN` populations, now that `objbin.bin`
-and `trace_par.bin` are read; thirty of the fifty-two `.anmcmd` opcodes, though the two
+and `trace_par.bin` are read and `stobjbin.bin` is read as far as its ids;
+thirty of the fifty-two `.anmcmd` opcodes, though the two
 commonest are read and they are the hitbox; six of `.mkc`'s twenty-one; and a
 dozen of the engine's 285 script functions whose argument roles the disc does
 not separate.
