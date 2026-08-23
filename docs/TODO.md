@@ -8,7 +8,8 @@
 # Next session — the tables nobody has opened, and the loop
 
 Session 19 opened the `ELBN` records, placed a hit volume on a moving
-skeleton, and read four more `.mkc` opcodes. Five things to carry:
+skeleton, read four more `.mkc` opcodes and measured the minimap's transform.
+Six things to carry:
 
 - **`objbin.bin` is the actor's body and the class's skill list.**
   [`format_elbn.md`](format_elbn.md) now describes `col_hit` (a capsule per
