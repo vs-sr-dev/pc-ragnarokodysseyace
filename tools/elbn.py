@@ -114,11 +114,14 @@ that is where the AI's own tables are.
 
 ## Reading order
 
-    check    the shell arithmetic, on every file
-    survey   every name on the disc, with the files that carry it
-    names    the entries of one file
-    dump     one file, or one entry, rendered word by word
-    field    where a name occurs, and what sizes it takes
+    check     the shell arithmetic, on every file
+    survey    every name on the disc, with the files that carry it
+    names     the entries of one file
+    dump      one file, or one entry, rendered word by word
+    field     where a name occurs, and what sizes it takes
+    records   one name's records, profiled column by column over the disc
+    capsules  `col_hit`, `jostle_data` and `pgs_data` with their bones named
+    regions   a monster's body regions, joined to the bones and the drops
 """
 
 from __future__ import annotations
@@ -411,6 +414,369 @@ def cmd_field(root, want: str) -> int:
     return 0
 
 
+
+# --------------------------------------------------------------------------
+# the records inside the values
+
+
+def _bounds(f: Elbn) -> list[int]:
+    """Every offset something is known to start at, sorted."""
+    return sorted({e.offset for e in f.entries}
+                  | {f.word(r) for r in f.relocations} | {f.size})
+
+
+def is_header(f: Elbn, e: Entry) -> tuple[int, int] | None:
+    """`(count, pointer)` when the entry is one, else None."""
+    if e.size != 8 or e.offset in f.reloc or (e.offset + 4) not in f.reloc:
+        return None
+    n = f.word(e.offset)
+    return (n, f.word(e.offset + 4)) if 0 < n <= 4096 else None
+
+
+def strides(files) -> dict[str, int]:
+    """A stride for every `(count, pointer)` name, from where the array ends.
+
+    An array is packed against whatever is allocated after it, so
+    `(next allocation - pointer) / count` is the stride whenever the array is
+    the last thing before that boundary. It is not always - padding and the
+    payload tail both stretch the gap - so the answer is the **mode** over
+    every file carrying the name, not any single file's arithmetic.
+    """
+    cand: dict[str, collections.Counter] = collections.defaultdict(
+        collections.Counter)
+    for _, f in files:
+        b = _bounds(f)
+        for e in f.entries:
+            h = is_header(f, e)
+            if h is None:
+                continue
+            n, ptr = h
+            nxt = next((x for x in b if x > ptr), f.size)
+            if nxt > ptr and (nxt - ptr) % n == 0:
+                cand[e.name][(nxt - ptr) // n] += 1
+    return {k: c.most_common(1)[0][0] for k, c in cand.items()}
+
+
+class Column:
+    """One word position, seen down every record of one name on the disc."""
+
+    __slots__ = ('kinds', 'values', 'n')
+
+    def __init__(self):
+        self.kinds: collections.Counter = collections.Counter()
+        self.values: collections.Counter = collections.Counter()
+        self.n = 0
+
+    def add(self, f: Elbn, o: int) -> None:
+        self.n += 1
+        k = f.kind(o)
+        self.kinds[k] += 1
+        w = f.word(o)
+        if k == 'ptr':
+            s = f.string_at(w)
+            self.values[f'"{s}"' if s else '->'] += 1
+        elif k == 'f32':
+            self.values[f'{struct.unpack(">f", struct.pack(">I", w))[0]:g}'] \
+                += 1
+        else:
+            self.values[str(w) if w < 0x10000 else hex(w)] += 1
+
+    def line(self) -> str:
+        kinds = '/'.join(k for k, _ in self.kinds.most_common())
+        top = ' '.join(v + (f'*{c}' if c > 1 else '')
+                       for v, c in self.values.most_common(8))
+        return f'{kinds:<9s} {len(self.values):4d}u  {top}'
+
+
+def cmd_records(root, want: str = '*', stride: str = '') -> int:
+    """Every record of a name, profiled column by column across the disc.
+
+    This is what `dump` cannot do. `dump` renders one file; a field only
+    becomes readable when the same word is seen down every file that carries
+    the record, because that is what separates a constant from a payload and
+    an index from a measurement.
+    """
+    files = [(p, Elbn(b, p)) for p, b in collect(root)]
+    st = strides(files)
+    fixed = int(stride) if stride else 0
+    names = sorted({e.name for _, f in files for e in f.entries
+                    if fnmatch.fnmatch(e.name, want) or want in e.name})
+    if not names:
+        print(f'no entry matches {want!r}')
+        return 1
+    for name in names:
+        cols: dict[int, Column] = collections.defaultdict(Column)
+        sizes: collections.Counter = collections.Counter()
+        counts: collections.Counter = collections.Counter()
+        seen = 0
+        s = fixed or st.get(name, 0)
+        for _, f in files:
+            for e in f.entries:
+                if e.name != name:
+                    continue
+                seen += 1
+                sizes[e.size] += 1
+                h = is_header(f, e)
+                if h is not None:
+                    n, ptr = h
+                    counts[n] += 1
+                    if not s:
+                        continue
+                    span = range(n)
+                    base = ptr
+                else:
+                    base = e.offset
+                    if not fixed:
+                        s = e.size
+                    span = range(max(1, e.size // s))
+                for i in span:
+                    o = base + i * s
+                    if o + s > f.size:
+                        break
+                    for j in range(0, s & ~3, 4):
+                        cols[j].add(f, o + j)
+        head = f'== {name}   {seen} files   sizes ' \
+               f'{" ".join(f"{k}x{v}" for k, v in sorted(sizes.items()))}'
+        if counts:
+            head += f'   count ' \
+                    + ' '.join(f'{k}x{v}'
+                               for k, v in sorted(counts.items()))
+        n_rec = max((c.n for c in cols.values()), default=0)
+        print(f'{head}   stride {s}   {n_rec} records')
+        for j in sorted(cols):
+            print(f'  +{j:<4d} {cols[j].line()}')
+        print()
+    return 0
+
+
+# --------------------------------------------------------------------------
+# the two records that are geometry
+
+CAPSULE = {'col_hit': 32, 'jostle_data': 56, 'pgs_data': 28}
+
+
+def capsules(f: Elbn, name: str) -> list[tuple]:
+    """`col_hit` / `jostle_data` / `pgs_data`, as `(bone, a, b, r0, r1)`.
+
+    All three begin with a bone and hold their geometry in that bone's own
+    space; they differ in how much of it they carry. `pgs_data` stops after
+    one point and one radius, which is a sphere.
+    """
+    e = f.by_name().get(name)
+    if e is None:
+        return []
+    stride = CAPSULE[name]
+    out = []
+    for i in range(e.size // stride):
+        o = e.offset + i * stride
+        v = struct.unpack_from('>7f', f.buf, HEADER + o + 4)
+        bone = f.word(o)
+        if name == 'pgs_data':
+            out.append((bone, v[:3], v[:3], v[3], v[3]))
+        else:
+            r1 = v[6] if name == 'col_hit' else struct.unpack_from(
+                '>f', f.buf, HEADER + o + 32)[0]
+            out.append((bone, v[:3], v[3:6], v[6], r1))
+    return out
+
+
+def _node_names(actor: pathlib.Path) -> tuple[list[str], dict[int, str]]:
+    """A model's node names, and its `S4` locator ids resolved to them."""
+    from cmdl import Cmdl                                   # noqa: PLC0415
+    for p in sorted(actor.rglob('*.CMDL')):
+        try:
+            m = Cmdl(p.read_bytes(), p.name)
+            names = m.names(5)
+        except (ValueError, struct.error):
+            continue
+        loc = {i: (names[n] if n < len(names) else f'node {n}')
+               for i, n in m.locators()}
+        return names, loc
+    return [], {}
+
+
+def bone_name(v: int, names: list[str], loc: dict[int, str]) -> str:
+    """A bone word is a node index below 1000 and a locator id above it."""
+    if v >= 1000:
+        return loc.get(v, '?') + f' [{v}]'
+    return names[v] if v < len(names) else f'node {v}'
+
+
+def cmd_capsules(root, actor: str) -> int:
+    d = pathlib.Path(root) / actor if not pathlib.Path(actor).is_dir() \
+        else pathlib.Path(actor)
+    if not d.is_dir():
+        hits = [p.parent for p in pathlib.Path(root).rglob('objbin.bin')
+                if fnmatch.fnmatch(p.parent.name, actor)]
+        if not hits:
+            raise SystemExit(f'not found: {actor}')
+        d = hits[0]
+    ob = d / 'objbin.bin'
+    if not ob.is_file():
+        raise SystemExit(f'{d}: no objbin.bin')
+    f = Elbn(ob.read_bytes(), str(ob))
+    names, loc = _node_names(d)
+    print(f'{d.as_posix()}   {len(names)} nodes, {len(loc)} locators')
+    for kind in ('col_hit', 'jostle_data', 'pgs_data'):
+        rows = capsules(f, kind)
+        if not rows:
+            continue
+        print(f'\n  {kind}   {len(rows)} records')
+        for i, (b, a, c, r0, r1) in enumerate(rows):
+            r = f'r {r0:.2f}' if abs(r0 - r1) < 1e-6 else \
+                f'r {r0:.2f}..{r1:.2f}'
+            print(f'    [{i:3d}] {bone_name(b, names, loc):<20s} '
+                  f'a ({a[0]:6.2f} {a[1]:6.2f} {a[2]:6.2f})  '
+                  f'b ({c[0]:6.2f} {c[1]:6.2f} {c[2]:6.2f})  {r}')
+    return 0
+
+
+# --------------------------------------------------------------------------
+# the monster body regions
+
+REGION = 336
+REGION_BRK = 752
+
+
+def region_rows(f: Elbn, name: str = 'region_data') -> list[dict]:
+    e = f.by_name().get(name)
+    if e is None:
+        return []
+    stride = REGION if name == 'region_data' else REGION_BRK
+    out = []
+    for i in range(e.size // stride):
+        o = e.offset + i * stride
+        w = [f.word(o + 4 * j) for j in range(stride // 4)]
+        g = lambda j: struct.unpack('>f', struct.pack('>I', w[j]))[0]  # noqa
+        keep = lambda a: [x for x in a if x != 0xFFFFFFFF]             # noqa
+        out.append({
+            'name': f.string_at(w[0]),
+            'hit': keep(w[2:2 + w[1]]),
+            'push': keep(w[23:23 + w[22]]),
+            'jostle': keep(w[28:28 + w[27]]),
+            'group': None if w[36] == 0xFFFFFFFF else w[36],
+            'defence': [g(40 + j) for j in range(8)],
+            'scale': g(56),
+            'byclass': [g(58 + j) for j in range(6)],
+            'hp': w[65:73],
+            'se': None if w[81] == 0xFFFFFFFF else w[81],
+        })
+        if name != 'region_data':
+            out[-1].update({
+                'brk_hp': [g(119 + j) for j in range(8)],
+                'brk_defence': [g(153 + j) for j in range(8)],
+                'node': w[184],
+                'brk_se': None if w[186] == 0xFFFFFFFF else w[186],
+            })
+    return out
+
+
+# A reader's synonym table, not the disc's: which node names an artist's
+# region name would be satisfied by. It exists so the join can be counted
+# rather than eyeballed, and every miss it produces is printed, so a table
+# that is too strict shows up as a miss and not as a silent pass.
+SYNONYM = {
+    'hara': 'hara|spine', 'toge': 'spine', 'weak': 'spine',
+    'chest': 'spine', 'body': 'spine|hip', 'hip': 'hip|spine',
+    'waist': 'hip|spine|waist', 'head': 'head|jaw|neck',
+    'neck': 'neck|head', 'shoulder': 'spine|arm|neck',
+    'arm': 'arm|hand|finger', 'hand': 'hand|finger|arm',
+    'wrist': 'hand|arm|wrist', 'leg': 'thigh|calf|foot|toe|leg',
+    'foot': 'foot|toe|calf|thigh', 'tail': 'tail', 'wing': 'wing|arm',
+    'horn': 'horn|head', 'eye': 'head|eye', 'skirt': 'skirt|hip',
+    'shield': 'shield', 'weapon': 'weapon',
+}
+
+
+def name_agrees(region: str, bones: list[str]) -> bool | None:
+    """Whether a region's own name is a name one of its bones carries.
+
+    None when the reader's table has nothing to say about the word, which is
+    a different answer from *no* and is counted separately.
+    """
+    import re                                                 # noqa: PLC0415
+    key = re.sub(r'[^a-z]', '', region.lower())
+    for k, pat in SYNONYM.items():
+        if k in key:
+            return any(re.search(pat, b.lower()) for b in bones)
+    return None
+
+
+def cmd_regions(root, want: str = '*') -> int:
+    """Every monster's body regions, joined to the bones they hang off.
+
+    The chain closes on itself: a region names its `col_hit` capsules, a
+    capsule names a node, and the node's name is the region's own. Nothing in
+    the file says they should agree.
+    """
+    import json                                             # noqa: PLC0415
+    root = pathlib.Path(root)
+    agree = 0
+    differ: list = []
+    unsure: list = []
+    for ob in sorted(root.rglob('objbin.bin')):
+        d = ob.parent
+        if not fnmatch.fnmatch(d.name, want):
+            continue
+        f = Elbn(ob.read_bytes(), str(ob))
+        rows = region_rows(f)
+        if not rows:
+            continue
+        names, loc = _node_names(d)
+        hits = capsules(f, 'col_hit')
+        js = d / f'{d.name}.json'
+        drops: list = []
+        if js.is_file():
+            try:
+                doc = json.loads(js.read_text(encoding='utf-8',
+                                              errors='replace'))
+                for v in doc.values():
+                    if 'it_drop_break' in v:
+                        drops = v['it_drop_break']
+                        break
+            except ValueError:
+                pass
+        brk = region_rows(f, 'region_data_brk')
+        print(f'{d.name}   {len(rows)} regions, {len(brk)} breakable, '
+              f'{len(hits)} capsules')
+        for r in rows:
+            bones = ' '.join(dict.fromkeys(
+                bone_name(hits[k][0], names, loc)
+                for k in r['hit'] if k < len(hits)))
+            print(f'    {r["name"]:<16s} hit {str(r["hit"]):<20s} {bones}')
+            if any(r['defence']) or any(r['hp']):
+                print(f'    {"":<16s} defence {r["defence"]}  hp {r["hp"]}')
+        for r in rows:
+            bones = [bone_name(hits[k][0], names, loc)
+                     for k in r['hit'] if k < len(hits)]
+            got = name_agrees(r['name'], bones) if bones else None
+            if got is None:
+                unsure.append((d.name, r['name'], bones))
+            elif got:
+                agree += 1
+            else:
+                differ.append((d.name, r['name'], bones))
+        for i, r in enumerate(brk):
+            item = (f'   it_drop_break[{i}] = {drops[i]}'
+                    if i < len(drops) else '')
+            node = bone_name(r['node'], names, loc)
+            print(f'    break {r["name"]:<14s} {node:<18s}{item}')
+            print(f'    {"":<20s} hp {[int(x) for x in r["brk_hp"]]}')
+        print()
+    total = agree + len(differ) + len(unsure)
+    if total:
+        print(f'{agree} of {total} regions hang their capsules off a bone '
+              f'whose name is the region\'s own')
+        for label, rows in (('the name and the bone disagree', differ),
+                            ('the reader\'s table has no word for it',
+                             unsure)):
+            if rows:
+                print(f'  {label}: {len(rows)}')
+                for m, n, b in rows:
+                    print(f'    {m:<10s} {n:<14s} {" ".join(b)}')
+    return 0
+
+
 def main() -> int:
     a = sys.argv[1:]
     if not a:
@@ -427,6 +793,12 @@ def main() -> int:
         return cmd_dump(rest[0], rest[1], *rest[2:3])
     if cmd == 'field':
         return cmd_field(rest[0], rest[1])
+    if cmd == 'records':
+        return cmd_records(rest[0], *rest[1:3])
+    if cmd == 'capsules':
+        return cmd_capsules(rest[0], rest[1])
+    if cmd == 'regions':
+        return cmd_regions(rest[0], *rest[1:2])
     print(f'unknown command: {cmd}')
     return 1
 
