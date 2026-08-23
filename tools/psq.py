@@ -81,10 +81,17 @@ vocabulary [`format_stage.md`](../docs/format_stage.md) found inside
 disc in compiled form - and `xref` shows **144 of the 147 triggers that call
 one resolve against a function their own stage's `.psq` defines**.
 
-`api` separates the two halves of the vocabulary: 453 names are called on the
-root table, 164 of them are defined by a `.psq` and **289 are not, so those
-289 are the engine's own script interface** - the host functions a
-reimplementation has to provide. 119 of them begin `cf`.
+`api` separates the two halves of the vocabulary: 587 names are called on the
+root table, 296 of them are defined by a `.psq` and **291 are not**. Five of
+those 291 are Squirrel's own standard library and one is a script that was
+never exported, so **285 are the engine's own script interface** - the host
+functions a reimplementation has to provide. See
+[`format_api.md`](../docs/format_api.md); 119 of them begin `cf`.
+
+`calls` is what says more than an arity: for every name it prints the constants
+each argument position is handed, and what the callers name the result -
+`localvarinfos` keeps the author's own variable names, so `getHpRate` comes
+back with `own_hp_rate` beside it.
 
 Usage:
   python psq.py check <dir>               parse every file, exact consumption
@@ -92,6 +99,8 @@ Usage:
   python psq.py dump <dir> <name>         one file, annotated disassembly
   python psq.py src <dir> <name>          one file, reconstructed statements
   python psq.py api <dir>                 every global called, with arities
+  python psq.py calls <dir> [glob]        ... and its arguments and result
+  python psq.py sites <dir> <glob> [n]    the call sites themselves
   python psq.py xref <dir>                do the names name anything?
   python psq.py names <dir>               every literal, most used first
   python psq.py ops <dir>                 opcode histogram
@@ -346,6 +355,8 @@ class Trace:
             self.reg[i] = name
         self.note = {}                          # pc -> statement
         self.targets = set()
+        self.calls = []                         # (pc, callee, [argument])
+        self.root = {}                          # register -> root-table name
         # A local becomes live one instruction after the one that fills it,
         # so `start_op` names the register write that declares it.
         self.declare = {}                       # (pc, register) -> name
@@ -401,6 +412,8 @@ class Trace:
                 out = lit(f, a1)
             elif op in (0x05, 0x06):
                 args = [self.r(i) for i in range(a2 + 1, a2 + a3)]
+                if a1 in self.root:             # fetched off the root table,
+                    self.calls.append((pc, self.root.pop(a1), args))
                 out = '%s(%s)' % (self.r(a1), ', '.join(args))
                 if op == 0x05:
                     text = 'return ' + out
@@ -408,10 +421,15 @@ class Trace:
                     text = out
             elif op == 0x07:
                 self.reg[a3] = self.r(a2)
-                out = '%s[%s]' % (self.r(a2), self.r(a1))
+                k = self.r(a1)
+                if a2 == 0 and k[:1] == "'" and k[-1:] == "'":
+                    self.root[a0] = k[1:-1]     # this['name']() is a root call
+                out = '%s[%s]' % (self.r(a2), k)
             elif op in (0x08, 0x09):
                 if op == 0x08:
                     self.reg[a3] = self.r(a2)
+                    if a2 == 0:                 # ... and not through a local
+                        self.root[a0] = key(f, a1)
                 obj = self.r(a2)
                 out = key(f, a1) if obj == 'this' \
                     else '%s.%s' % (obj, key(f, a1))
@@ -520,14 +538,19 @@ class Trace:
 
 # --------------------------------------------------------------------------
 
-def collect(root, want: str = ''):
+def walk(root, want: str = ''):
+    """Every leaf of the asset tree, expanded or still in its containers."""
     root = pathlib.Path(root)
     if not any(p.is_file() for p in root.glob('*.cpk')):
         for p in sorted(root.rglob('*')):
-            if p.is_file() and p.read_bytes()[:6] == MAGIC:
+            if p.is_file():
                 yield p.relative_to(root).as_posix(), p.read_bytes()
         return
-    for path, blob in leaves(root, want):
+    yield from leaves(root, want)
+
+
+def collect(root, want: str = ''):
+    for path, blob in walk(root, want):
         if blob[:6] == MAGIC:
             yield path, blob
 
@@ -626,19 +649,9 @@ def cmd_dump(root, name, src=False) -> int:
 
 def cmd_api(root) -> int:
     """Every name fetched off the root table and called, with its arity."""
-    use = collections.defaultdict(collections.Counter)
-    defined = collections.Counter()
-    for path, blob in collect(root):
-        q = Psq(blob, path)
-        for f in q.functions():
-            defined[f.name] += 1
-            pend = {}
-            for a1, w in f.code:
-                op, a0, a2, a3 = fields(w)
-                if op == 0x08 and a2 == 0:
-                    pend[a0] = key(f, a1)
-                elif op == 0x06 and a1 in pend:
-                    use[pend.pop(a1)][a3 - 1] += 1
+    defined, sites = call_sites(root)
+    use = {n: collections.Counter(len(a) for _, _, a, _ in rows)
+           for n, rows in sites.items()}
     rows = sorted(use.items(), key=lambda kv: -sum(kv[1].values()))
     for name, ar in rows:
         shape = ' '.join('%d(%d)' % (n, c) for n, c in sorted(ar.items()))
@@ -651,30 +664,9 @@ def cmd_api(root) -> int:
     return 0
 
 
-def string_calls(root):
-    """Every call on the root table whose arguments are literal constants."""
-    out = collections.defaultdict(list)
-    for path, blob in collect(root):
-        for f in Psq(blob, path).functions():
-            pend, regs = {}, {}
-            for a1, w in f.code:
-                op, a0, a2, a3 = fields(w)
-                if op == 0x01:
-                    regs[a0] = f.lit[a1] if a1 < len(f.lit) else None
-                elif op == 0x04:
-                    regs[a0] = f.lit[a1] if a1 < len(f.lit) else None
-                    regs[a2] = f.lit[a3] if a3 < len(f.lit) else None
-                elif op == 0x08 and a2 == 0:
-                    pend[a0] = key(f, a1)
-                elif op == 0x06:
-                    if a1 in pend:
-                        out[pend.pop(a1)].append(
-                            (path, f.name,
-                             [regs.get(i) for i in range(a2 + 1, a2 + a3)]))
-                    regs.pop(a0, None)
-                else:
-                    regs.pop(a0, None)
-    return out
+def text_arg(a: str):
+    """The string a rendered argument is, or None if it is not one."""
+    return a[1:-1] if a[:1] == "'" and a[-1:] == "'" else None
 
 
 def cmd_xref(root) -> int:
@@ -684,34 +676,34 @@ def cmd_xref(root) -> int:
     for st in stagemod.stages(root):
         marker[st.name] = set(m.name for m in st.markers)
         line[st.name] = set(pl.name.lower() for pl in st.lines)
-    calls = string_calls(root)
+    calls = call_sites(root)[1]
     here = re.compile(r'/(\d{3}_\d{2}_\d{2})')
 
     def run(name, resolve):
         hit = miss = skip = 0
-        for path, _, args in calls.get(name, ()):
-            if not args or not isinstance(args[0], str):
-                skip += 1
-                continue
+        for path, _, args, _ in calls.get(name, ()):
+            a = text_arg(args[0]) if args else None
             m = here.search(path)
-            if not m or m.group(1) not in marker:
+            if a is None or not m or m.group(1) not in marker:
                 skip += 1
                 continue
-            ok = resolve(args[0], m.group(1))
+            ok = resolve(a, m.group(1))
             hit += ok
             miss += not ok
         print('  %-24s %5d resolve, %4d do not, %4d not testable'
               % (name, hit, miss, skip))
 
     run('cfSetEnableHitArea', lambda a, s: a in marker[s])
+    run('cfGetPosInHta', lambda a, s: a in marker[s])
+    run('getCharacter', lambda a, s: 'pos_' + a in marker[s])
     run('cfSetEnableEmGen',
         lambda a, s: a in marker[s] or a.replace('emgen', 'emgen_pos', 1)
         in marker[s])
     run('cfSetEnableBorderline', lambda a, s: a.lower() in line[s])
 
     hit = miss = skip = 0
-    for path, _, args in calls.get('cfMapJump', ()):
-        a = [x for x in args if isinstance(x, str)]
+    for path, _, args, _ in calls.get('cfMapJump', ()):
+        a = [t for t in (text_arg(x) for x in args) if t]
         if len(a) < 2:
             skip += 1
             continue
@@ -738,6 +730,258 @@ def cmd_xref(root) -> int:
             miss += not ok
     print('  %-24s %5d resolve, %4d do not'
           % ('trg callQuestScript', hit, miss))
+    cmd_sound(root, calls)
+    return cmd_text(root, calls)
+
+
+TALK = ('talk', 'talk_open', 'talk_auto')
+
+
+def cmd_text(root, calls=None) -> int:
+    """Do the two arguments of a `talk` name a message and a speaker?"""
+    import rmsg                                                # noqa: PLC0415
+    msg = {}
+    for path, blob in rmsg.collect(pathlib.Path(root)):
+        for want in ('msg_npc_talk.bin', 'msg_npc.bin'):
+            if path.endswith(want):
+                msg[want] = rmsg.Rmsg(blob, path).texts
+    calls = calls if calls is not None else call_sites(root)[1]
+
+    for pos, want, what in ((1, 'msg_npc_talk.bin', 'name a message'),
+                            (0, 'msg_npc.bin', 'name a speaker')):
+        hit = miss = skip = 0
+        for name in TALK:
+            for _, _, args, _ in calls.get(name, ()):
+                if len(args) <= pos or not args[pos].lstrip('-').isdigit():
+                    skip += 1
+                    continue
+                ok = 0 <= int(args[pos]) < len(msg[want])
+                hit += ok
+                miss += not ok
+        print('  %-24s %5d %s, %4d do not, %4d not testable   %s'
+              % ('talk arg%d' % pos, hit, what, miss, skip, want))
+
+    # The stage scripts are named after who speaks in them - `No11000.psq` is
+    # Norn's - so the speaker id can be checked against the file name.
+    who = re.compile(r'/([A-Z][a-z])\d{4,5}\.psq$')
+    seen = collections.defaultdict(collections.Counter)
+    for name in TALK:
+        for path, _, args, _ in calls.get(name, ()):
+            m = who.search(path)
+            if m and args and args[0].isdigit():
+                seen[m.group(1)][int(args[0])] += 1
+    hit = tot = 0
+    for tag, c in sorted(seen.items()):
+        top, n = c.most_common(1)[0]
+        hit += n
+        tot += sum(c.values())
+        print('     %-3s %-14s %4d of %-4d' % (tag, msg['msg_npc.bin'][top],
+                                               n, sum(c.values())))
+    print('  %-24s %5d of %d lines, over %d file prefixes'
+          % ('talk speaker vs file', hit, tot, len(seen)))
+    return cmd_motion(root)
+
+
+CHR_DECL = re.compile(r"^(?:local )?(\w+) = getCharacter\('([^']+)'\)")
+CHR_LIT = re.compile(r"^getCharacter\('([^']+)'\)$")
+
+
+def cmd_motion(root) -> int:
+    """Does a motion id name a `.CNOM` of the character it is played on?
+
+    `npc.bin` gives every character a model pac, and every animation in that
+    pac is named `n<model><id><what it is>` - `n16015talk.CNOM` is NPC 16's
+    motion 15, and it is a talk.
+    """
+    from ech import Ech                                        # noqa: PLC0415
+    pac, mot = {}, collections.defaultdict(set)
+    for path, blob in walk(root):
+        if path.endswith('param.pac/npc.bin'):
+            e = Ech(blob, path)
+
+            def text(o, pool=e.pool):
+                return pool[o:pool.index(b'\0', o)].decode('ascii', 'replace')
+
+            for i in range(e.rows):
+                r = e.row(i)
+                pac[text(int.from_bytes(r[4:8], 'big'))] = \
+                    text(int.from_bytes(r[8:12], 'big'))
+        m = re.search(r'/(npc_\d+\.pac)/n\d\d(\d\d\d)\w*\.CNOM$', path)
+        if m:
+            mot[m.group(1)].add(int(m.group(2)))
+
+    hit = miss = skip = 0
+    bad = collections.Counter()
+    for path, blob in collect(root):
+        for f in Psq(blob, path).functions():
+            t = Trace(f).run()
+            who = {}
+            for pc, txt in t.note.items():
+                m = CHR_DECL.match(txt)
+                if m:
+                    who[m.group(1)] = m.group(2)
+            for pc, callee, args in t.calls:
+                if callee not in ('chrSetMotion', 'chrSetMotionNPC') \
+                        or len(args) < 2:
+                    continue
+                m = CHR_LIT.match(args[0])
+                ids = mot.get(pac.get(m.group(1) if m else who.get(args[0])))
+                if not ids or not args[1].isdigit():
+                    skip += 1
+                    continue
+                ok = int(args[1]) in ids
+                hit += ok
+                miss += not ok
+                if not ok:
+                    bad[int(args[1])] += 1
+    print('  %-24s %5d name a motion of that character, %4d do not, '
+          '%4d not testable' % ('chrSetMotion[NPC]', hit, miss, skip))
+    print('     the ids that do not: %s'
+          % ' '.join('%d(%d)' % kv for kv in bad.most_common()))
+    return 0
+
+
+BANKS = {'bgm': 'sound.cpk/bgm.acb', 'common': 'sound.cpk/common.acb',
+         'vnpc': 'sound.cpk/en/vnpc.acb'}
+SPELT = {'SILON': 'SHILLON', 'OTTAL': 'OTTAR', 'TERING': 'TELLING',
+         'KAFRA': 'UNDEADKAFLA'}
+
+
+def cmd_sound(root, calls=None) -> int:
+    """Do the cue ids the scripts pass name a cue in the bank they must?"""
+    import awb                                                 # noqa: PLC0415
+    want = set(BANKS.values())
+    blobs = {p: b for p, b in leaves(pathlib.Path(root)) if p in want} \
+        if any(p.is_file() for p in pathlib.Path(root).glob('*.cpk')) \
+        else {r: (pathlib.Path(root) / r).read_bytes() for r in want}
+    cue = {}
+    for tag, rel in BANKS.items():
+        bank = awb.Bank(blobs[rel], rel)
+        cue[tag] = {r['CueId']: bank.names.get(i, '?')
+                    for i, r in enumerate(bank.cues)}
+    calls = calls if calls is not None else call_sites(root)[1]
+
+    def run(name, pos, tag):
+        hit = miss = skip = 0
+        for _, _, args, _ in calls.get(name, ()):
+            if len(args) <= pos or not args[pos].lstrip('-').isdigit():
+                skip += 1
+                continue
+            ok = int(args[pos]) in cue[tag]
+            hit += ok
+            miss += not ok
+        print('  %-24s %5d resolve, %4d do not, %4d not testable   %s'
+              % (name, hit, miss, skip, BANKS[tag]))
+
+    run('cfSndPlayBGM', 1, 'bgm')
+    run('cfSndPlayStgBGMOW', 1, 'bgm')
+    run('cfSndPlayCmnSE', 1, 'common')
+    run('cfSndPlayVoiceNPC', 0, 'vnpc')
+
+    # `chrPlayVoice` says more than that: the cue should carry the name of
+    # the character the script hands it.
+    decl = re.compile(r"^(?:local )?(\w+) = getCharacter\('([^']+)'\)")
+    lit = re.compile(r"^getCharacter\('([^']+)'\)$")
+    hit = miss = skip = 0
+    for path, blob in collect(root):
+        for f in Psq(blob, path).functions():
+            t = Trace(f).run()
+            who = {}
+            for pc, txt in t.note.items():
+                m = decl.match(txt)
+                if m:
+                    who[m.group(1)] = m.group(2)
+            for pc, callee, args in t.calls:
+                if callee != 'chrPlayVoice' or len(args) != 2:
+                    continue
+                m = lit.match(args[0])
+                actor = m.group(1) if m else who.get(args[0])
+                if actor is None or not args[1].isdigit():
+                    skip += 1
+                    continue
+                key = re.sub(r'^(NPC|DEMO|HIRO)_', '', actor).upper()
+                name = cue['vnpc'].get(int(args[1]), '')
+                ok = name.startswith('VC_' + SPELT.get(key, key))
+                hit += ok
+                miss += not ok
+    print('  %-24s %5d name the speaker, %4d do not, %4d not testable'
+          % ('chrPlayVoice', hit, miss, skip))
+    return 0
+
+
+CONST = re.compile(r"^(?:-?\d+|-?\d*\.\d+(?:e[-+]?\d+)?|'.*'|true|false|null)$",
+                   re.S)
+BOUND = re.compile(r'^(?:local )?([A-Za-z_]\w*) = ')
+
+
+def call_sites(root):
+    """Every call the disc makes, with its arguments as the source wrote them.
+
+    `Trace` already turns registers back into expressions, so an argument
+    comes out either as a constant - `3`, `0.5`, `'emgen01'` - or as the
+    expression that produced it. What the result is bound to is read off the
+    same trace: `localvarinfos` gives the author's own name for it.
+    """
+    defined, sites = collections.Counter(), collections.defaultdict(list)
+    for path, blob in collect(root):
+        for f in Psq(blob, path).functions():
+            defined[f.name] += 1
+            t = Trace(f).run()
+            for pc, callee, args in t.calls:
+                m = BOUND.match(t.note.get(pc, ''))
+                sites[callee].append((path, f.name, args,
+                                      m.group(1) if m else None))
+    return defined, sites
+
+
+def cmd_calls(root, pattern='*') -> int:
+    """What each name is handed, and what the callers call the answer."""
+    defined, sites = call_sites(root)
+    names = [n for n in sites if fnmatch.fnmatch(n, pattern)]
+    for name in sorted(names, key=lambda n: -len(sites[n])):
+        rows = sites[name]
+        ar = collections.Counter(len(a) for _, _, a, _ in rows)
+        print('%s  %d calls  arity %s%s'
+              % (name, len(rows),
+                 ' '.join('%d(%d)' % kv for kv in sorted(ar.items())),
+                 '   [script]' if defined[name] else ''))
+        for i in range(max(ar, default=0)):
+            vals = [a[i] for _, _, a, _ in rows if len(a) > i]
+            const = collections.Counter(v for v in vals if CONST.match(v))
+            var = len(vals) - sum(const.values())
+            show = ' '.join('%s(%d)' % (v, n) for v, n in const.most_common(8))
+            print('    arg%-2d %4d  %s%s'
+                  % (i, len(vals), show,
+                     ('  ..%d expr' % var) if var else ''))
+        got = collections.Counter(b for _, _, _, b in rows if b)
+        if got:
+            print('    -> %s' % ' '.join('%s(%d)' % (v, n)
+                                         for v, n in got.most_common(8)))
+        where = collections.Counter(p.split('/')[0] for p, _, _, _ in rows)
+        print('    in %s' % ' '.join('%s(%d)' % (v, n)
+                                     for v, n in where.most_common(6)))
+    print('%d names' % len(names))
+    return 0
+
+
+def cmd_sites(root, pattern, limit=40) -> int:
+    """The call sites themselves, one line each."""
+    _, sites = call_sites(root)
+    for name in sorted(n for n in sites if fnmatch.fnmatch(n, pattern)):
+        rows = sites[name]
+        print('%s  %d calls' % (name, len(rows)))
+        seen = set()
+        for path, fn, args, bound in rows:
+            line = '%s%s(%s)' % ('%s = ' % bound if bound else '',
+                                 name, ', '.join(args))
+            if line in seen:
+                continue
+            seen.add(line)
+            print('  %-70s  %s  %s' % (line[:70], fn, path))
+            if len(seen) >= limit:
+                print('  ... first %d distinct of %d calls'
+                      % (limit, len(rows)))
+                break
     return 0
 
 
@@ -798,6 +1042,11 @@ def main() -> int:
         return cmd_xref(rest[0])
     if cmd == 'api':
         return cmd_api(rest[0])
+    if cmd == 'calls':
+        return cmd_calls(rest[0], rest[1] if len(rest) > 1 else '*')
+    if cmd == 'sites':
+        return cmd_sites(rest[0], rest[1],
+                         int(rest[2]) if len(rest) > 2 else 40)
     if cmd == 'names':
         return cmd_names(rest[0])
     if cmd == 'ops':
