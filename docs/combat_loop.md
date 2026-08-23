@@ -122,6 +122,13 @@ it end to end:
 So *where the hit lands* is answered completely. Forty of the 83 monsters have
 exactly one region, called `all`; the other 43 have a real part list.
 
+Session 23 ran it: [`player.py`](../engine/player.py) puts a player's hit
+volumes against those capsules and reports the region each blow lands on, over
+six classes and every monster on the disc. It also checks the part list
+against something outside it — a region called `HEAD` sits above one called
+`LEG` on 22 of the 22 monsters that carry both — see
+[`milestone_player.md`](milestone_player.md).
+
 A region carries, by `region_lv` (0 to 7, and the monster's own JSON declares
 which level it is at):
 
@@ -463,9 +470,13 @@ else's, both closed by the gap to the next array:
 Both hold at or above 1 to half way and then fall to a tenth, on an axis that
 runs 0 to 100. The bow being the only class with them says what the axis is:
 **a fraction of the arrow's reach**, and the two curves say the reaction falls
-off before the damage does. `ht_arrow_tbl` beside them is 42 records at a
-stride of 80 — the repeat period says so and the fields read sensibly — and
-its columns are not named.
+off before the damage does — and session 23 put a number on that axis:
+`ht_arrow_tbl` beside them is 42 records at a stride of 80 whose **first four
+words are a lifetime in frames, a speed and a gravity**, and the commonest row
+covers 21.3 m against the hunter's own `cmb_hmg_search_radius` of 20. So a
+fraction of the arrow's reach is a fraction of about twenty metres. See
+[`format_elbn.md`](format_elbn.md) and
+[`milestone_player.md`](milestone_player.md).
 
 ---
 
@@ -611,9 +622,11 @@ the order they would block an implementation.
 8. **`react_p`'s currency.** A pool of the same order as `stg_p[3]`,
    independently tuned, named by one tension table and consumed by nothing
    else the disc shows. **EBOOT.**
-9. **The eleven arrow kinds and 42 arrow records.** `ht_arrow_tbl`, stride 80,
-   columns unnamed; `eff_hitlevel_tbl` says which eleven of them matter.
-   **Readable.**
+9. **The eleven arrow kinds.** `eff_hitlevel_tbl` says which eleven of the 42
+   matter and nothing says which row a given arrow list uses — the id is
+   presumably in the `.anmcmd` opcode that spawns it. **`ht_arrow_tbl`'s own
+   columns are read**: session 23 named the lifetime, the speed and the
+   gravity, and checked them against the class's search radius. **Readable.**
 
 Four of the nine are ordinary disc work and five want the EBOOT — and all five
 of those are one function each rather than a subsystem, which is the same
