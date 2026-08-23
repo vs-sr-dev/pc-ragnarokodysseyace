@@ -138,6 +138,14 @@ and it has no renderer, no VM and no combat — but it runs, and reaching
 milestone 1 with it is written up in
 [`milestone_numbers.md`](milestone_numbers.md).
 
+**Session 16 added the fourth file.** [`pose.py`](../engine/pose.py) plays a
+`CNOM` on a `CMDL` skeleton and finds the node that touches the ground, so the
+body has a shape as well as a position: on `010_01_01` the walking capsule's
+planted foot sits three millimetres above the collision mesh. It is checked
+against the disc rather than against itself — `.mkc`'s `7ffa` fires within a
+frame of the skeleton landing a foot on four firings in five, against one in
+four for a frame picked at random. See [`pose.md`](pose.md).
+
 The shape of the rest is settled: a data-driven engine whose
 tables come from `ECH`, whose display text comes from `TXT`, whose actor
 parameters come from the JSON, and which **hosts a Squirrel VM** and exposes

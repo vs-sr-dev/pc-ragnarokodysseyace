@@ -10,11 +10,11 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-14 (2026-08-23). **Something runs.** A capsule with the game's own
-acceleration, run speed, turn rate and radius crosses the first field of the
-game in 405 frames - 13.5 seconds - without leaving the collision mesh, and
-walks 135 stages, 127 of them with the body on legal ground for every frame,
-at 5.05 m/s against 5.10 flat out. That is [milestone
+Sessions 1-16 (2026-08-23). **Something runs, and now it has feet.** A capsule
+with the game's own acceleration, run speed, turn rate and radius crosses the
+first field of the game in 405 frames - 13.5 seconds - without leaving the
+collision mesh, and walks 135 stages, 127 of them with the body on legal
+ground for every frame, at 5.05 m/s against 5.10 flat out. That is [milestone
 1](docs/milestone_numbers.md), *"the numbers are real"*, and
 [`engine/`](engine) is the first code here that is not a reader.
 
@@ -25,6 +25,13 @@ and `<stage>.col` agree to a centimetre across 1,432 markers, a join nobody
 had reason to make while both were only being read. And a `borderline` is a
 closed loop - 105 of 145 stages - which had been an open question since
 session 8.
+
+Session 16 gave that capsule a skeleton. An animation played on the walking
+body puts its **planted foot three millimetres above the collision mesh**, and
+the pose is checked against the disc rather than against itself: `.mkc`'s
+footfall opcode fires within a frame of the skeleton landing a foot on **four
+firings in five, against one in four** for a frame of the same animation
+picked at random. See [the pose](docs/pose.md).
 
 Underneath that, the container stack is open end to end and the game's
 database, text and actor parameters are readable; the textures, geometry,
@@ -98,6 +105,12 @@ a capsule runs   ->      135 stages walked   engine/run.py  127 clean
   speed          ->     5.05 m/s achieved against 5.10 flat out
   markers        ->    1,432 obj and appear standing on the mesh to 1 cm
   fences         ->      105 of 145 stages closing into a loop
+
+a body has feet  ->    0.003 m from the planted foot to the mesh, walking
+  the footfall   ->    79.5% of 650 .mkc footfalls within a frame of the
+                       skeleton landing one, against 25.2% at random
+  the gait       ->       23 of 24 player walk and run cycles within 5 mm
+                       a frame of walk_sp and run_sp
 ```
 
 Formats are documented in [`docs/`](docs): [the disc
@@ -111,7 +124,8 @@ layer](docs/format_psq.md), [the monster AI](docs/format_ai.md), [the
 mercenary AI](docs/format_merc.md), [`.PTP`](docs/format_ptp.md),
 [`.mkc`](docs/format_mkc.md), [the sound banks](docs/format_awb.md),
 [the actor parameters](docs/params.md). What running it produced is in
-[milestone 1](docs/milestone_numbers.md). The plan is in
+[milestone 1](docs/milestone_numbers.md) and [the pose](docs/pose.md). The
+plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
 
@@ -276,10 +290,11 @@ read.
 
 ## Engine
 
-`engine/` is where the reading stops and the reimplementation starts. Three
+`engine/` is where the reading stops and the reimplementation starts. Four
 files, no renderer, no VM, no combat: a world that answers where the floor is
 and where the fence is, an actor that moves under the game's parameter table,
-and a driver that reports what comes out.
+a pose layer that puts a skeleton on the ground, and a driver that reports
+what comes out.
 
 ```
 python engine/run.py numbers <class json>          what the parameters produce
@@ -288,18 +303,28 @@ python engine/run.py trace <stage> <json> <png>    draw the crossing
 python engine/run.py sweep <stage.cpk dir> <json>  cross every stage
 python engine/run.py check <stage.cpk dir>         markers against the mesh,
                                                    and whether fences close
+python engine/run.py stride <stage> <json> <tree> <motion>
+                                                   walk with the animation on,
+                                                   foot against the mesh
+
+python engine/pose.py body <tree> <model>          what touches the ground
+python engine/pose.py track <tree> <motion>        where it is, frame by frame
+python engine/pose.py footfall <tree>              against .mkc's own footfall
+python engine/pose.py locomotion <tree> <json>     against walk_sp and run_sp
 ```
 
 `numbers` needs no disc geometry at all - it turns the parameter table into
 seconds, metres and multiples of Earth gravity, which are quantities a person
-can have an opinion about. The other four want a stage.
+can have an opinion about. Most of the rest want a stage.
 
 Every constant the actor uses is the disc's. The four things the disc does not
 say - how a body decelerates, how a turn brakes, what the stick does, and what
 happens at a wall - are marked as the engine's choices in
-[`engine/actor.py`](engine/actor.py) rather than smoothed over. The reasoning,
-and what came out of running it, is in
-[`docs/milestone_numbers.md`](docs/milestone_numbers.md).
+[`engine/actor.py`](engine/actor.py) rather than smoothed over, and the four
+the pose layer makes in [`engine/pose.py`](engine/pose.py) the same way. The
+reasoning, and what came out of running it, is in
+[`docs/milestone_numbers.md`](docs/milestone_numbers.md) and
+[`docs/pose.md`](docs/pose.md).
 
 ## Licence
 

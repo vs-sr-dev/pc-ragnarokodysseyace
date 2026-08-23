@@ -5,48 +5,47 @@
 
 ---
 
-# Next session — the capsule gets a skeleton
+# Next session — name the effect table, and say which foot
 
-Session 15 read `.mkc`, the movies and the sound banks, and **Phase 2 now has
-no open rows**: every container the disc ships is read, and the chain from a
-frame of an animation to a PCM sample closes on 7,592 of 7,608 references,
-with the other 16 accounted for.
-What is left inside the formats is columns and opcodes, not containers. From
-here the work is building.
+Session 16 gave the capsule a skeleton and checked it against the disc. The
+whole report is in [`pose.md`](pose.md); the two numbers to carry are that
+**the planted foot of a walking body sits 3 mm above the collision mesh** and
+that **`.mkc`'s `7ffa` fires within a frame of the skeleton landing a foot on
+79.5 % of 650 firings, against 25.2 % at random**. The pose layer is
+[`engine/pose.py`](../engine/pose.py) and it is small: a contact node, the
+height it stands at, and forward kinematics along its chain.
 
-### 1. Pose the body.
+That leaves the two things the last session named, and adds a third that is
+now cheap.
 
-`engine/` has a capsule that runs, turns, slides along a fence and falls, and
-no pose at all. Everything it needs is read and none of it has ever been put
-in the same place at the same time:
+### 1. `effect.bin` — 69 tables and nobody has named a column.
 
-- [`CNOM`](format_cnom.md) has 3.0M keys and binds to a skeleton by name;
-- `cmdl.py gait` already does the forward kinematics, and `cmdl.py obj` already
-  writes a posed model out;
-- [`.anmcmd`](format_anmcmd.md) says what happens on which frame, and its hit
-  record names the bone it hangs off;
-- and [`.mkc`](format_mkc.md) now says which frame the foot lands on. That is
-  the one that makes a pose checkable rather than merely visible: **`7ffa`
-  fires on the frame the foot plants**, so the animation's own footfall can be
-  measured against the root motion `cmdl.py gait` derives, over 3,043
-  animations, and the two either agree or the pose is wrong. The same frame
-  now also reaches a WAV, through [`awb.py`](../tools/awb.py), so the first
-  thing that runs and makes a noise is closer than the first thing that runs
-  and has a face.
-
-The first deliverable is small: play one `CNOM` on the walking capsule and
-print, per frame, the height of the planted foot above the collision mesh.
-
-### 2. `effect.bin` — 69 tables that just acquired a consumer.
-
+Untouched, and still the largest unread thing on the disc.
 [`.mkc`](format_mkc.md) opcode `0801` indexes them, 1-based, 3,926 times. They
-are `ECH` tables of 60-byte rows of which the last 44 are usually zero, and
-nobody has named a column. The head reads as two `u16` ids, a `u32` that is 0
-or 10000, a `0x40`/`0xff` pair and a float at `+0x0C` that is 1.0, 0.8 or 0.7.
-The obvious question is whether one of the two ids is a `(category, slot)`
-half of the [`.PTP`](format_ptp.md) address, which would join the effect layer
-end to end — and 14 pacs index past the end of their own table, which is the
-other half of the same question.
+are `ECH` tables of 60-byte rows of which the last 44 are usually zero. The
+head reads as two `u16` ids, a `u32` that is 0 or 10000, a `0x40`/`0xff` pair
+and a float at `+0x0C` that is 1.0, 0.8 or 0.7. The obvious question is
+whether one of the two ids is a `(category, slot)` half of the
+[`.PTP`](format_ptp.md) address, which would join the effect layer end to end
+— and 14 pacs index past the end of their own table, which is the other half
+of the same question.
+
+### 2. Which foot, and which vector.
+
+Both of these were waiting on forward kinematics and now are not.
+
+- **The emitter namespace.** `7ff9`'s third argument is a place on the body,
+  23 values wide, paired left and right — `STEP` alternates 1700 and 1800.
+  [`pose.py`](../engine/pose.py) knows *which* contact node landed on a given
+  frame. Line the two up over the disc and half the vocabulary is named in one
+  pass, with the rest of it constrained by the `CMDL` node lists.
+- **Which of the hit record's three vectors is which.**
+  [`.anmcmd`](format_anmcmd.md) carries three signed vec3s per hit and the
+  natural readings are an offset, an end point and a direction. The record
+  names the bone it hangs off, and `pose.py` can put that bone in world space
+  on the frame the hit fires. An offset from the bone and a point in the
+  actor's space look nothing alike once both are plotted against the body's
+  own extent. Open since session 9.
 
 ### 3. The 289 native script functions.
 
@@ -68,7 +67,7 @@ The ones a **stage** needs first are still `cfSetEnableEmGen`,
 
 Thirty of `.anmcmd`'s fifty-two and ten of `.mkc`'s twenty-one. The positional
 method is close to exhausted on `.anmcmd`; what would move it further is the
-geometry, which is item 1. `.mkc`'s ten are easier and worth doing in the same
+geometry, which is item 2. `.mkc`'s ten are easier and worth doing in the same
 pass, because six of them are players-only or monsters-only and that is where
 a correlation starts: `0803`, `0804`, `0805`, `080d` are the players'
 (624 records), `080f` is the monsters' (193), and `0802`'s four arguments are
@@ -76,22 +75,20 @@ a camera shake whose roles are unread.
 
 ### Then
 
-5. **Which vector is which** in the hit record. Three signed vec3s; the natural
-   readings are an offset, an end point and a direction. `cmdl.py gait` already
-   does the forward kinematics that needs.
-6. **The `ELBN` records, field by field.** The container is solved and 318
+5. **The `ELBN` records, field by field.** The container is solved and 318
    names are addressable; not one record is described. `job.cpk/<class>/
    objbin.bin` is the best target, because it is the same territory as the
    JSON in [`params.md`](params.md).
-7. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
+6. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
    small, well-posed instances with known consumers: the `.psq` calls name
    their rows, so the columns can be read against the script that uses them.
    The `CCLS` surface codes 1 to 13 are the other one — and `.mkc` gives them
-   a second consumer, since `7ffa`/`7ffb` fire a footstep and the ground is
-   what has to choose its sound.
-8. **The minimap transform.** 137 `.map` images, each visibly the silhouette
+   a second consumer, since `7ffa` fires a footstep and the ground is what has
+   to choose its sound. **The pose layer now says where that foot is**, so the
+   triangle under it, and therefore its surface code, is a lookup away.
+7. **The minimap transform.** 137 `.map` images, each visibly the silhouette
    of its own stage's collision. A small job that gives the UI layer a map.
-9. **Structure the `.psq` control flow.** `psq.py src` prints labels and
+8. **Structure the `.psq` control flow.** `psq.py src` prints labels and
    `goto`. Rebuilding `if`/`while`/`switch` is ordinary work and nobody needs
    it yet.
 
@@ -120,8 +117,11 @@ a camera shake whose roles are unread.
   list; and the 25 models whose node table disagrees with their own inverse
   bind matrices. All in [`format_cmdl.md`](format_cmdl.md).
 - `CNOM`: the `u8` at `+0x04` of a channel; the constant `1000.0` at `0x4C`;
-  the `u16 1` at `0x12`. See [`format_cnom.md`](format_cnom.md). The frame
-  rate is settled in [`units.md`](units.md).
+  the `u16 1` at `0x12`; and **which rig the 72 `fgn`/`mgn` animations were
+  exported from**, since they key `node_hip` absolutely and carry no `xrot`
+  track, and no model on the disc matches. See
+  [`format_cnom.md`](format_cnom.md). The frame rate is settled in
+  [`units.md`](units.md).
 - `CCLS`: what the fifteen-word bit says about the nine early stages; what the
   surface codes 1 to 13 name; the eleven stages with an edge used by three or
   four triangles. See [`format_ccls.md`](format_ccls.md).
@@ -151,9 +151,11 @@ a camera shake whose roles are unread.
   variation set the game picks and with what weights; and the `.acf`'s 16
   mixer categories and 40 buses. See [`format_awb.md`](format_awb.md).
 - `.mkc`: ten of the twenty-one opcodes, the argument roles of the camera
-  shake, the emitter namespace, the fourteen
-  pacs that index past the end of their own `effect.bin`, and whether `7ff9`
-  and `7ffd` differ at all. See [`format_mkc.md`](format_mkc.md).
+  shake, the emitter namespace — which now has an instrument pointed at it,
+  see item 2 — `7ffb`, which the footfall measurement does not touch, the
+  fourteen pacs that index past the end of their own `effect.bin`, and whether
+  `7ff9` and `7ffd` differ at all. See [`format_mkc.md`](format_mkc.md).
+  `7ffa` itself is settled: [`pose.md`](pose.md).
 - The AI's own leftovers: ten of the 76 condition terms, which the six
   `.cnut` predate and so cannot name; what the `2xx` action block means, given
   that its ids resolve to the same motions as the `1xx`; the `kind` byte of
@@ -176,6 +178,71 @@ a camera shake whose roles are unread.
 ---
 
 # Log
+
+## Session 16 — 2026-08-23
+
+- **The capsule gets a skeleton, and it is checked rather than looked at.**
+  See [`pose.md`](pose.md) and [`engine/pose.py`](../engine/pose.py). The
+  layer is 630 lines: a contact node, the height it stands at, forward
+  kinematics along its chain, and four commands.
+  - **the contact node is the toe when there is one and the ankle when there
+    is not.** The players stop at `node_l_foot`; every monster with legs has a
+    `node_l_toe` under it, and on `b01_00` the ankle is at 1.02 m while the
+    toe is at 0.42 — for a digitigrade leg the ankle is a hock;
+  - **the height that counts as down is read off the rest pose**, because the
+    rest pose is a standing one: the lowest node in it is at exactly `y = 0`
+    on every player model and the ankle is at 0.1421, against the 0.138 the
+    same skeleton reaches at its lowest in `fas213run`. Nothing is fitted;
+  - **`7ffa` is a landing, and the disc proves it.** Over 650 firings on the
+    259 animations whose feet leave the floor, **79.5 % fire within one frame
+    of the skeleton putting a foot down** and 47.1 % on the frame exactly,
+    against 25.2 % and 8.8 % for a frame of the same animation picked at
+    random. The median offset is zero. Shown at three tolerances so the
+    tolerance can be seen not to be carrying it;
+  - **and a tolerance-free version says the same**: the lower foot has fallen
+    21.8 mm over the three frames into a firing, against 0.5 mm at an ordinary
+    frame. A foot merely being *on the floor* proves nothing, because in most
+    animations one of the two always is — that column is printed and marked as
+    saying nothing, because it looked like a result;
+  - **`7ffa`'s fourth cue is not a footstep.** Split by kind, the fall into
+    the event is 6.9 mm for `WALK`, 138 mm for `RUN` and 353 mm for
+    `LANDING` — the three order themselves exactly as their names do — while
+    `DRESS` comes in at **−0.2 mm**, which is no arrival at all. Set it aside
+    and the remaining 601 firings agree 81.9 % of the time. `DRESS` is cloth,
+    and the skeleton is what says so;
+  - **on the stage, the planted foot sits 3 mm above the collision mesh.**
+    `run.py stride` walks the body over `010_01_01` with the animation
+    running: median +0.0028 m over 76 planted frames of a walk, −0.0048 m at a
+    run, −0.0032 m on `030_01_01`. The foot slides 6 mm a frame over the
+    ground, of which 4 are the cycle being authored for 0.0459 while `walk_sp`
+    says 0.05. Three things — a parameter table, a skeleton and a collision
+    mesh — meeting to a few millimetres, with nothing arranging it;
+  - **the gait comes back from a different definition.**
+    [`units.md`](units.md) measured the planted slide against each animation's
+    own lowest ankle; `pose.py` measures it against the model's rest standing
+    height, which is a property of the skeleton and works on an animation with
+    no cycle in it. Medians 0.0484, 0.1696 and 0.2769 against the old 0.0492,
+    0.1699 and 0.2790, and **12 of 12 walks and 11 of 12 runs within 5 mm a
+    frame of `walk_sp` and `run_sp`**. The four cycles belonging to sets with
+    no `job.cpk` directory — no class, so no table to obey — are 0 for 8,
+    which is the control arriving for free.
+- **Two motion sets are keyed for a rig this disc does not ship.** `fgn` and
+  `mgn`, 72 animations, carry **no `xrot` track at all** and key `node_hip` at
+  `y = 0.899`, where every other player set keys the hip at 0.07 under an
+  `xrot` the model puts at 0.9. Played on the shipped skeleton the body floats
+  a metre and no foot ever touches. Drop the 0.9 and the walk's planted foot
+  sits at −0.0014 m over 29 frames of contact, which identifies the fault
+  exactly. No model on the disc supplies the rig either: of the 180 with an
+  `xrot` node, the only three that put it at the origin are `b18_00`,
+  `b18_01` and `b18_02`. See [`format_cnom.md`](format_cnom.md).
+- **Where the residual is.** 109 firings of 601 are more than a frame out at
+  1 cm, and they are not spread evenly: 54 are on attack motions, 20 on
+  damage reactions, 14 on emotes, and the locomotion cycles contribute 17
+  between them. Attacks and staggers are where a foot pivots and scuffs rather
+  than lands. On `fht303landing` the cue fires two frames before the foot
+  settles, and a sound starting slightly ahead of contact is what an audio
+  department does on purpose — nothing here separates *fires early* from *is
+  wrong*.
 
 ## Session 15 — 2026-08-23
 
