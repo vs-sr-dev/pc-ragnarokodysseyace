@@ -359,6 +359,59 @@ This is the join to the animation layer: an `.anmcmd` is named by the same
 three-digit motion id — `b01_00/animcmd.pac/b01_00_501.anmcmd` is the event
 list of `at1`. See [`format_anmcmd.md`](format_anmcmd.md).
 
+## Running it, and the three things that came out
+
+**Session 22 executed all of this**: [`../engine/brain.py`](../engine/brain.py)
+evaluates the ladder, rolls the group and resolves the action, and
+[`../engine/fight.py`](../engine/fight.py) puts the result on a stage. Over
+random states, **83 of 83 monsters decide on every one of 40 states**, and
+3,320 rolled actions name a motion 2,631 times. Three things fell out that
+reading the tables could not produce.
+
+### The dispatch is executable, so it can check the reading
+
+`check_converted_xml_term` is not documentation any more - the Squirrel VM
+[`format_psq.md`](format_psq.md) describes runs it. `brain.py terms` puts this
+project's own term evaluator beside the disc's own, over **every one of the 458
+`(term, operand)` pairs the 144 files actually use**, in 20 random states, both
+polarities: **15,040 comparisons and 0 disagreements**.
+
+### Two terms are dead as the include writes them
+
+Squirrel refuses to compare a bool with an integer and its `==` is false
+between types, and running the dispatch shows two places where that bites:
+
+- **term 103**, `check_term_param(isDowned(), param)`, *throws* when the
+  operand is non-zero, because it compares the flag against the operand. Five
+  instructions on the disc pass a non-zero operand there;
+- **term 115**, `ret = getPartsDamageCount(param)`, leaves an integer where
+  the next line writes `ret == cond` against a boolean, so the term is
+  **never true either way**. 47 instructions use it.
+
+Both read cleanly if the engine's own `isDowned` and `getPartsDamageCount`
+return numbers rather than flags, which is what the names say and what
+[`../engine/brain.py`](../engine/brain.py) assumes.
+
+### The chance term: the include and the hand-written rules disagree
+
+The dispatch writes term 8 as `getRand() * 100 < param`. `getRand()` returns
+0 to 10,000 - `prt_select` normalises its weights to 10,000 and rolls against
+them - so under that form a 20% chance fires only on a roll of exactly zero.
+The OrcKing's own hand-written branch for the same rule reads
+`getRand() <= 2000` against a table operand of 20, which is
+`rand <= param * 100`.
+
+Running both settles it. Driving the table and the script from the same state
+and the same roll, over 300 states, **the OrcKing's table picks the same group
+as its script 217 times under the include's form and 293 under the other**.
+The include is the converted artefact; the branch is what the author wrote.
+
+The other five `.cnut` do not give the same check, and the disc says why: the
+`b18` and `b19` tables are **shared between difficulty variants whose scripts
+are not**, so at most one variant can match, and their scripts pick
+three-digit `prt_N` that their own `ProbList` has no group for at all - on
+`AI_B18_Nidhogg` that is 180 of 300 states.
+
 ## The six `.par`
 
 Four of them are arrays of fixed-width records closed by a sentinel word, and
@@ -373,6 +426,30 @@ _dfa      82      4      0xFFFFFFFF   a list of motion ids
 _coop     71     20 or 60  -          one struct: three ids, a range, a time
 _prowl    59     16        -          one struct, the same on 57 of the 59
 ```
+
+### `_act.par` — the per-action gate, and what its range is a range to
+
+**The hit volumes on the same action's motion say.** `_act.par` gives an
+action one distance and nothing on the disc says what it measures. The
+`.anmcmd` of the motion that action names says how far its hit volumes get
+from the body - a different file, read by a different tool, in the same
+metres. `fight.py reach` puts them side by side over every action of every
+monster:
+
+```
+83 monsters, 250 actions with a real range in `_act.par` and a hit record
+             on their motion
+  the gate runs 1.20 to 99.00 m, median 7.50; the reach 0.71 to 76.71,
+             median 4.39
+  correlation 0.590 over 250 pairs
+  the same pairs reshuffled 200 times: 0.051 on average, 0.231 at the best
+```
+
+**0.590 against a shuffled control of 0.051.** So the range is a distance to
+the *target*, measured in the same units as the swing that follows, and it is
+systematically the longer of the two - shorter than the gate on 171 of the 250
+- which is what a gate on *starting* an attack should be: the wind-up has to
+be worth it before the blow lands.
 
 ### `_act.par` — the per-action gate
 
@@ -461,6 +538,16 @@ is a shared default that two monsters override.
 
 ## What is open
 
+- **The seven per-boss escape hatches.** `checkB01Term` and its six siblings
+  are host functions, not script: nine tables call thirteen term ids on 458
+  instructions and **nothing on the disc defines any of them**. `b18` and
+  `b19` implement theirs for their own variants - `AI_B01_OrcKing_2` uses term
+  1061 and ships no `.cnut` of its own - so the implementation is once per
+  boss family, inside the binary. Same shape of hole as `prowl_script`;
+- **Two terms are dead as the include writes them**, and session 22 found both
+  by running it: 103 throws on a non-zero operand and 115 is never true. Both
+  read cleanly if the engine's `isDowned` and `getPartsDamageCount` return
+  numbers rather than flags, which is what their names say;
 - **Ten of the 76 terms**, 1,094 instructions, listed above. They are not in
   the `.cnut` dispatch because the tables are the newer artefact. (`ai.py ops`
   counts 77 codes; the seventy-seventh is the all-zero word that ends a
