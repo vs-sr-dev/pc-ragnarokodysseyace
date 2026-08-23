@@ -5,98 +5,104 @@
 
 ---
 
-# Next session — write down what the engine's functions do
+# Next session — the records nobody has described
 
-Session 17 read [`effect.bin`](format_effect.md) and then named the hit
-record's geometry. Four things to carry: **`.mkc`'s `0801` addresses a row's
-own id byte**, not its position; **`effect.bin`'s `+0x04` is a `CMDL` locator
-id**, so an effect hangs off the same sockets a sound comes out of; **`.PTP`
-category 2 is `effect.bin` itself**, 96 of 96, which was the last unplaced
-piece of the effect addressing; and **the `.anmcmd` hit record's byte at
-`+0x01` is a shape**, which is why nothing had ever distinguished its three
-vectors — there is no one answer, there are six. See
-[`format_anmcmd.md`](format_anmcmd.md).
+Session 18 read the engine's script interface: **285 native functions**, what
+each is handed and what it does, in [`format_api.md`](format_api.md). The
+number moved because `psq.py api` had been missing two kinds of call for six
+sessions — `_OP_TAILCALL`, and a root call through a computed key, which hid
+`cfGetCntKillGenPieceLockOnly` and its 892 calls. Five things to carry:
 
-The geometry question that had been open since session 9 is closed. What is
-left is the script surface, the opcodes, and the tables nobody has described.
+- **the interface is not only functions.** `suspend(n)` is the protocol: the
+  script hands the host a number and stops, and the host resumes it. Thirteen
+  numbers cover every blocking thing in the game;
+- **the arguments join tables that are already read**, and that is what settles
+  them. Every one of 10,787 `talk` message ids is inside `msg_npc_talk.bin`;
+  1,220 of 1,331 motion ids name a `.CNOM` of the character they are played on
+  and the 111 that do not all ask for 201, a sentinel; 1,120 of 1,144
+  `chrPlayVoice` calls name a cue carrying the speaker's own name;
+- **`isAbnormal(1, 3)` is the player frozen**, so the status kind is a
+  zero-based index into the `ab_*` block in the JSON's own declared order.
+  That is one of the four things [`params.md`](params.md) had open;
+- **a stage script writes `sec * 30`** to turn an effect's period into a frame
+  countdown. [`units.md`](units.md) had a declared frame rate down as
+  EBOOT-only;
+- **`chrSetAttachArticle`'s 4000 is `node_r_weapon`** — a fourth consumer of
+  the `CMDL` locator numbering, after `.CTXT`, `.mkc` and `effect.bin`.
 
-### 1. The 289 native script functions.
+What is left is records and opcodes. Nothing on the disc is unopened.
 
-`psq.py api` gives each one a name and an arity histogram, and the call sites
-give the argument values. That is enough to write down what most of them do
-without a disassembler. Session 12 added a second, sharper source: the AI's
-term dispatch names **forty-odd predicates over monster state** —
-`getHpRate`, `getTargetRange`, `getAngleTypeAtTarget`, `isTargetJump`,
-`getActiveSameKindCount`, `checkRangeParam` and the rest — and every one of
-them is a small function over state the engine has to keep anyway. Writing
-those down is the shortest route to *"a monster fights"*. The mercenary AI
-adds 19 more of the same shape — `getRange`, `getNumOfEnemy`, `getTargetType`,
-`isAvailableAceSkill` — and its whole interface is only those 19 plus `print`.
-The ones a **stage** needs first are still `cfSetEnableEmGen`,
-`cfSetEnableHitArea`, `cfSetEnableBorderline`, `cfMapJump`, `cfStartPieceLock`,
-`cfGetGlobalFlag`, `cfSetGlobalFlag`, `chrSetMotion`.
-
-`effStart`, `effSetPos`, `effSetRot` and `getHTAPos` can be crossed off in
-passing: [`format_effect.md`](format_effect.md) shows what each is handed and
-where it comes from.
-
-### 2. The opcodes that are left, in both event formats.
-
-Thirty of `.anmcmd`'s fifty-two and ten of `.mkc`'s twenty-one. The positional
-method looked exhausted on `.anmcmd` and the hit record has just shown what
-was missing from it — a selector byte inside a payload changes what the rest
-of the payload means, and counting occurrences of an opcode never sees that.
-Worth a second pass with that in mind. `.mkc`'s ten are easier and worth doing
-alongside, because six of them are players-only or monsters-only and that is
-where a correlation starts: `0803`, `0804`, `0805`, `080d` are the players'
-(624 records), `080f` is the monsters' (193), and `0802`'s four arguments are
-a camera shake whose roles are unread.
-
-### 3. The `ELBN` records, field by field.
+### 1. The `ELBN` records, field by field.
 
 The container is solved and 318 names are addressable; not one record is
 described. `job.cpk/<class>/objbin.bin` is the best target, because it is the
 same territory as the JSON in [`params.md`](params.md) — and because
-`eff_hitlevel_tbl`, one of its 318, has just been read end to end, which shows
-what the rest of them will cost.
+`eff_hitlevel_tbl`, one of its 318, has been read end to end, which shows what
+the rest of them will cost. 707 files.
+
+### 2. The opcodes that are left, in both event formats.
+
+Thirty of `.anmcmd`'s fifty-two and ten of `.mkc`'s twenty-one. The positional
+method looked exhausted on `.anmcmd` until session 17 showed what it was
+missing — a selector byte inside a payload changes what the rest of the payload
+means, and counting occurrences of an opcode never sees that. Worth a second
+pass with that in mind. `.mkc`'s ten are easier and worth doing alongside,
+because six of them are players-only or monsters-only and that is where a
+correlation starts: `0803`, `0804`, `0805`, `080d` are the players' (624
+records), `080f` is the monsters' (193). **`0802`'s four arguments now have a
+sibling**: `cfCmrQuake(kind, 0, n, m)` is a camera shake with four arguments
+too, and its first is inside `0802`'s `kind 1..12` — but its fourth is 0, 15 or
+20 against `0802`'s 0..4, so the two do not line up and somebody should find
+out why. See [`format_api.md`](format_api.md).
+
+### 3. Draw a hitbox on a posed skeleton.
+
+Everything it needs exists: [`pose.py`](../engine/pose.py) puts the bone in
+world space on the firing frame, and the hit record's shape, offsets and radii
+are named. It would also settle the one thing the rest pose could not —
+whether an offset is turned by its bone — because an animated frame with a bent
+elbow separates the two readings that a bind pose does not.
 
 ### Then
 
 4. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
-   small, well-posed instances with known consumers: the `.psq` calls name
-   their rows, so the columns can be read against the script that uses them.
-   `effect.bin` is the worked example — its columns were named by its
-   consumers, not by the type inference, which read its first four bytes as
-   one `u32` and got an address wrong four ways.
-   The `CCLS` surface codes 1 to 13 are the other one — and `.mkc` gives them
-   a second consumer, since `7ffa` fires a footstep and the ground is what has
-   to choose its sound. **The pose layer now says where that foot is**, so the
-   triangle under it, and therefore its surface code, is a lookup away.
+   small, well-posed instances with known consumers, and session 18 added a
+   third: **`npc.bin` is the cast list** — `(kind, name, model pac, marker,
+   index, const, radius)` — which is where a character handle comes from.
+   `effect.bin` is the worked example: its columns were named by its consumers,
+   not by the type inference. The `CCLS` surface codes 1 to 13 are the other
+   one, and the pose layer now says where a foot is, so the triangle under it
+   is a lookup away.
 5. **The minimap transform.** 137 `.map` images, each visibly the silhouette
    of its own stage's collision. A small job that gives the UI layer a map.
-6. **Draw a hitbox on a posed skeleton.** Everything it needs now exists:
-   [`pose.py`](../engine/pose.py) puts the bone in world space on the firing
-   frame, and the hit record's shape, offsets and radii are named. It would
-   also settle the one thing the rest pose could not — whether an offset is
-   turned by its bone — because an animated frame with a bent elbow separates
-   the two readings that a bind pose does not.
-7. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
+6. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
    `+0x0a`. They are bit fields, they correlate with whether the row carries a
    locator and whether it carries an offset, and the obvious reading is a
    space or follow mode. Nothing on the disc tests it; a renderer would.
-8. **Structure the `.psq` control flow.** `psq.py src` prints labels and
-   `goto`. Rebuilding `if`/`while`/`switch` is ordinary work and nobody needs
-   it yet.
+7. **Structure the `.psq` control flow.** `psq.py src` prints labels and
+   `goto`. Rebuilding `if`/`while`/`switch` is ordinary work, and it is worth
+   more now than it was: [`format_api.md`](format_api.md) makes the
+   disassembly readable prose, and the structure is what is left between it and
+   source.
+8. **Milestone 2 is now specified rather than described.** *"A stage runs"*
+   needs a Squirrel VM — a dependency, not a project — the 285 functions
+   stubbed, and the `suspend` resume. Every stub has a signature and most have
+   a meaning. Nothing else has to be read first.
 
 ---
 ## Deferred, with reasons
 
-- **EBOOT decryption** (Phase 3). Narrower than it was: the quest state machine
-  and the boss AI are script, so what is left inside it is the combat loop and
-  the 289 native functions. **Session 14 produced the first item that genuinely
-  needs it** — the table that maps `.anmcmd` opcode 10's effect id to a `PTB`
-  slot is not on the disc, and 32,600 leaves were searched for it. It is a
-  cosmetic lookup, so it still does not justify the phase on its own.
+- **EBOOT decryption** (Phase 3). Narrower again: the quest state machine and
+  the boss AI are script, and since session 18 the 285 native functions are
+  described rather than merely named, so what is left inside it is **the combat
+  loop and the implementations**. **Session 14 produced the first item that
+  genuinely needs it** — the table that maps `.anmcmd` opcode 10's effect id to
+  a `PTB` slot is not on the disc, and 32,600 leaves were searched for it. It
+  is a cosmetic lookup, so it still does not justify the phase on its own.
+  Session 18 added a second, of the same size: the engine holds a **name for
+  every AI term id**, because the term dispatch's fall-through calls
+  `printAitIdName`, and that string table would finish
+  [`format_ai.md`](format_ai.md)'s last ten.
 - **Audio and video** — no longer deferred at all. The 46 movies are read by
   [`pam.py`](../tools/pam.py) and the 274 sound banks by
   [`awb.py`](../tools/awb.py): 7,756 waveforms, 12 h 18 m, every one reached
@@ -131,7 +137,8 @@ what the rest of them will cost.
 - `params`: what records 1 and 2 of a player class are — record 1 is plainly a
   buffed state but the disc never names it, and a search of all 25,288 messages
   for "Fever" found nothing. Also the four unexplained elements of the `ab_*`
-  status vectors.
+  status vectors — **their order is settled**, since `isAbnormal(1, 3)` is the
+  player frozen and index 3 is `ab_frz`: [`format_api.md`](format_api.md).
 - `.anmcmd`: thirty of the fifty-two opcodes; the unit of `+0x35`; why 554 of
   the 2,053 name no motion; and opcode 10's effect id, which session 14 showed
   resolves nowhere on the disc. **The hit record's three vectors are
@@ -143,6 +150,13 @@ what the rest of them will cost.
   disc and read out of the interpreter rather than confirmed; and the `.ppcut`
   macro names, which the preprocessor consumed. See
   [`format_psq.md`](format_psq.md).
+- The script interface: about a dozen of the 285 whose argument roles the disc
+  does not separate — `cfSetCameraType`'s five camera types, the second
+  argument of the `cfSetCmr*` family, `cfDialogParamAll`'s seven numbers,
+  `cfCmrQuake`'s four, `cfTutorialLineup`'s nine, `setDemoID`'s second, and
+  whether `msg_emotion.bin` is `cfAnimeIcon`'s table. Also **`prowl_script`**,
+  which all six bosses tail-call and nothing on the disc defines. See
+  [`format_api.md`](format_api.md).
 - `.PTP`: the inside of a `PTB`, which nothing needs until something renders.
   See [`format_ptp.md`](format_ptp.md). **Category 2 is settled**: it is the
   actor's own [`effect.bin`](format_effect.md) addressed by row id, 96 of 96,
@@ -152,7 +166,8 @@ what the rest of them will cost.
   variation set the game picks and with what weights; and the `.acf`'s 16
   mixer categories and 40 buses. See [`format_awb.md`](format_awb.md).
 - `.mkc`: ten of the twenty-one opcodes, the argument roles of the camera
-  shake, `7ffb` — which the footfall measurement does not touch — and whether
+  shake — which now has a sibling in the script layer, `cfCmrQuake`, agreeing
+  on its first argument and disagreeing on its fourth — `7ffb` — which the footfall measurement does not touch — and whether
   `7ff9` and `7ffd` differ at all. See [`format_mkc.md`](format_mkc.md).
   `7ffa` and the emitter are both settled: [`pose.md`](pose.md). So is the
   effect index, which is a row **id** and not a row number, leaving `z07` as
@@ -170,7 +185,8 @@ what the rest of them will cost.
   the collision mesh to a centimetre. **Whether a fence is a closed loop is
   settled**: 105 of 145 stages close, 20 branch, see
   [`milestone_numbers.md`](milestone_numbers.md).
-- The mercenary AI's leftovers: the command ids other than 0, 14 and 15; the
+- The mercenary AI's leftovers, one fewer since the predicates' argument turns
+  out to be an actor slot: the command ids other than 0, 14 and 15; the
   flag word at `+0x08`; the seven words of a `target_NN`; command 16, used
   twice; and the message ids in the two roster tables. See
   [`format_merc.md`](format_merc.md).
@@ -186,6 +202,102 @@ what the rest of them will cost.
 ---
 
 # Log
+
+## Session 18 — 2026-08-23
+
+- **The engine's script interface is read: 285 functions, what each is handed
+  and what it does.** See [`format_api.md`](format_api.md) and
+  [`tools/psq.py`](../tools/psq.py), which gains `calls` and `sites`. No
+  disassembler was involved. The sources, in order of how much they settle:
+  the 65-function wrapper library in `common.psq` names the arguments; the
+  compiler's `localvarinfos` name the results; the constants join tables that
+  are already read; and this build shipped its `print` calls.
+- **The count was 453 names and 289 natives, and it was low twice** — the same
+  mistake in two forms. `psq.py api` looked only for `_OP_PREPCALLK` then
+  `_OP_CALL`, so it missed **tail calls** (`return active_script()` is `0x05`;
+  132 script names and one native hid there) and **root calls through a
+  computed key** (`this['cfGetCntKillGenPieceLockOnly']()`, which nearly every
+  quest script opens with — **892 calls to a native nobody had listed**). The
+  numbers are now 587, 296 and 291, and of the 291 five are Squirrel's own
+  standard library and one is missing.
+- **One name resolves to nothing, and it is a hole in the game.** All six boss
+  `.cnut` end `if (isActive()) return active_script(); return prowl_script()`
+  and **no file on the disc defines `prowl_script`**. The AI was converted from
+  XML with two behaviours and only the active half was exported.
+- **`suspend` is the protocol, not a function.** `_bgenerator` is 0 on all
+  11,232 functions, so this is `sq_suspendvm`: the script hands the host a
+  number and stops. Thirteen numbers cover every blocking thing in the game —
+  100 and 101 a talk window, 110 a choice returning its index, 120 any
+  full-screen mode, 300 to 302 a dialog, 400 the quest-start prompt, 1000 a
+  plain wait. A reimplementation owes the interface a resume as well as 285
+  functions.
+- **Five arguments were checked against tables rather than argued about**, and
+  `psq.py xref` now runs all of them.
+  - **`talk(speaker, message)` joins both ways.** Every one of **10,787**
+    message ids is inside `menu.cpk/msg_field.en.pac/msg_npc_talk.bin`, whose
+    6,139 messages the script reaches to 6,138 — the table is exactly as large
+    as it needs to be, and not one call falls outside. The speaker is a row of
+    the 55-name `msg_npc.bin`, 54 is `Norn`, and she is the busiest at 2,759
+    lines. And the town scripts are named after who speaks in them: **10,058 of
+    10,333 lines under a two-letter-prefixed script use that prefix's own
+    character**, over 30 prefixes, `No` → Norn 2,756 of 2,756;
+  - **a motion id is the number inside its own `.CNOM` filename**, and it is a
+    vocabulary the whole cast shares — 11 `wait_1`, 12 `wait_2`, 15 `talk`, 16
+    `greeting`, 22 `sit`, 25 `sit_talk`, 41 `toast`, 901 `demo_01`. **1,220 of
+    1,331** `chrSetMotion` and `chrSetMotionNPC` calls name a motion the
+    addressed character has, and **every one of the 111 that do not asks for
+    201**, which no `.CNOM` on the disc carries — a sentinel, and it turns up
+    in the same place in `chrSetMotionNPC`'s *connect* slot 90 times;
+  - **a voice line names the speaker.** `chrPlayVoice` addresses the 58-cue
+    `sound.cpk/en/vnpc.acb`, and **1,120 of 1,144 calls pass a cue whose name
+    carries the name of the character handed to it**. The 24 that do not are a
+    complete list: a war cry, a toast, and four cases of one character speaking
+    another's lines;
+  - **every BGM, common-SE and NPC-voice cue id resolves** — 292 of 292;
+  - **`getCharacter(name)` names an `hta.bin` marker**, `pos_<name>`, on 1,362
+    of 1,407. The 45 misses are `player0`, the `DEMO_*` cutscene actors that
+    `setDemoPos` places instead, and two spellings. The record behind it is
+    `<stage>/param.pac/npc.bin`: `(kind, name, model pac, marker, index,
+    const, radius)`.
+- **The mercenary AI's argument is an actor slot** — 0 the mercenary, 1 the
+  player it follows, 2 its target. [`format_merc.md`](format_merc.md) listed
+  the 19 predicates with `n` unread. `check_active_*` reads
+  `getRange(1) < 35 && isAbnormal(1, 3)` and then **prints `plyer freeze`**,
+  which names the slot and the status in one line, and the phases split cleanly
+  either side of the target being chosen.
+- **And that names the status ids.** Dropping the scalar that heads them, the
+  `ab_*` vectors appear in the player JSON in a fixed order — `pss psl prl frz
+  brn nrv ten tir atd dfd` — and index 3 is `ab_frz`. So the abnormal-status
+  kind is a **zero-based index into that block in its own declared order**,
+  which was one of four things [`params.md`](params.md) had open about it.
+- **A stage script converts seconds to frames, and the constant is 30.**
+  `050_02_03.psq`'s `genCycle(fix, random)` is `fix * 30 + random * 30 *
+  rand()`, and `fix` and `random` are the `_sec_fix` and `_sec_rnd` session 17
+  matched field for field against `effect.bin`. [`units.md`](units.md) had a
+  declared frame rate down as the EBOOT's business; this is not a declaration,
+  and it assumes the update runs once a frame, but it is the first
+  seconds-to-frames constant found outside the executable and it agrees with
+  the gait.
+- **The same fourteen lines are the whole effect API**, and they close
+  `EffData._work`: it is not a field of the record, it is the **slot number** in
+  the host's `setInt`/`getInt` integer store where that effect's countdown
+  lives, which is why `effect.bin` has no lane for it. `getHTAPos` returns
+  `[x, y, z]`, `effStart(cate, id)` returns a handle, and `effSetRot` is given
+  `cfGetRandI(65536)` for its yaw.
+- **The angle unit is the script layer's too.** 65536 to the turn, the same as
+  the marker table: the cameras are swung `32768 ± 8192` for ±45°,
+  `setDemoRotY(index, 21845)` is 120° to the last unit, and the NPC turn speeds
+  are multiples of 256 of it. The engine offers `cfSetCmrAngY` and
+  `cfSetCmrAngYDeg` for the same setting, and the artists used the second.
+- **`chrSetAttachArticle`'s middle argument is a `CMDL` locator** — 4000 and
+  4100 are `node_r_weapon` and `node_l_weapon`, and twelve NPCs are handed beer
+  mugs, eight right-handed and four left. That is the **fourth consumer** of
+  one numbering, after `.CTXT`, `.mkc`'s emitter and `effect.bin`'s socket.
+- **Still open here**: `cfSetCameraType`'s five camera types, the second
+  argument of the `cfSetCmr*` family, `cfDialogParamAll`'s seven numbers,
+  `cfCmrQuake`'s four and whether it is `.mkc`'s `0802`, `cfTutorialLineup`'s
+  nine, `setDemoID`'s second argument, and whether `msg_emotion.bin` is
+  `cfAnimeIcon`'s table.
 
 ## Session 17 — 2026-08-23
 

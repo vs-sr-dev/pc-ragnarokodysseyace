@@ -1,6 +1,6 @@
 # PC-ROA — strategy
 
-*Aligned to the end of session 16 (2026-08-23). Detail and priorities live in
+*Aligned to the end of session 18 (2026-08-23). Detail and priorities live in
 [`TODO.md`](TODO.md); this document is the frame.*
 
 Goal: a **native PC reimplementation** of *Ragnarok Odyssey ACE*, the PS3
@@ -18,7 +18,7 @@ here — that everything executable was inside a 19.8 MB PPC64 SELF and the disc
 handed over only data. **Session 10 overturned that.** `.psq` is Squirrel 2.2
 bytecode: 3,011 files, 11,232 functions, with the compiler's debug tables
 intact. The cutscenes, the quest logic, the stage scripts and six bosses' AI
-are script, and the disc names the 289 host functions they call.
+are script, and the disc names the 285 host functions they call.
 
 So the shape is between the two: a large data layer *and* a scripting layer,
 with the engine underneath both. What the disc hands over is:
@@ -39,8 +39,9 @@ free and the formats had to be earned; here the formats were cheap and the
 behaviour had to be recovered — and a good deal of that behaviour turns out to
 be script after all. **Phase 3 (the EBOOT as oracle) stays load-bearing**, but
 what it is now needed for is narrower and better defined: not "the game logic"
-but the 289 named native functions the scripts call, plus the parts of the
-combat loop no script touches. Every rule that turns out to be table-driven or
+but the parts of the combat loop no script touches — session 18 read the 285
+native functions off their own call sites, so they are no longer waiting on it
+either. See [`format_api.md`](format_api.md). Every rule that turns out to be table-driven or
 script-driven is a rule nobody has to read out of PPC64 assembly.
 
 **Why not static recompilation.** Same answer as the sister project: the RSX
@@ -108,10 +109,12 @@ Decrypt the SELF (`key_revision 0x001C`, public retail keys) to a PPC64
 big-endian ELF and open it in Ghidra.
 
 Unlike on the sister project, this is not a deferrable curiosity: the EBOOT is
-where the combat loop lives, and it is where the **289 native functions**
+where the combat loop lives, and it is where the **285 native functions**
 [`format_psq.md`](format_psq.md) enumerated are implemented. It is no longer
-where the quest state machine or the boss AI live — those are script, and they
-are readable now.
+where the quest state machine or the boss AI live — those are script — nor,
+since session 18, where *what those functions do* has to be read:
+[`format_api.md`](format_api.md) has them off the call sites. What is left
+inside it is the implementation and the combat loop.
 
 **But the method note from the sister project still applies, and applies
 harder here**, and session 10 is the sharpest instance yet. `.psq` sat on the
@@ -151,7 +154,7 @@ last unread field is a `CMDL` locator id, and 2,715 of 2,716 resolve. See
 The shape of the rest is settled: a data-driven engine whose
 tables come from `ECH`, whose display text comes from `TXT`, whose actor
 parameters come from the JSON, and which **hosts a Squirrel VM** and exposes
-289 named functions to it. All four are readable today. Squirrel is small,
+285 named functions to it, described in [`format_api.md`](format_api.md). All four are readable today. Squirrel is small,
 permissively licensed and still maintained, so the fourth is a dependency
 rather than a project — and the sister project's decision, "build the engine to
 host the game's own scripts verbatim", applies here after all.
@@ -201,8 +204,10 @@ doorway at the other, and twenty-odd places monsters come from in between.
 **As of session 10 the second has the stage's script.** The same stage's `.psq`
 decompiles, its triggers name functions that are in it, and the calls those
 functions make name the markers the stage already declared. The second
-milestone — *"a stage runs"* — needs a Squirrel VM, the 289 native functions
-stubbed, and nothing else that is not already read.
+milestone — *"a stage runs"* — needs a Squirrel VM, the 285 native functions
+stubbed, and nothing else that is not already read. **Session 18 wrote down
+what each of them does**, including the `suspend` protocol the host has to
+implement to resume a blocked script, so the stubs have specifications.
 
 **As of session 12 the third has a monster that can act.** The AI's condition
 vocabulary, its action tables and its parameters are read, and an action id

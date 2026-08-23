@@ -84,7 +84,9 @@ CMTM material    ->       91 files, 1,388 keys  tools/cmtm.py   0 errors
 ATIH + fences    ->      163 stages, 5,934 marks tools/stage.py 0 errors
 ELBN parameters  ->      707 files, 318 names   tools/elbn.py   0 errors
 Squirrel script  ->    3,011 files, 315k insns tools/psq.py    0 errors
-  engine API     ->      289 native functions  named and counted
+  engine API     ->      285 native functions  named and described
+  their arguments->   10,787 message ids, 1,220 motion ids, every cue id
+                                                 resolving in its own table
 monster AI       ->      228 files, 6,550 rules tools/ai.py     0 errors
   action tables  ->    3,269 groups, 19,707 weighted actions
   condition terms->       66 of 76 named, 27,862 of 29,100 instructions
@@ -133,7 +135,8 @@ survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 [`CCLS`](docs/format_ccls.md), [the stage layout](docs/format_stage.md),
 [the units](docs/units.md),
 [`ELBN`](docs/format_elbn.md), [`.anmcmd`](docs/format_anmcmd.md), [the script
-layer](docs/format_psq.md), [the monster AI](docs/format_ai.md), [the
+layer](docs/format_psq.md), [the engine's script
+interface](docs/format_api.md), [the monster AI](docs/format_ai.md), [the
 mercenary AI](docs/format_merc.md), [`.PTP`](docs/format_ptp.md),
 [`effect.bin`](docs/format_effect.md),
 [`.mkc`](docs/format_mkc.md), [the sound banks](docs/format_awb.md),
@@ -148,7 +151,9 @@ in session 15. What is left is inside them. Ten of the AI's 76 condition
 terms, because the shipped tables turned out to be newer than the scripts
 that document them; the `ELBN` records, addressable by name but not described
 field by field; thirty of the fifty-two `.anmcmd` opcodes, though the two
-commonest are read and they are the hitbox; and ten of `.mkc`'s twenty-one.
+commonest are read and they are the hitbox; ten of `.mkc`'s twenty-one; and a
+dozen of the engine's 285 script functions whose argument roles the disc does
+not separate.
 
 Two things listed here for several sessions turned out to be something else,
 which is worth keeping visible. `.map` was down as the world layout and is the
@@ -257,8 +262,10 @@ python tools/anmcmd.py shapes <dir>          what `flag` says the three vectors 
 python tools/psq.py check|list <dir>          the Squirrel bytecode
 python tools/psq.py dump|src <dir> <name>    one file, disassembled or as
                                              reconstructed statements
-python tools/psq.py api|xref <dir>           the 289 host functions, and
-                                             whether a called name resolves
+python tools/psq.py api|calls <dir> [glob]   the 285 host functions, with the
+                                             constants each argument is handed
+python tools/psq.py sites <dir> <glob>       the call sites themselves
+python tools/psq.py xref <dir>               whether a called name resolves
 
 python tools/ai.py check|list <dir>          the monster AI
 python tools/ai.py probs|rules <dir> <name>  the action tables, and the rules
