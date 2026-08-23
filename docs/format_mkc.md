@@ -280,8 +280,10 @@ Three things that were open before this file was read:
   one sound bank across four palette swaps.
 - **The sound layer is addressable end to end.** A motion id now reaches a cue
   name through `.mkc` → bank id → `.acb`, and 7,540 of 7,608 references
-  (6,881 sound + 659 voice) resolve. What is left is decoding the waveform in
-  the `.awb`, which is well-trodden ground.
+  (6,881 sound + 659 voice) resolve. Later the same session
+  [`awb.py`](../tools/awb.py) took it the rest of the way to a sample:
+  **7,524 of the 7,608 reach a waveform that exists**. See
+  [`format_awb.md`](format_awb.md).
 
 ---
 
