@@ -219,14 +219,16 @@ Usage:
   python anmcmd.py census <dir>           every opcode, with its size
   python anmcmd.py list <dir> <name>      one list, frame by frame
   python anmcmd.py dump <dir> <name>      the same, with the payload bytes
-  python anmcmd.py hits <dir> <name>      the hit records, bones and cues
+  python anmcmd.py hits <dir> <name>      the hit records, shapes and cues
   python anmcmd.py bones <dir>            how many hit records name a bone
+  python anmcmd.py shapes <dir>           what `flag` says the vectors are
   python anmcmd.py find <dir> <glob>      locate a list at any depth
 """
 from __future__ import annotations
 
 import collections
 import fnmatch
+import math
 import pathlib
 import re
 import struct
@@ -241,6 +243,20 @@ HIT = 116                 # the record opcode 0 lists and 27 carries
 HEAD = 8                  # opcode 0's head, past the command header
 LOCATOR = 1000            # ids start here; no node table reaches it
 HIT_OPS = (0, 27)
+
+
+# `flag` at +0x01 selects a shape, and the shape says what the three vectors
+# are. The evidence is `shapes`: which vectors a flag uses, whether the second
+# one is a unit vector, whether the third puts its value in `x` alone, and
+# whether the record names a second bone at all.
+SHAPES = {
+    0: ('sphere', ('centre', None, None)),
+    1: ('capsule', ('one end', 'the other end', None)),
+    2: ('capsule, long', ('one end', 'the other end', None)),
+    3: ('cylinder', ('centre', 'axis', 'radius in x')),
+    4: ('three points', ('a point', 'a point', 'a point')),
+    5: ('cylinder', ('centre', 'axis', 'radius in x')),
+}
 
 
 class Hit:
@@ -264,20 +280,38 @@ class Hit:
         self.cue = struct.unpack_from('>H', raw, 0x48)[0]
 
     @property
+    def shape(self) -> str:
+        """What `flag` says the record is."""
+        got = SHAPES.get(self.flag)
+        return got[0] if got else f'flag {self.flag}'
+
+    def role(self, k: int) -> str:
+        """What vector `k` is under this record's shape."""
+        got = SHAPES.get(self.flag)
+        return (got[1][k] or '') if got else ''
+
+    @property
     def by_locator(self) -> bool:
         """Locator ids start at 1000 and no node table reaches 149, so the
         two address spaces never overlap and the value says which it is."""
         return self.bone >= LOCATOR
 
-    def where(self, names: list[str], locators: dict) -> str:
-        if not self.bone:
-            return '-'
-        if self.by_locator:
-            node = locators.get(self.bone)
+    def where(self, names: list[str], locators: dict, second=False) -> str:
+        bone = self.bone2 if second else self.bone
+        if not bone:
+            return '' if second else '-'
+        if bone >= LOCATOR:
+            node = locators.get(bone)
             at = names[node] if node is not None and node < len(names) else '?'
-            return f'locator {self.bone} ({at})'
-        return (names[self.bone] if self.bone < len(names)
-                else f'node {self.bone}')
+            return f'locator {bone} ({at})'
+        return names[bone] if bone < len(names) else f'node {bone}'
+
+    def node(self, locators: dict, second=False):
+        """The node index a bone field names, whichever space it uses."""
+        bone = self.bone2 if second else self.bone
+        if not bone:
+            return None
+        return locators.get(bone) if bone >= LOCATOR else bone
 
 
 def cues(root, bank: str = 'common.acb') -> dict:
@@ -581,7 +615,8 @@ def cmd_hits(root, name) -> int:
                 v = '  '.join('(' + ' '.join(f'{x:6.2f}' for x in vec) + ')'
                               for vec in h.vectors)
                 print(f'  f{b["frame"]:<4d} op{c.op:<3d} slot {h.slot:2d} '
-                      f'flag {h.flag}  {h.where(names, loc):<28s} '
+                      f'{h.shape:<13s} {h.where(names, loc):<26s} '
+                      f'{h.where(names, loc, True):<26s} '
                       f'{v}  size {h.sizes[0]:6.2f} {h.sizes[1]:6.2f}  '
                       f'+0x35 {h.power:>3d}  '
                       f'{bank.get(h.cue, h.cue) if h.cue else "-"}')
@@ -643,6 +678,139 @@ def cmd_bones(root) -> int:
     return 0
 
 
+def cmd_shapes(root) -> int:
+    """`flag` is a shape, and the shape says what the three vectors are.
+
+    Nothing here is fitted. Per flag it counts how many records use each of
+    the three vectors, how many of the used second ones are a unit vector,
+    how many third ones put their whole value in `x`, and how many records
+    name a second bone. What comes out is a shape table - one point, two
+    points, or a point with an axis and a radius - and the second bone
+    appears only where the second vector is a point.
+
+    Then the two-bone records are measured against the skeleton: the second
+    bone is on the same chain as the first, and the two vectors are far too
+    short to be carrying the limb's length, so each end is anchored to its
+    own bone and the limb supplies the span."""
+    import cmdl                                               # noqa: PLC0415
+
+    rigs = {}
+    for path, blob in cmdl.collect(root):
+        try:
+            m = cmdl.Cmdl(blob, path)
+        except ValueError:
+            continue
+        names, loc = _skeleton(m)
+        rigs[path.rsplit('/', 1)[-1][:-5]] = (names, m.parents(), loc,
+                                              m.world())
+
+    def rig_for(path):
+        m = re.match(r'job\.cpk/([a-z]{2})/', path)
+        if m:
+            for k in sorted(rigs):
+                if re.fullmatch(rf'[fm]{m.group(1)}\d', k):
+                    return rigs[k]
+            return None
+        m = re.match(r'monster\.cpk/([a-z0-9_]+)/', path)
+        return rigs.get(m.group(1)) if m else None
+
+    rows = []
+    kin = collections.Counter()
+    for path, blob in collect(root):
+        try:
+            a = Anmcmd(blob, path)
+        except ValueError:
+            continue
+        rig = rig_for(path)
+        for b in a.blocks():
+            for c in b['commands']:
+                for h in hits_of(c):
+                    rows.append((path, h, rig))
+                    kin[(h.flag, 'player' if path.startswith('job')
+                         else 'monster')] += 1
+
+    def mag(v):
+        return math.sqrt(sum(x * x for x in v))
+
+    def sep(w, i, j):
+        return math.sqrt(sum((w[i][k][3] - w[j][k][3]) ** 2
+                             for k in range(3)))
+
+    print(f'{len(rows):,} hit records\n')
+    print(f'{"flag":>4} {"reads as":<15} {"n":>5}   '
+          f'{"uses v0":>11} {"uses v1":>11} {"uses v2":>11}   '
+          f'{"v1 unit":>7} {"v2 x only":>9}   {"2nd bone":>8}')
+    for flag in sorted({h.flag for _, h, _ in rows}):
+        v = [h for _, h, _ in rows if h.flag == flag]
+        used = [sum(1 for h in v if any(h.vectors[k])) for k in range(3)]
+        u1 = sum(1 for h in v if any(h.vectors[1])
+                 and abs(mag(h.vectors[1]) - 1) < 1e-3)
+        x2 = sum(1 for h in v if any(h.vectors[2])
+                 and not h.vectors[2][1] and not h.vectors[2][2])
+        b2 = sum(1 for h in v if h.bone2)
+        print(f'{flag:>4} {SHAPES.get(flag, ("?", ()))[0]:<15} {len(v):>5}   '
+              f'{used[0]:>5}/{len(v):<5} {used[1]:>5}/{len(v):<5} '
+              f'{used[2]:>5}/{len(v):<5}   {u1:>7} {x2:>9}   {b2:>8}')
+
+    print('\nplayers against monsters, by flag')
+    for flag in sorted({f for f, _ in kin}):
+        print(f'  flag {flag}  players {kin[(flag, "player")]:>5}  '
+              f'monsters {kin[(flag, "monster")]:>5}')
+
+    rel = collections.Counter()
+    ratio = []
+    for _, h, rig in rows:
+        if not h.bone2 or rig is None:
+            continue
+        names, par, loc, world = rig
+        n1, n2 = h.node(loc), h.node(loc, True)
+        if n1 is None or n2 is None or n1 >= len(par) or n2 >= len(par):
+            rel['unresolved'] += 1
+            continue
+        if n1 == n2:
+            rel['the same node'] += 1
+        elif par[n2] == n1:
+            rel['its child'] += 1
+        elif par[n1] == n2:
+            rel['its parent'] += 1
+        else:
+            def chain(i):
+                out = []
+                while i >= 0:
+                    out.append(i)
+                    i = par[i]
+                return out
+            rel['further up the same chain' if n2 in chain(n1)
+                or n1 in chain(n2) else 'elsewhere'] += 1
+        if n1 != n2:
+            d = sep(world, n1, n2)
+            if d > 1e-3:
+                span = mag(tuple(a - b for a, b in zip(h.vectors[1],
+                                                       h.vectors[0])))
+                ratio.append(span / d)
+
+    total = sum(rel.values())
+    one = total - rel['elsewhere'] - rel['unresolved']
+    print(f'\nthe second bone, over the {total:,} records that name one: '
+          f'{one:,} sit on one chain with the first')
+    for k, n in rel.most_common():
+        print(f'  {k:<28} {n:>5}')
+
+    if ratio:
+        ratio.sort()
+        small = sum(1 for x in ratio if x < 0.5)
+        near = sum(1 for x in ratio if 0.7 <= x <= 1.4)
+        print(f'\nand over the {len(ratio):,} that name two different nodes, '
+              f'|v1 - v0| against the joint separation:')
+        print(f'  median {ratio[len(ratio) // 2]:.2f} of it, under half of it '
+              f'on {small:,} ({100 * small / len(ratio):.0f}%), '
+              f'within 30% of it on {near} '
+              f'({100 * near / len(ratio):.0f}%)')
+        print('  so the vectors do not carry the limb length - the limb does,')
+        print('  and each end is an offset from the bone it names.')
+    return 0
+
+
 def main() -> int:
     a = sys.argv[1:]
     if not a:
@@ -663,6 +831,8 @@ def main() -> int:
         return cmd_hits(rest[0], rest[1])
     if cmd == 'bones':
         return cmd_bones(rest[0])
+    if cmd == 'shapes':
+        return cmd_shapes(rest[0])
     if cmd == 'find':
         return cmd_find(rest[0], rest[1])
     print(f'unknown command: {cmd}')

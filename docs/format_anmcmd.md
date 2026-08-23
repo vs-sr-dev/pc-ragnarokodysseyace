@@ -1,6 +1,7 @@
 # `.anmcmd` — the animation command lists
 
-**Status: container solved, the hit record read, the opcodes partly named.**
+**Status: container solved, the hit record read and its geometry named,
+the opcodes partly named.**
 2,053 files, **6,802 blocks, 10,175 commands, 0 unreadable**, and every
 arithmetic check closing on every file. Reader:
 [`../tools/anmcmd.py`](../tools/anmcmd.py).
@@ -93,15 +94,15 @@ declared. Four files use opcode 27 with no opcode 0 anywhere.
 
 ```
 +0x00  u8        slot           0 to 15
-+0x01  u8        flag           0 to 5
-+0x02  u16       the bone
-+0x04  u16       a second bone, or zero
++0x01  u8        shape          0 to 5; it says what the vectors below are
++0x02  u16       the bone the first vector hangs off
++0x04  u16       the bone the second one hangs off, or zero
 +0x06  u16
-+0x08  float[3]  \
-+0x14  float[3]   > three vectors; every one of the nine goes negative
-+0x20  float[3]  /
-+0x2C  float     a size    never negative, set on 6,145 of 6,193
-+0x30  float     a size    never negative, set on 5,926
++0x08  float[3]  an offset from the first bone
++0x14  float[3]  an offset from the second - or an axis, on a cylinder
++0x20  float[3]  a third point - or a radius in `x`, on a cylinder
++0x2C  float     a length, in the actor's own metres
++0x30  float     a ratio, near 1 whatever the actor's size
 +0x34  u8[4]     the second byte scales with the strength of the hit
 +0x38  u8, 0xFF, 0, 0
 +0x3C  float
@@ -123,8 +124,8 @@ declared. Four files use opcode 27 with no opcode 0 anywhere.
 The nine floats at `+0x08` are three vectors rather than the
 `offset / size / rol` of a `.CTXT` capsule: a size is never negative and all
 nine of these are, between a fifth and a half of the time. The two at `+0x2C`
-and `+0x30` never are, and those are the sizes. Which vector is an offset,
-which an end point and which a direction is not settled here.
+and `+0x30` never are. **Which vector is which is settled below**, and the
+answer is that the byte at `+0x01` decides.
 
 ### The bone, and every one of them resolves
 
@@ -169,6 +170,141 @@ $ python tools/anmcmd.py hits extract/tree b01_00_507.anmcmd
 The sixth attack of the first monster in the game is a one-two. And the sword's
 charged swing hangs its hit on `locator 4000`, which is `node_r_weapon` — on
 the sword.
+
+### The three vectors, and the byte that says which is which
+
+*Session 17.* The question had been asked the wrong way round. There is no
+single answer, because **`flag` at `+0x01` is a shape**, and the shape says
+what the three vectors are. `python anmcmd.py shapes extract/tree`:
+
+| `flag` | reads as | n | uses `v0` | uses `v1` | uses `v2` | `v1` is a unit vector | `v2` puts it all in `x` | names a second bone |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| 0 | a sphere | 3,258 | 2,425 | **0** | **0** | – | – | **0** |
+| 1 | a capsule | 2,283 | 1,605 | 1,733 | **0** | 91 | – | 1,778 |
+| 2 | a long capsule | 75 | 47 | 73 | **0** | 0 | – | 71 |
+| 3 | a cylinder | 114 | 67 | **114** | 111 | **114 of 114** | **111 of 111** | **0** |
+| 4 | three points | 445 | 444 | 423 | 437 | 0 | 0 | 404 |
+| 5 | a cylinder | 18 | 1 | **17** | 18 | **17 of 17** | **18 of 18** | **0** |
+
+Three things fall out of that table and none of them is fitted.
+
+**A flag never half-uses a vector.** Flags 0, 1 and 2 leave `v2` at zero on
+all 5,616 of their records; flag 0 leaves `v1` at zero on all 3,258. A field
+that is a payload under one selector value and absent under another is a
+field under a selector.
+
+**On flags 3 and 5 the second vector is a direction and the third is a bare
+number.** All 131 second vectors have length exactly 1, 98 of them on the `y`
+axis alone; all 129 third vectors carry a value in `x` and nothing in `y` or
+`z`. And the tilted axes give it away completely — 24 records carry
+
+    (-0.5144957304000854, 0.8574929237365723, 0.0)
+
+which is `(-0.6, 1, 0)` normalised, to the last bit of a `float`. Nobody
+types that; a tool wrote it. So those two vectors are not points: one is an
+**axis** and the other a **radius**, put in a vec3 lane because the record has
+nowhere else to keep a loose float. The radii run from 0.1 to 55, and the
+files that use them agree —
+`ht432act_2_freezing_trap_bullet_active` is a centre, an axis pointing up and
+a radius of 4.5 m, `mg433act_1_quag_mire_bullet` is the same with 3.0. A trap
+and a mire are a disc on the ground.
+
+**The second bone appears only where the second vector is a point.** Flags 1,
+2 and 4 name one on 2,253 records; flags 0, 3 and 5 name one on **none of
+their 3,390**. A sphere needs one anchor and a disc needs one anchor; a
+capsule needs two.
+
+Flags 2, 4 and 5 are also **monsters only** — one player record in 538 — so
+the complicated shapes belong to the bosses. A player gets a sphere or a
+capsule.
+
+### Each end of a capsule hangs off its own bone
+
+`+0x04` was down as "a second bone, or zero" and nothing more. It is the
+anchor of the *second* vector, and the skeleton says so twice.
+
+**It is a bone of the same limb.** Over the 2,253 records that name one,
+**2,194 sit on one chain with the first**: the same node 1,467 times, its
+parent 256, its child 201, further up the same chain 270, and something
+unrelated only 59. Resolved to names they read as limb segments and nothing
+else would:
+
+```
+node_r_weapon  -> node_r_weapon   187      node_head      -> node_neck    81
+node_head      -> node_head       110      node_neck      -> node_neck2   60
+node_r_hand    -> node_r_hand     100      node_r_forearm -> node_r_hand  41
+node_l_hand    -> node_l_hand      99      node_l_forearm -> node_l_hand  37
+b19_00_shield  -> b19_00_shield    72      node_hara      -> node_spine1  40
+```
+
+**And the vectors are far too short to be spanning it themselves.** If both
+offsets were in the first bone's space, `|v1 - v0|` would have to be the
+capsule's whole length. Over the 786 records that name two *different* nodes
+the joint separation is **6.41 m at the median** while `|v1 - v0|` is
+**1.00 m** — 16 % of it — under half of it on **614 of 786 (78 %)** and within
+30 % of it on 35 (4 %). The limb supplies the length; the vectors are small
+local offsets from the two ends of it. Read that way the capsule comes out
+7.79 m long at the median against a 6.41 m limb, which is a hitbox a little
+longer than the arm it wraps.
+
+So **`v0` is an offset from the bone at `+0x02` and `v1` an offset from the
+bone at `+0x04`**, and where `+0x04` is zero both hang off the first — or,
+when there is no bone at all, off the actor's own origin, which is what the
+sword's charged shockwave does.
+
+### They are lengths in the actor's own units
+
+Group every record by its actor, take the median magnitude, and set it beside
+the actor's standing height off the rest pose. **`|v0|` rises with the actor
+over 80 actors (r = 0.61)**, and so does the size at `+0x2C` (r = 0.75 over
+88). A 1.9 m `z05` puts its hits 0.5 m from the bone; a 35 m `b11` puts them
+3.7 m away.
+
+**The size at `+0x30` does not** — r = −0.04, a median of 1.00 on nearly every
+actor from the smallest to the largest, and 5,160 of 6,193 values inside
+[0.5, 2.0]. Whatever it is, it is a **ratio and not a length**, and calling
+both fields "a size" was hiding that.
+
+### A worked pair
+
+`b11_00_506` — a 35 m monster's head attack — declares two shapes at frame 63
+and repeats them at frame 107 with **every `x` negated and nothing else
+changed**:
+
+```
+f63   three points  node_head  node_neck   v0 ( 1.00  0.80  0.50)  v1 ( 1.50  2.40  2.30)  v2 ( 2.50 -3.50  2.00)
+f107  three points  node_head  node_neck   v0 (-1.00  0.80  0.50)  v1 (-1.50  2.40  2.30)  v2 (-2.50 -3.50  2.00)
+```
+
+That is the same sweep to the other side, and it is worth reading twice: all
+three vectors mirror together, by the same rule, in the same lane. Whatever
+the third one bounds on flag 4, it is the same kind of quantity as the first
+two — and a rotation is not.
+
+### What is still open about them
+
+**Whether an offset is turned by the bone or only carried with it.** The
+weapon case argues for the bone's own frame — `sw311at_s` puts its hit at
+`(0, 1, 0)` on `node_r_weapon`, which is a metre up the blade only if the
+frame is the blade's — and so does a weak measurement: over the 1,893 records
+whose bone has a child, **29.3 % of offsets point within 26° of the direction
+to that child in the bone's own frame against 15.2 % in the actor's**, medians
+0.211 against 0.031. But the rest pose cannot settle it, and the two attempts
+that failed are written down here so the next reader does not repeat them:
+
+- **the mirror test does not separate them.** Over 266 mirrored bone pairs the
+  twin's offset is `x`-negated 141 times and *identical* 102 times, with 9
+  `y`-negated and 4 `z`-negated — and the same bone gives both answers in
+  different files, so what differs is the animator, not the convention;
+- **the capsule-length test does not either.** Over 249 parent/child capsules
+  the capsule comes out 1.25 limb-lengths long turned by the bones and 1.10
+  not turned, within a factor of two on 79 % either way. These rigs' bind
+  rotations sit too close to identity for a rest pose to tell the readings
+  apart. An animated frame with a bent elbow would.
+
+**What flag 4's three points bound** — a wedge, a triangle, a box — and what
+separates flag 2 from flag 1 beyond `|v1|` running to 18.9 m at the median
+against 4.0.
 
 ### The byte at `+0x35` scales with the strength of the hit
 
@@ -287,10 +423,9 @@ The families also fall where the monster does. `b02_00` and `b07_00` reach for
 
 ## Still open
 
-- **Which vector is which** in the hit record. Three vec3s, all signed; the
-  natural readings are an offset, a second end point and a direction, and
-  nothing here distinguishes them. Posing the skeleton and drawing the capsule
-  would settle it in an afternoon.
+- **Whether a hit offset is turned by its bone or only carried with it**, and
+  what flag 4's three points bound. Both are under *The three vectors* above,
+  with the two measurements that failed to separate the readings.
 - **Opcode 10's effect id is a catalogue number and it does not resolve on the
   disc.** The payload is twelve bytes and reads
 

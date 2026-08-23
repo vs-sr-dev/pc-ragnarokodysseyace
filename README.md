@@ -79,6 +79,7 @@ CCLS collision   ->      155 files, 107k tris   tools/ccls.py   0 errors
 CMTM material    ->       91 files, 1,388 keys  tools/cmtm.py   0 errors
 .anmcmd events   ->    2,053 files, 10,175 cmds tools/anmcmd.py 0 errors
   hit records    ->    6,193 hits, 4,768 bones  all resolving
+  hit geometry   ->        6 shapes; 2,194 of 2,253 second bones on one chain
   impact sounds  ->       25 of 26 cue ids       named in common.acb
 ATIH + fences    ->      163 stages, 5,934 marks tools/stage.py 0 errors
 ELBN parameters  ->      707 files, 318 names   tools/elbn.py   0 errors
@@ -251,6 +252,7 @@ python tools/anmcmd.py census <dir>          every opcode, with its size
 python tools/anmcmd.py list|dump <dir> <name>  one list, frame by frame
 python tools/anmcmd.py hits <dir> <name>     the hit records, with bone names
 python tools/anmcmd.py bones <dir>           how many hits name a real bone
+python tools/anmcmd.py shapes <dir>          what `flag` says the three vectors are
 
 python tools/psq.py check|list <dir>          the Squirrel bytecode
 python tools/psq.py dump|src <dir> <name>    one file, disassembled or as
