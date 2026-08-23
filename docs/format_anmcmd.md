@@ -291,15 +291,35 @@ The families also fall where the monster does. `b02_00` and `b07_00` reach for
   natural readings are an offset, a second end point and a direction, and
   nothing here distinguishes them. Posing the skeleton and drawing the capsule
   would settle it in an afternoon.
-- **One id space left of the two.** The hit record's is solved - see below.
-  The other, 10001 to 39547 in opcode 10's `+0x02`, is a global effect id:
-  10502, 10505 and 10510 are each used by half a dozen unrelated monsters, so
-  it is not an index into the per-class `.PTP`. `.PTP` is `PTCP`, a container
-  of `PTB` blocks with an 84-entry sparse index and its assets named in the
-  clear - `ef_I_as_hit_zan001.ctex`, `anm_ef_I_fire_tubu001.txx` - but nothing
-  in the first 64 bytes of a block looks like that id, so the table that maps
-  one to the other is still to find. The `eff_hitlevel_tbl` in
-  [`ELBN`](format_elbn.md) is the obvious bridge and holds smaller numbers.
+- **Opcode 10's effect id is a catalogue number and it does not resolve on the
+  disc.** The payload is twelve bytes and reads
+
+        +0x00  u8    an effect slot on the actor, 0 to 12
+        +0x01  u8    zero              on all 915
+        +0x02  u16   the effect id, 10001 to 39547
+        +0x04  u32   zero              on 909 of 915
+        +0x08  u32   a parameter - an angle in degrees, an index, or -1
+
+  Session 9 called the id *global* because 10502, 10505 and 10510 are each used
+  by half a dozen unrelated monsters. **That inference was wrong, and the
+  reason is that the number is derived from the animation.** Of the 385 distinct
+  (animation, effect id) pairs on the disc, 66 are exactly `10000 + the motion
+  id` — `z03_00_502`, `z11_00_502`, `b02_00_502` and `z21_02_502` all fire
+  10502 — and 67 more are `(1000 + the motion id) * 10 + a one-digit variant`,
+  which is what `ht311at_s` → 13110 and `b14_00_502` → 15020 are. Monsters
+  share motion numbering, so they collide on effect ids without sharing an
+  effect. The rest are fixed per-actor effects reused across every animation:
+  the Lord of Death's 10901 on all 24 of its lists, the sword's 10001..10006 on
+  every combo.
+
+  **No table on the disc maps that number to anything.** All 32,600 leaves were
+  scanned for the 187 ids used, as aligned big-endian `u32` and `u16`, and
+  nothing but float noise came back; the ids do not appear inside the `.PTP`
+  either, in any width or byte order. What the disc *does* declare is a
+  different addressing — a `(category, slot)` pair — and it declares it three
+  times over; see [`format_ptp.md`](format_ptp.md). So the bridge from the
+  catalogue number to a `PTB` slot is a static table inside the SELF, and this
+  is the first item on the list that actually needs the EBOOT.
 - **Thirty-odd opcodes with no correlation yet**, most of them rare: 7, 15, 16,
   18, 20, 23, 25, 26, 28, 31, 32, 34, 36, 37, 42 to 49, 51, 54, 55, 57, 60, 62.
 - Why 554 files name no motion. Some are plainly not animations at all
