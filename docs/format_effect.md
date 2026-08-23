@@ -232,6 +232,31 @@ and slots 8 and 9 are the only two blocks in that file that name
 `anm_ef_M_vlcn001.txx`, a volcano. `_rnd_radius` has no lane in the binary —
 the script's version of the record carries one field the table does not.
 
+**`_work` is not a field of the record at all: it is a slot number.** The same
+script's `effect_update` reads `getInt(0, val._work)`, decrements it, and puts
+it back with `setInt` — `setInt`/`getInt` are the host's integer store, banked
+and slotted, and `_work` names the slot where that effect's countdown lives.
+The six fires are given `190 - 0` … `190 - 5`, with the phase at 191. That is
+why the binary has no lane for it: the table is placement, and the countdown is
+runtime state.
+
+The rest of that function is the whole effect API in fourteen lines, and it is
+worth reading beside this table:
+
+```
+function setExplosion(data)
+    array   = getHTAPos(data._hta_name)      // the marker, as [x, y, z]
+    offsetV = genXZPoint(data._rnd_radius)   // a point in a disc of that radius
+    handle  = effStart(data._eff_cate, data._eff_id)
+    effSetPos(handle, x, y + data._y_offset, z)
+    effSetRot(handle, 0, cfGetRandI(65536), 0)   // a random yaw, one full turn
+    cfSndPlayStgSE3D(-1, data._cue_id, 0, x, y, z)
+```
+
+and `genCycle(fix, random)` — the period — is `fix * 30 + random * 30 * rand()`,
+which converts `_sec_fix` and `_sec_rnd` from seconds to a frame countdown.
+See [`format_api.md`](format_api.md).
+
 ### Two identities that close
 
 **A row names a cue exactly when it carries a period.** 44 rows do both, 1,440

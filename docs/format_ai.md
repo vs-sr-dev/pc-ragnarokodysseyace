@@ -167,6 +167,13 @@ op     id   term            reads                     host call
 0x42a  1066  b19_head                                 checkB19Term
 ```
 
+Every name in the right-hand column is a host function the engine has to
+provide, and [`format_api.md`](format_api.md) lists them beside the rest of the
+interface. One of them is worth noting here: the dispatch's fall-through prints
+`I don't know the word is ` and then calls `printAitIdName(term)`, so **the
+engine holds a name for every term id** — a string table to look for when the
+EBOOT opens.
+
 **Every distance is in hundredths of a unit**, the same convention the stage
 `borderline` uses — see [`format_stage.md`](format_stage.md).
 

@@ -175,6 +175,18 @@ threshold**; across the disc it ranges 1–10 while the other four range
 `frz`, `brn`, `nrv`, `ten`, `tir`, `atd`, `dfd` — paralysis, freeze and burn
 are unambiguous, and `atd`/`dfd` read as attack-down and defence-down.
 
+**And the order they are declared in is the status id the engine uses.**
+Dropping the scalar `ab_ef_s` that heads the block leaves those ten vectors in
+file order, and the script layer indexes them from zero: the mercenary AI asks
+`isAbnormal(1, 3)` — is the player suffering status 3 — and ten of the twelve
+scripts print `freeze` on the next line. Index 3 is `ab_frz`. See
+[`format_api.md`](format_api.md).
+
+```
+0 ab_pss   1 ab_psl   2 ab_prl   3 ab_frz   4 ab_brn
+5 ab_nrv   6 ab_ten   7 ab_tir   8 ab_atd   9 ab_dfd
+```
+
 ## One disc oddity
 
 `z12_00`, `z12_01` and `z12_02` each contain a file named **`z10_00.json`**,

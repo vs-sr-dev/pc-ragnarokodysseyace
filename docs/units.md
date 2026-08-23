@@ -2,8 +2,9 @@
 
 **Status: the length unit is settled; the time unit is settled to the degree
 the disc allows.** One world unit is **one metre**, and one animation frame is
-**1/30 of a second**. Neither is declared anywhere on the disc. Both follow
-from measurements a reader can repeat:
+**1/30 of a second**. Neither is declared anywhere on the disc, though session
+18 found a stage script that **writes 30 as the number of ticks in a second**
+(below). Both follow from measurements a reader can repeat:
 
 ```
 python tools/cmdl.py gait extract/tree fas2.CMDL fas213run.CNOM
@@ -138,8 +139,15 @@ tunes to.
 all: 2.5 m against `fall_gravity_y`, 4.4 m against `aerial_gravity_y`. That is
 a game jump either way and settles nothing, which is why it is a parenthesis.)
 
-Two smaller pointers, worth no more than a mention: `rot_y_spd = 32` degrees
-per frame turns a character 180 degrees in 0.19 s at 30 fps and 0.09 s at 60,
+Two smaller pointers, worth no more than a mention. (The first has a
+complication since session 18: the script layer's turn speeds are **binary
+angles**, 65536 to the turn, and the NPC values `chrSetDir` is given — 2048,
+4096, 8192 — are 8, 16 and 32 in units of 1/256 of a turn. `rot_y_spd = 32` is
+in that set, and read that way it would be 45° a frame rather than 32°. The two
+subsystems are separate and nothing on the disc joins them; the reading below
+is the one this document has, and the coincidence is written down in
+[`format_api.md`](format_api.md) rather than resolved.) `rot_y_spd = 32`
+degrees per frame turns a character 180 degrees in 0.19 s at 30 fps and 0.09 s at 60,
 and 0.09 s is below the threshold at which a turn reads as a turn. (That 0.19
 is a lower bound and session 14 improved on it: `rot_y_acc = 8` has to spin the
 turn up and brake it down, which makes the real figure **0.32 s at 30 fps** and
@@ -168,8 +176,21 @@ substantially different to make it 1/60.
 
 ## Still open
 
-- A *declared* frame rate or delta time, if one exists. The EBOOT is where it
-  would be, and it is the only remaining place worth looking.
+- A *declared* frame rate or delta time, if one exists. The EBOOT is where a
+  declaration would be — but session 18 found the **conversion constant** on
+  the disc, in the clear, in a stage script:
+
+      function genCycle(fix, random)
+          local cycle = ((fix * 30) + ((random * 30) * cfGetRandF(1)).tointeger())
+
+  `fix` and `random` are the `_sec_fix` and `_sec_rnd` of an effect record —
+  fields whose names say seconds, and which
+  [`format_effect.md`](format_effect.md) matched field for field against
+  `effect.bin` — and the result is a countdown decremented once per update. So
+  the game's own authors wrote **30 ticks to the second**. It is not a
+  declaration, and it assumes the update runs once a frame, but it is the first
+  seconds-to-frames constant found outside the executable and it agrees with
+  the gait. See [`format_api.md`](format_api.md).
 - Whether the render rate is 30 or 60. Nothing on the disc bears on this.
 - ~~`fall_spd_max = 8` units per frame is 240 m/s at 30 fps, so it is a clamp
   that never fires or it is not a speed.~~ **Settled in session 14**, by

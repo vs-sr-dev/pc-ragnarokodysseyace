@@ -167,8 +167,9 @@ to the same combo tree the player drives.
 ## What the host has to provide
 
 `psq.py api` over `mercenary.cpk` gives the whole interface: **19 predicates
-and `print`**, and every one of the 19 is already inside the disc-wide 289
-[`format_psq.md`](format_psq.md) enumerated.
+and `print`**, and every one of the 19 is inside the disc-wide list
+[`format_psq.md`](format_psq.md) enumerated and
+[`format_api.md`](format_api.md) reads.
 
 ```
 getPlaneRange(n)        getNearestBossKind()     getRange(n)
@@ -183,6 +184,18 @@ getPartyMemberHpRate(n) getNumOfUnderHpRate(a, b)
 `getHpRate` is the one name the two AI systems share, and the arity differs:
 the monsters call it with no argument and the mercenaries with one — twelve
 calls against a hundred and ten.
+
+**The `n` is an actor slot: 0 is the mercenary, 1 the player it follows, 2 its
+current target.** `check_active_*` reads `getRange(1) < 35 && isAbnormal(1, 3)`
+and prints `plyer freeze` on the next line, which names the slot and the status
+at once; `getHpRate(0) < 85` guards the mercenary's own ace skills; and the
+phases split, with `check_active` and `select_target` asking about slot 1 and
+`select_action` — which runs after a target exists — asking about slot 2. In
+`getNumOfEnemy(centre, radius)` and `getNumOfBoss` the same 0/1 is the centre
+of the count and a radius of 0 means no limit: the scripts write
+`getNumOfEnemy(0, 5) - getNumOfBoss(0, 0)` and the same pair with `1` on
+consecutive lines, which is *non-boss enemies near me*, then *near my master*.
+See [`format_api.md`](format_api.md).
 
 **`getNearestBossAction()` and `getTargetActId()` return the monster's own
 action id**, and the disc says so: across all twelve scripts those two are

@@ -165,20 +165,36 @@ function sfQuestInit()
 
 — "set the flag for the encyclopedia", with the global flag number beside it.
 
-## Two vocabularies: 164 script names and 289 engine names
+## Two vocabularies: 296 script names and 291 engine names
 
 `psq.py api` lists every name fetched off the root table and called, with the
-arity of each call. **453 names are called; 164 of them are defined by some
-`.psq` and 289 are not.** Those 289 are the engine's script interface — the
+arity of each call. **587 names are called; 296 of them are defined by some
+`.psq` and 291 are not.** Those 291 are the engine's script interface — the
 host functions a reimplementation has to provide — and they are now a closed
-list rather than an open question. 119 begin `cf`, 58 `get`, 29 `is`.
+list rather than an open question. 120 begin `cf`, 58 `get`, 29 `is`.
+
+**What each of them does is [`format_api.md`](format_api.md)**, which was
+written by reading the call sites rather than the executable.
 
 The busiest of them, with call counts:
 
     6558  print              1730  cfSetQuestFlag     1609  getCharacter
     1476  cfSetGlobalFlag    1460  cfSetEnableHitArea 1227  cfGetGlobalFlag
-    1193  chrPlayVoice        907  cfGetQuestFlag      901  chrSetMotion
-     889  cfStartPieceLock    732  cfEndPieceLock      687  cfSetEnableBorderline
+    1193  chrPlayVoice        908  cfGetQuestFlag      901  chrSetMotion
+     892  cfGetCntKillGenPieceLockOnly            889  cfStartPieceLock
+     732  cfEndPieceLock      687  cfSetEnableBorderline
+
+### The count was 453 and 289 for six sessions, and it was low twice
+
+Both errors are the same one: `api` looked only for `_OP_PREPCALLK` followed by
+`_OP_CALL`.
+
+- **`_OP_TAILCALL` is a call.** `return active_script()` compiles to `0x05`,
+  and 132 script names and one native hid behind it;
+- **a root call can go through a computed key.** Nearly every quest script
+  opens `cntGenKill <- this['cfGetCntKillGenPieceLockOnly']()`, which is
+  `_OP_PREPCALL` on a string literal. That name is called **892 times** and was
+  on no list.
 
 ## The names name things — `psq.py xref`
 
@@ -190,7 +206,12 @@ that session read:
     cfSetEnableBorderline    679 resolve,    7 do not     borderline polyline
     cfMapJump                147 resolve,    0 do not     stage + arrival marker
     cfSetEnableEmGen         203 resolve,   37 do not     emgen_pos marker
+    getCharacter            1362 resolve,   45 do not     ATIH marker pos_<name>
+    cfGetPosInHta             25 resolve,    1 do not     ATIH marker
     trg callQuestScript      144 resolve,    3 do not     function in that stage
+
+`xref` now also joins the sound, text and motion arguments to their tables;
+those lines and what they settle are in [`format_api.md`](format_api.md).
 
 The last line is the one the previous session's `TODO` asked for. `trigger.trg`
 runs `callQuestScript("sfEnmGenStart()")` and names a script by string; **144
@@ -284,6 +305,6 @@ on one side of that border and unread on the other.
 - **`_OP_COMPARITH`'s packed `_arg1`** — `(self << 16) | value` — is exercised
   three times on the whole disc and the reading is taken from the interpreter
   rather than confirmed against anything;
-- **the 289 native names have arities and nothing else.** What
-  `cfSetCameraType(4, 0, 0)` means is a question for the EBOOT or for
-  observation, not for this format.
+- ~~**the 289 native names have arities and nothing else.**~~ **Read in
+  session 18** — see [`format_api.md`](format_api.md). `cfSetCameraType`'s five
+  camera types are still among the handful that are not.

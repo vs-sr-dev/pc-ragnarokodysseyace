@@ -128,6 +128,13 @@ not a sidecar index, it is **the model's public numbering of places on
 itself**, and `.CTXT` and `.mkc` are two different things looking it up. See
 [`format_mkc.md`](format_mkc.md#it-is-a-cmdl-locator-id).
 
+**Sessions 17 and 18 found the third and fourth.** `effect.bin`'s `+0x04` is a
+locator id — see [`format_effect.md`](format_effect.md) — so an effect hangs
+off the same socket a sound comes out of; and the script layer's
+`chrSetAttachArticle(chr, 4000, 'beer01')` puts a prop on one, 4000 and 4100
+being `node_r_weapon` and `node_l_weapon`. Four consumers, one numbering:
+[`format_api.md`](format_api.md).
+
 Two details of the table that only that use made visible: **an id may bind to
 more than one node** — `b09_00` declares `6100` twice, once for its head mesh
 and once for the damaged one — and the ids are **per actor, not per model
