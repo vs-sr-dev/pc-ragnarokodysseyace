@@ -5,97 +5,92 @@
 
 ---
 
-# Next session — the player's half of the fight
+# Next session — a quest that can be finished
 
-Session 22 reached **milestone 2** and **milestone 3**. The game's own
-compiled Squirrel executes, a stage runs itself, and a monster decides out of
-its own tables and lands a blow. The reports are
+Session 23 reached **milestone 4**: the player fights back. The report is
+[`milestone_player.md`](milestone_player.md), beside
 [`milestone_stage.md`](milestone_stage.md) and
 [`milestone_fight.md`](milestone_fight.md). What to carry:
 
-- **the scripts execute.** [`engine/squirrel.py`](../engine/squirrel.py) is a
-  Squirrel 2.2 VM, 48 opcodes, and every `.psq` on the disc runs through it:
-  **3,011 files, 8,085 of 8,167 functions run to a stop, 0 VM faults**;
-- **the interface has an implementation.** All 285 are bound and **115 of them
-  do the work** - 66 in [`host.py`](../engine/host.py), 50 in
-  [`brain.py`](../engine/brain.py) - which is 18,435 of the 25,699 calls the
-  disc makes;
-- **a monster decides and swings.** 83 of 83 decide on every one of 40 random
-  states; the chain action -> motion -> event list -> hit volume is
-  1,419 -> 1,109 -> 683 -> 545; and **`_act.par`'s range is a distance to the
-  target**, at correlation 0.590 with the reach of the same action's hit
-  volumes against a shuffled control of 0.051;
-- **running two implementations against each other is now a method here.**
-  The disc's own term dispatch checked this project's evaluator on 15,040
-  comparisons with 0 disagreements; it also showed two terms that are dead as
-  the shared include writes them, and settled the chance term's units by
-  making the OrcKing's table and its script agree 293 times in 300 instead of
-  217.
+- **both halves of a fight run.** The monster decides out of `ProbList` and
+  the player out of **`s_combo_graph`**, which nobody had opened: 189 nodes
+  and 266 edges over the six classes, checked against the `3AB` arithmetic in
+  the animation names (112 of 116 edges) and against the `_just` lists (14 of
+  14, both directions). See [`format_elbn.md`](format_elbn.md);
+- **a blow lands on a named part.** Six classes against every monster on the
+  disc, standing at `col_r + col_r`: **457 of the 492 pairs** land, 486 at
+  half that distance, and 1,002 of the 21,041 landings are on a part that
+  breaks off. The warrior duels all 83 monsters and **38 have a hit landing
+  both ways**;
+- **`region_data`'s names are where the words say.** Head above leg on 22 of
+  the 22 monsters with both, body above leg on 32 of 32, measured inside one
+  monster at a time;
+- **the reach is the weapon's** - 0.772 against the models on the same bone,
+  5 of 120 pairings as good - and **`ht_arrow_tbl` is the arrow's flight**,
+  21.3 m against a `cmb_hmg_search_radius` of 20;
+- what is left of the combat loop is the **damage expression**, and that is
+  [`combat_loop.md`](combat_loop.md) ledger item 1, one of the five that needs
+  the EBOOT.
 
-### 1. The player's half of the fight.
+### 1. A quest, end to end.
 
-The monster's side is done and the player's side is the same machinery
-pointed the other way: a player class's `.anmcmd` carries the same hit
-records, [`hitbox.py`](../engine/hitbox.py) already places them on the class
-skeleton, and a monster's body capsules are in its `objbin.bin`, read since
-session 15. What that produces is **a hit landing both ways**, which is the
-last thing before the damage expression - and the damage expression is
-[`combat_loop.md`](combat_loop.md) ledger item 1, one of the five that needs
-the EBOOT.
+The old item 6, and it is now the top one because everything under it works. A
+stage runs itself, a monster comes out of the spawner `enemy_gen.bin` names,
+and a fight happens in both directions. What is missing is the **state that
+changes**: the host binds `cfSetEnableEmGen`, `cfStartPieceLock` and
+`cfGetCntKillGenPieceLockOnly` to nothing that moves. A monster that can be
+killed needs no damage formula to be *counted* - the quest scripts ask how
+many are dead, not how much health they had - so a quest that reaches its own
+completion is a short step from here and it exercises the quest scripts the way
+the cutscenes were exercised. See [`format_quest.md`](format_quest.md).
 
-Two things fall out of it cheaply and neither needs the binary: **which body
-capsule a blow lands on**, which is what `region_data` indexes and therefore
-what a breakable part is; and **whether the player's reach matches its
-weapon**, the same join `fight.py reach` just made on the monster side.
+### 2. The three entries beside `s_combo_graph`.
 
-### 2. What turns a trail on.
+`s_combo_finish_inf` (132 bytes on the warrior), `s_just_combo_inf` (8) and
+`s_combo_motA` (64) sit in the same `objbin.bin` and none of them is read.
+They are the rest of the combo machinery, they are small, and the graph now
+gives them a frame to be read against: a finisher is a node with no outgoing
+edge, and a just window is a byte pair on an edge. Cheapest well-posed item on
+the list.
 
-A weapon carries three `par_tbl` records and one `ref_tbl` entry to hang them
-on, so something outside the file picks between them - an `.anmcmd` or `.mkc`
-opcode, most likely, and thirty of `.anmcmd`'s fifty-two are still unread.
-That is a well-posed question aimed at the same unread opcodes item 3 asks
-about in general, which makes it the cheapest way in.
+### 3. The `.anmcmd` opcodes, with two questions that name their own answer.
 
-### 3. The `.anmcmd` opcodes.
+Thirty of fifty-two are unread, and two consumers now want particular ones:
 
-Thirty of fifty-two. Session 17's lesson still applies - a selector byte
-inside a payload changes what the rest of it means, and counting occurrences
-never sees that. `.mkc` is down to six (`0805`, `0806`, `080c`, `080d`,
-`080f`, `0406`) and each has a file set that says something: `080f`'s 32 files
-are all `appear` or `die`, `0406`'s fifteen are all loops, `080c`'s 35 are all
-emotes. See [`format_mkc.md`](format_mkc.md).
+- **which opcode spawns a projectile and which `ht_arrow_tbl` row it names.**
+  42 rows, 15 distinct flights, and no join from a list to a row;
+- **what turns a weapon trail on.** A weapon carries three `par_tbl` records
+  and one `ref_tbl` entry to hang them on, so something outside the file picks
+  between them. See [`format_mkc.md`](format_mkc.md) for the six `.mkc`
+  opcodes still open, each with a file set that says something.
 
-### 4. The player's *base* defence and hit points, and the rest of the columns.
+Session 17's lesson still applies: a selector byte inside a payload changes
+what the rest of it means, and counting occurrences never sees that.
 
-[`combat_loop.md`](combat_loop.md) ledger item 2. The modifier side is read
-and named - `DEF` is ability 1 of `it_db_ability.bin` and `MAX HP` is ability
-3, each with the range it may move in, and `it_db_equip.bin` turns out to be
-**costumes and not armour**. What is missing is the starting value the
-modifiers apply to, and the level-up tables (`it_db_myorder*.bin`) are the
-next place to look. Beside it, the reward side of a quest pac is
-`item_reward{,_multi,_region}.bin`, `weapon_decost.bin`, `destructible.bin`,
-`mapexception.bin` and the `q<NNNNN>.bin` header. The `CCLS` surface codes 1
-to 13 are the other well-posed one, and the pose layer says where a foot is,
-so the triangle under it is a lookup away.
+### 4. The player's *base* defence and hit points.
 
-### 5. Two joins the combat ledger names and the disc can answer.
+[`combat_loop.md`](combat_loop.md) ledger item 2, unchanged and still the one
+gap in the loop that may not need the binary. The modifier side is read and
+named - `DEF` is ability 1 of `it_db_ability.bin` and `MAX HP` is ability 3 -
+and `it_db_equip.bin` is costumes, not armour. The level-up tables
+(`it_db_myorder*.bin`) are the next place to look. Beside it, the reward side
+of a quest pac: `item_reward{,_multi,_region}.bin`, `weapon_decost.bin`,
+`destructible.bin`, `mapexception.bin` and the `q<NNNNN>.bin` header.
 
-`se_hitlevel_tbl`'s **third word**, 0 to 8 across the fifteen player entries
-and per class rather than global - it is what a weapon or a skill declares to
-pick its cue block, and it is *not* `it_db_weapon.bin` column 5, whose six
-values are a different space. `it_db_skill.bin` is the obvious other side.
-And **`ht_arrow_tbl`**, 42 records at a stride of 80 that the repeat period
-closes, whose eleven interesting kinds `eff_hitlevel_tbl` already names.
+### 5. Draw it.
+
+`hitbox.py obj` writes a frame as Wavefront OBJ - bones, body capsules and hit
+volumes together. Nobody has looked at one yet, and there is now a *duel* to
+take the picture of: two skeletons, two sets of `col_hit`, and the volume that
+reaches from one to the other.
 
 ### Then
 
-6. **The quest state machine, end to end.** The host binds
-   `cfSetEnableEmGen`, `cfStartPieceLock` and `cfGetCntKillGenPieceLockOnly`
-   to state that nothing yet changes, and `enemy_gen.bin` says which monster
-   comes out of which spawner ([`format_quest.md`](format_quest.md)). With a
-   monster that can fight and a stage that can run, a quest that can be
-   *completed* is a short step and it exercises the quest scripts the way the
-   cutscenes were exercised.
+6. **`se_hitlevel_tbl`'s third word**, 0 to 8 across the fifteen player
+   entries and per class rather than global - what a weapon or a skill
+   declares to pick its cue block, and *not* `it_db_weapon.bin` column 5.
+   `it_db_skill.bin` is the obvious other side. (`ht_arrow_tbl`, the other
+   half of the old item 5, is read: [`format_elbn.md`](format_elbn.md).)
 7. **The last two `ELBN` populations.** `stageparam.bin` is 154 files and only
    its lights are read; `mot_param.bin` is 60 and only its motion id is.
 8. **Where the minimap's scale is declared.** Session 19 measured the
@@ -103,9 +98,8 @@ closes, whose eleven interesting kinds `eff_hitlevel_tbl` already names.
    `stageparam.bin`. The scale is a band, 1.31 to 1.33 px/m.
 9. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
    `+0x0a`. Bit fields; the obvious reading is a space or follow mode.
-10. **Draw it.** `hitbox.py obj` writes a frame as Wavefront OBJ - bones, body
-    capsules and hit volumes together. Nobody has looked at one yet, and a
-    fight is now something there would be a picture *of*.
+10. **The `CCLS` surface codes 1 to 13**, and the pose layer says where a foot
+    is, so the triangle under it is a lookup away.
 
 ---
 ## Deferred, with reasons
@@ -180,8 +174,11 @@ closes, whose eleven interesting kinds `eff_hitlevel_tbl` already names.
   arrays in `region_data`. Both in [`format_elbn.md`](format_elbn.md).
 - `.anmcmd`: thirty of the fifty-two opcodes; the unit of `+0x35`, which
   [`combat_loop.md`](combat_loop.md) §5 narrows to two readings and gives the
-  measurement that separates them; why 554 of the 2,053 name no motion; and
-  opcode 10's effect id, which session 14 showed resolves nowhere on the disc.
+  measurement that separates them; and opcode 10's effect id, which session 14
+  showed resolves nowhere on the disc. **Part of "why 554 of the 2,053 name no
+  motion" is answered**: 115 of them are the hunter's projectiles, which have
+  no motion because they are not on a body - see the naming rules in
+  [`format_anmcmd.md`](format_anmcmd.md).
   **`+0x48` is settled and it is a monster's field** — 747 of the player's 754
   records carry the sentinel and the player's impact sound is computed from
   `se_hitlevel_tbl` instead. **The hit record's geometry is settled** —
@@ -272,8 +269,9 @@ closes, whose eleven interesting kinds `eff_hitlevel_tbl` already names.
   is `se_hitlevel_tbl`'s **third word**, 0 to 8 across the fifteen player
   entries, per class rather than global, and not `it_db_weapon.bin`'s weapon
   kind; plus `eff_hitlevel_tbl`'s four identical `(2, id)` pairs, an axis this
-  build does not use. `ht_arrow_tbl` is 42 records at a stride of 80 that the
-  repeat period closes, columns unnamed. See
+  build does not use. **`ht_arrow_tbl` is read** — a lifetime, a speed and a
+  gravity, 21.3 m against a search radius of 20 — and what is left of it is
+  which of its 42 rows a given arrow list uses. See
   [`format_elbn.md`](format_elbn.md) and
   [`combat_loop.md`](combat_loop.md) §6.
 - What the 14 empty `.cpk.patch` stubs would have overlaid, and whether a

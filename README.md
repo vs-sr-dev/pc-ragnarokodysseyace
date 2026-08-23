@@ -10,13 +10,25 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-22 (2026-08-23). **The game's own scripts run, and its monsters
-fight.** An Orc stands on the spawner its stage declares for it, a body with
-the player class's own parameters runs at it, and the Orc reads its own
-decision tables, rolls an action, closes when that action's gate says the
-target is too far, plays the animation the action names and lands a blow whose
-volume reaches the player. 83 of 83 monsters decide on every one of 40 random
-states. That is [milestone 3](docs/milestone_fight.md), *"a monster fights"* -
+Sessions 1-23 (2026-08-23). **A fight runs in both directions.** A class
+presses a button its own combo graph accepts, plays the animation that graph
+names, and the hit records on it land on a *named part* of a monster's body -
+`Leg_R`, `HEAD`, or one of the parts that break off - while the monster, in
+the same loop on the same stage, lands its own records on the player. Six
+classes reach 457 of the 492 class-monster pairs, and the warrior duels all 83
+monsters with a hit landing both ways in 38 of them. That is [milestone
+4](docs/milestone_player.md), *"the player fights back"* -
+[`engine/player.py`](engine/player.py). The table behind it,
+`s_combo_graph`, had never been opened: 189 nodes and 266 edges over the six
+classes, and it agrees with two things written elsewhere on the disc.
+
+**Before that, the monster's half.** An Orc stands on the spawner its stage
+declares for it, a body with the player class's own parameters runs at it, and
+the Orc reads its own decision tables, rolls an action, closes when that
+action's gate says the target is too far, plays the animation the action names
+and lands a blow whose volume reaches the player. 83 of 83 monsters decide on
+every one of 40 random states. That is [milestone
+3](docs/milestone_fight.md), *"a monster fights"* -
 [`engine/brain.py`](engine/brain.py) and [`engine/fight.py`](engine/fight.py).
 
 **And the scripts run.** `010_01_01`
@@ -261,7 +273,8 @@ tables](docs/format_quest.md),
 [the combat loop](docs/combat_loop.md), which traces one hit end to end and
 ends in a ledger of what is still missing. What running it produced is in
 [milestone 1](docs/milestone_numbers.md), [milestone
-2](docs/milestone_stage.md), [milestone 3](docs/milestone_fight.md) and [the
+2](docs/milestone_stage.md), [milestone 3](docs/milestone_fight.md),
+[milestone 4](docs/milestone_player.md) and [the
 pose](docs/pose.md), which
 now covers the hit volume as well as the foot. The
 plan is in
@@ -377,6 +390,7 @@ python tools/elbn.py field <dir> <name>      where a parameter occurs
 python tools/elbn.py records <dir> <name>    one name, profiled over the disc
 python tools/elbn.py capsules|regions <dir> <actor>  the body and its parts
 python tools/elbn.py trace <dir> [actor]     the weapon trail
+python tools/elbn.py combo <dir> [class]     the player's combo graph
 
 python tools/anmcmd.py check|survey <dir>    the animation commands
 python tools/anmcmd.py census <dir>          every opcode, with its size
@@ -450,16 +464,27 @@ read.
 
 ## Engine
 
-`engine/` is where the reading stops and the reimplementation starts. Nine
+`engine/` is where the reading stops and the reimplementation starts. Ten
 files and no renderer: a world that answers where the floor is and
 where the fence is, an actor that moves under the game's parameter table, a
 pose layer that puts a skeleton on the ground, a hitbox layer that puts a
 volume on the skeleton, a driver that reports what comes out - and, since
 session 22, a Squirrel 2.2 virtual machine, the 285 host functions the
 game's own scripts call into, a monster's decision tables and the fight they
-turn into.
+turn into, and since session 23 the player's own half of that fight.
 
 ```
+python engine/player.py duel <tree> 010_01_01 AI_B01_OrcKing sw
+                                                   both halves, one loop
+python engine/player.py duels <tree> sw            every monster, both halves
+python engine/player.py swings <tree>              six classes, every monster
+python engine/player.py combo <tree> sw            the class's action set
+python engine/player.py swing <tree> sw ssssl b01_00   one combo, one body
+python engine/player.py parts <tree>               the parts, against their
+                                                   own names
+python engine/player.py reach <tree>               the swing against the weapon
+python engine/player.py arrows <tree>              the hunter's flight table
+
 python engine/fight.py fight <tree> 010_01_01 AI_Z01_Orc  a monster fights
 python engine/fight.py fights <tree>               every monster, one stage
 python engine/fight.py reach <tree>                the gate against the swing

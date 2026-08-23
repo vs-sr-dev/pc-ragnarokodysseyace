@@ -284,4 +284,32 @@ Three things came out of running it that reading could not produce:
 
 What it does not do is damage: [`combat_loop.md`](combat_loop.md)'s ledger
 still owns the expression, so a hit is reported as a connection and not as a
-number, and the player does not fight back.
+number, and the player does not fight back — which is milestone 4.
+
+### 4. "The player fights back" — ✅ **reached, session 23**
+
+A class presses a button its own combo graph accepts, plays the animation that
+graph names, and the hit records on it **land on a named part of a monster's
+body** — while the monster, in the same loop on the same stage, lands its own
+records on the player's `col_hit` capsules. Over the disc, six classes reach
+**457 of the 492 class-monster pairs** standing at `col_r + col_r`, and the
+warrior duels all 83 monsters with **a hit landing both ways in 38 of them**.
+The report is [`milestone_player.md`](milestone_player.md).
+
+Three things came out of it that reading could not produce:
+
+- **the player's decision is a table too, and nobody had opened it.**
+  `s_combo_graph` in each class's `objbin.bin` is 189 nodes and 266 edges over
+  the six, and it checks against two things written elsewhere: the `3AB`
+  arithmetic in the animation names, on 112 of 116 edges, and the `_just`
+  animation lists against the edges that carry a second input window, 14 of 14
+  in both directions;
+- **`region_data`'s English names are where the words say they are.** Head
+  above leg on 22 of the 22 monsters that have both, body above leg on 32 of
+  32, measured inside one monster at a time. The capsules are geometry and the
+  names are language;
+- **the player's reach is its weapon's**, at correlation 0.772 against the
+  models that hang off the same bone, with 5 of the 120 possible pairings
+  doing as well — and the hunter, which fires nothing off a weapon bone at
+  all, is matched instead by `ht_arrow_tbl`, whose commonest flight covers
+  21.3 m against a `cmb_hmg_search_radius` of 20.
