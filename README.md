@@ -10,16 +10,32 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-11 (2026-08-22): the container stack is open end to end, the game's
-database, text and actor parameters are readable, and the textures, geometry,
-skinning, motion, stage collision, the animation event lists, the world layout
-and **the script layer** decode. A character can be drawn with its own textures
-on it, posed by the game's own animations and with the mesh following the
-skeleton; a stage reads as a floor plan with its fences, its spawn points, its
-monster generators and the scripts its doorways run. An attack says which bone
-it swings from and how hard. The world's two constants are settled: **one unit
-is one metre and one frame is 1/30 of a second**, so the game's own movement
-numbers are dimensional at last.
+Sessions 1-14 (2026-08-23). **Something runs.** A capsule with the game's own
+acceleration, run speed, turn rate and radius crosses the first field of the
+game in 405 frames - 13.5 seconds - without leaving the collision mesh, and
+walks 135 stages, 127 of them with the body on legal ground for every frame,
+at 5.05 m/s against 5.10 flat out. That is [milestone
+1](docs/milestone_numbers.md), *"the numbers are real"*, and
+[`engine/`](engine) is the first code here that is not a reader.
+
+It was worth doing for its own sake and it also paid: three things fell out
+that no further reading would have produced. The spawn marker faces its own
+exit, which settles the heading convention the disc never declares. `hta.bin`
+and `<stage>.col` agree to a centimetre across 1,432 markers, a join nobody
+had reason to make while both were only being read. And a `borderline` is a
+closed loop - 105 of 145 stages - which had been an open question since
+session 8.
+
+Underneath that, the container stack is open end to end and the game's
+database, text and actor parameters are readable; the textures, geometry,
+skinning, motion, stage collision, animation event lists, world layout,
+particle banks and **the script layer** all decode. A character can be drawn
+with its own textures on it, posed by the game's own animations and with the
+mesh following the skeleton; a stage reads as a floor plan with its fences,
+its spawn points, its monster generators and the scripts its doorways run. An
+attack says which bone it swings from and how hard. The world's two constants
+are settled - **one unit is one metre and one frame is 1/30 of a second** - so
+the movement numbers are dimensional.
 
 **`.psq` is Squirrel 2.2 bytecode**, debug tables and all, so the cutscenes,
 the quest logic and six bosses' AI decompile with the authors' own variable
@@ -30,6 +46,9 @@ range, anger, the target's stance and sixty-odd other terms, because one
 function in those scripts turned out to be the game's own dispatch for the
 whole vocabulary. **And an action id names a motion** - add 401 and it is the
 `atN.CNOM` the monster plays - so the AI and the animation layer are joined.
+The twelve mercenary classes are the same shape one layer up, and their
+command lists turn out to be **button presses** into the combo tree the player
+drives.
 
 ```
 ISO (UDF 2.50)   ->      109 files, 5.4 GB      tools/iso.py
@@ -65,19 +84,12 @@ PTCP effects     ->       67 files, 1,108 blocks tools/ptp.py    0 errors
   resources      ->    2,002 assets, 4,451 references, named in the clear
   addressing     ->      104 of 104 (category, slot) pairs resolving
 
-a capsule runs  ->      135 stages walked  engine/run.py   127 clean
-  one stage      ->      405 frames across 010_01_01, 13.5 s at a run
+a capsule runs   ->      135 stages walked   engine/run.py  127 clean
+  one crossing   ->      405 frames over 010_01_01, 13.5 s at a run
   speed          ->     5.05 m/s achieved against 5.10 flat out
   markers        ->    1,432 obj and appear standing on the mesh to 1 cm
   fences         ->      105 of 145 stages closing into a loop
 ```
-
-The first milestone — **"the numbers are real"** — is reached: a capsule with
-the game's own acceleration, run speed, turn rate and radius crosses the first
-field of the game in 13.5 seconds without leaving the collision mesh, and
-walks **135 stages**, 127 of them without ever leaving legal ground. See
-[`docs/milestone_numbers.md`](docs/milestone_numbers.md) and
-[`engine/`](engine), which is the first code here that is not a reader.
 
 Formats are documented in [`docs/`](docs): [the disc
 survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
@@ -88,18 +100,26 @@ survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 [`ELBN`](docs/format_elbn.md), [`.anmcmd`](docs/format_anmcmd.md), [the script
 layer](docs/format_psq.md), [the monster AI](docs/format_ai.md), [the
 mercenary AI](docs/format_merc.md), [`.PTP`](docs/format_ptp.md), [the actor
-parameters](docs/params.md). The plan is in
+parameters](docs/params.md). What running it produced is in [milestone
+1](docs/milestone_numbers.md). The plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
 
-Ten of the AI's 76 condition terms are unread — the tables turned out to be
-newer than the scripts that document them — the `ELBN` records are addressable
-by name but not described field by field, and thirty of the fifty-two
-`.anmcmd` opcodes still have no correlation, though the two commonest are now
-read and they are the hitbox.
+What is still unread: `.mkc` (2,690 files, a short `u16` stream ending on
+`0xffff`) and the PAMF video, neither of which blocks anything; ten of the
+AI's 76 condition terms, because the shipped tables turned out to be newer
+than the scripts that document them; the `ELBN` records, addressable by name
+but not described field by field; and thirty of the fifty-two `.anmcmd`
+opcodes, though the two commonest are read and they are the hitbox.
 
-`.map`, listed here for six sessions as the world layout, turned out to be the
-minimap; the layout is `hta.bin`, `borderline.bin` and `trigger.trg`.
+Two things listed here for several sessions turned out to be something else,
+which is worth keeping visible. `.map` was down as the world layout and is the
+minimap - the layout is `hta.bin`, `borderline.bin` and `trigger.trg`. And
+`.anmcmd` opcode 10's effect id was called a *global* id because unrelated
+monsters share values; they share them because the number is derived from the
+animation, and a scan of all 32,600 leaves says no table on the disc maps it
+to anything. That one is now the first item on the list that genuinely needs
+the EBOOT, and it is cosmetic.
 
 ## BYOA
 
@@ -119,7 +139,9 @@ The reference disc is **Ragnarok Odyssey ACE (USA)**, title id `NPWR04119_00`.
 
 ## Tools
 
-Python 3.11+, no third-party dependencies.
+Python 3.11+. The readers have **no third-party dependencies**; the only thing
+in the repository that has one is `engine/run.py trace`, which draws with
+matplotlib and is the one command you can skip.
 
 ```
 python tools/iso.py index                     read the UDF tree
@@ -215,11 +237,6 @@ python tools/ptp.py list <dir> <name>        one bank, slot by slot
 python tools/ptp.py slot <dir> <name> <n>    one block, hex and assets
 python tools/ptp.py refs <dir>               where the (category, slot) pairs go
 
-python engine/run.py numbers <class json>    what the parameters produce
-python engine/run.py walk <stage dir> <json> cross a stage with them
-python engine/run.py trace <stage> <json> <png>   draw the crossing
-python engine/run.py check <stage.cpk dir>   markers against mesh, fences
-
 python tools/params.py census|tiers <dir>     the actor parameters
 python tools/params.py classes <dir>          the six player classes compared
 python tools/params.py show|diff <dir> <name> one actor, or one variant
@@ -233,6 +250,33 @@ faster, since decompressing 1.7 GB of CRILAYLA in Python is not.
 
 Each tool's module docstring is the format specification; they are meant to be
 read.
+
+## Engine
+
+`engine/` is where the reading stops and the reimplementation starts. Three
+files, no renderer, no VM, no combat: a world that answers where the floor is
+and where the fence is, an actor that moves under the game's parameter table,
+and a driver that reports what comes out.
+
+```
+python engine/run.py numbers <class json>          what the parameters produce
+python engine/run.py walk <stage dir> <class json> cross one stage with them
+python engine/run.py trace <stage> <json> <png>    draw the crossing
+python engine/run.py sweep <stage.cpk dir> <json>  cross every stage
+python engine/run.py check <stage.cpk dir>         markers against the mesh,
+                                                   and whether fences close
+```
+
+`numbers` needs no disc geometry at all - it turns the parameter table into
+seconds, metres and multiples of Earth gravity, which are quantities a person
+can have an opinion about. The other four want a stage.
+
+Every constant the actor uses is the disc's. The four things the disc does not
+say - how a body decelerates, how a turn brakes, what the stick does, and what
+happens at a wall - are marked as the engine's choices in
+[`engine/actor.py`](engine/actor.py) rather than smoothed over. The reasoning,
+and what came out of running it, is in
+[`docs/milestone_numbers.md`](docs/milestone_numbers.md).
 
 ## Licence
 
