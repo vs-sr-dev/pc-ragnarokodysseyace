@@ -65,6 +65,34 @@ command frame lies inside the motion's declared length.** That second number is
 the check: it says the pairing is real and that these frame numbers are `CNOM`
 frames — 1/30 of a second each, per [`units.md`](units.md).
 
+### A player's motion id spells the combo that reaches it
+
+Session 23. A ground combo list is `<class>3AB<verb>`, and the three digits are
+not a serial number:
+
+```
+  A = 6 - how many squares were pressed before the first triangle,
+      and 1 when no triangle was pressed
+  B = how many buttons have been pressed in all
+```
+
+`sw311at_s` is one press, all square; `sw343at_ssl` is three presses with the
+triangle third, so `A = 6 - 2` and `B = 3`; `sw361at_l` is one press that is a
+triangle, so `A = 6 - 0`. The scheme holds on **86 of 86** ground lists whose verb is `at_` followed by
+nothing but `s` and `l`, over all six classes, and the 24 aerial ones repeat
+the depth alone from 391 - `39B` on 24 of 24, with the `a_` living in the
+`CNOM`'s name rather than the list's.
+
+That reading is taken off the names, and **`s_combo_graph` checks it** — see
+[`format_elbn.md`](format_elbn.md). The graph's edges land on the id the
+arithmetic predicts on 112 of 116, and the four that do not are the mage's
+specials. Two more naming rules fall out of the same place: the aerial twin of
+a skill list is its id **plus 35**, on 87 of 87 pairs; and the hunter's 115
+bare-numeric lists are its projectiles, named in exactly the family session 14
+found for opcode 10's effect ids — `1000 + the motion id`, optionally times ten
+plus a one-digit variant, so motion 311 has `ht1311` and `ht13110` to
+`ht13114`.
+
 ## Opcode 0 and opcode 27 carry the same record, and it is the hit
 
 **Opcode 27's payload is 116 bytes**, which is exactly one of opcode 0's

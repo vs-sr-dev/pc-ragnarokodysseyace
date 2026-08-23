@@ -123,6 +123,7 @@ that is where the AI's own tables are.
     capsules  `col_hit`, `jostle_data` and `pgs_data` with their bones named
     regions   a monster's body regions, joined to the bones and the drops
     trace     `trace_par.bin`, the weapon trail: its textures and its bones
+    combo     `s_combo_graph`, the player's combo tree, and two checks on it
 """
 
 from __future__ import annotations
@@ -130,6 +131,7 @@ from __future__ import annotations
 import collections
 import fnmatch
 import pathlib
+import re
 import struct
 import sys
 
@@ -950,6 +952,222 @@ def cmd_regions(root, want: str = '*') -> int:
     return 0
 
 
+# --------------------------------------------------------------------------
+# the player's combo graph
+
+# `s_combo_graph` is eight bytes - a count and a pointer to that many node
+# pointers - and each node is sixteen:
+#
+#     +0x00  u16   the node's own index
+#     +0x02  u16   how many edges leave it
+#     +0x04  ptr   the edge list, or zero
+#     +0x08  u8    how many motions the node plays
+#     +0x09  u8    zero on all six classes
+#     +0x0a  u16   the motion, when it plays exactly one
+#     +0x0c  ptr   the motion list, when it plays more
+#
+# and each edge is twelve:
+#
+#     +0x00  u32   the button: 0, 1, 2 on the ground and 3, 4, 5 in the air
+#     +0x04  u16   the node it leads to
+#     +0x06  u8    the first frame the input is taken
+#     +0x07  u8    the last
+#     +0x08  u8    a frame inside that window
+#     +0x09  u8    the first frame of a second, narrower window
+#     +0x0a  u8    its last
+#     +0x0b  u8    zero on all 116 edges
+#
+# The second window is the **just** input: see `cmd_combo`, which counts it
+# against the `_just` animation lists on the disc and finds them the same set.
+BUTTONS = {0: 'square', 1: 'triangle', 2: 'triangle held',
+           3: 'square, air', 4: 'triangle, air', 5: 'triangle held, air'}
+LETTER = {0: 's', 1: 'l', 2: 'l', 3: 's', 4: 'l', 5: 'l'}
+
+
+def combo_nodes(f: Elbn) -> list[dict]:
+    """`s_combo_graph`, as nodes with their edges. Empty when absent."""
+    e = f.by_name().get('s_combo_graph')
+    if e is None or e.size < 8:
+        return []
+    count, table = f.word(e.offset), f.word(e.offset + 4)
+    out = []
+    for i in range(count):
+        o = f.word(table + 4 * i)
+        head = f.data(o + 8, 4)
+        n = head[0]
+        if n == 1:
+            motions = [struct.unpack_from('>H', head, 2)[0]]
+        elif n:
+            p = f.word(o + 12)
+            motions = [struct.unpack_from('>H', f.buf, HEADER + p + 2 * k)[0]
+                       for k in range(n)]
+        else:
+            motions = []
+        edges = []
+        ep, ne = f.word(o + 4), f.word(o) & 0xFFFF
+        for k in range(ne):
+            d = f.data(ep + 12 * k, 12)
+            edges.append({
+                'button': struct.unpack_from('>I', d, 0)[0],
+                'to': struct.unpack_from('>H', d, 4)[0],
+                'open': d[6], 'close': d[7], 'at': d[8],
+                'just': (d[9], d[10]), 'spare': d[11],
+            })
+        out.append({'index': f.word(o) >> 16, 'motions': motions,
+                    'edges': edges})
+    return out
+
+
+def combo_id(motion: int) -> tuple[int, int] | None:
+    """A ground combo id read as `3AB`, or None when it is not one.
+
+    `A` is where the first triangle falls and `B` is how many buttons have
+    been pressed - see `cmd_combo`, which checks the reading against the
+    graph's own edges rather than against the names it was taken from.
+    """
+    if not 300 < motion < 400:
+        return None
+    a, b = motion // 10 % 10, motion % 10
+    return (a, b) if 1 <= a <= 6 and 1 <= b <= 6 else None
+
+
+# `ht_arrow_tbl` is the hunter's projectiles: a count and a pointer, then 42
+# records of 80 bytes. The first four words are the flight and the rest is
+# mostly zero -
+#
+#     +0x00  u32   a bit field, eight distinct values over the 42
+#     +0x04  u32   how many frames it lives
+#     +0x08  f32   metres per frame
+#     +0x0c  f32   metres per frame squared, downward
+#     +0x20  f32   a launch angle in degrees, zero on 30 of the 42
+#     +0x24  f32   two more angles, on the rows that carry them
+#     +0x28  f32
+#
+# - and `player.py arrows` is what says the first four are what they look
+# like: life times speed is the distance the arrow covers, and the hunter's
+# own `cmb_hmg_search_radius` is 20 m.
+ARROW = 80
+
+
+def arrow_rows(f: Elbn) -> list[dict]:
+    """`ht_arrow_tbl`, as flights. Empty on the five classes without one."""
+    e = f.by_name().get('ht_arrow_tbl')
+    if e is None or e.size < 8:
+        return []
+    count, base = f.word(e.offset), f.word(e.offset + 4)
+    out = []
+    for i in range(count):
+        o = base + ARROW * i
+        g = (lambda k: struct.unpack('>f', struct.pack(
+            '>I', f.word(o + 4 * k)))[0])
+        out.append({'i': i, 'flags': f.word(o), 'life': f.word(o + 4),
+                    'speed': g(2), 'gravity': g(3), 'pitch': g(8),
+                    'spread': (g(9), g(10))})
+    return out
+
+
+def cmd_combo(root, want: str = '*') -> int:
+    """The player's combo graph, and two checks on it.
+
+    A monster picks its next action out of `ProbList`; a player picks it with
+    a button, and this is the table that says which one. It is the same shape
+    of artefact - a state, a roll or a press, a motion - and it is the
+    player's half of [`format_ai.md`](../docs/format_ai.md) section 11.
+
+    The two checks are the point, because both compare the table against
+    something that was written by hand somewhere else:
+
+    - **the id arithmetic.** The `.anmcmd` list for combo `ssl` is called
+      `<class>343at_ssl`, and `343` reads as `3AB` with `A = 6 - the number
+      of leading squares` and `B = the number of buttons`. That is a reading
+      taken off the *names*. The graph never mentions a name, so its edges
+      can agree with the arithmetic or fail to;
+    - **the just window.** Some edges carry a second, narrower frame window
+      inside the first. The disc also ships `_just` copies of some animation
+      lists. Neither fact mentions the other.
+    """
+    root = pathlib.Path(root)
+    total = collections.Counter()
+    for ob in sorted(root.rglob('job.cpk/*/objbin.bin')):
+        cls = ob.parent.name
+        if not fnmatch.fnmatch(cls, want):
+            continue
+        f = Elbn(ob.read_bytes(), str(ob))
+        nodes = {n['index']: n for n in combo_nodes(f)}
+        if not nodes:
+            continue
+        lists: dict[int, list[str]] = {}
+        for q in sorted((ob.parent / 'animcmd.pac').glob('*.anmcmd')):
+            m = re.match(r'^%s(\d+)(.*)$' % cls, q.stem)
+            if m:
+                lists.setdefault(int(m.group(1)), []).append(m.group(2))
+        print(f'{cls}   {len(nodes)} nodes, '
+              f'{sum(len(n["edges"]) for n in nodes.values())} edges')
+        for i in sorted(nodes):
+            n = nodes[i]
+            names = ' '.join(lists.get(m, ['-'])[0] or '-'
+                             for m in n['motions'][:1])
+            print(f'  [{i:2d}] {str(n["motions"]):<22s} {names}')
+            for e in n['edges']:
+                to = nodes.get(e['to'], {})
+                j = ('  just %d..%d' % e['just']) if any(e['just']) else ''
+                print(f'       {BUTTONS[e["button"]]:<20s} -> [{e["to"]:2d}] '
+                      f'{str(to.get("motions", [])):<10s} '
+                      f'frames {e["open"]:3d}..{e["close"]:<3d} at '
+                      f'{e["at"]:3d}{j}')
+        # -- the id arithmetic
+        ok = seen = 0
+        odd = []
+        for i, n in sorted(nodes.items()):
+            src = combo_id(n['motions'][0]) if n['motions'] else None
+            if src is None:
+                continue
+            sa, sb = src
+            for e in n['edges']:
+                t = nodes.get(e['to'], {}).get('motions') or []
+                dst = combo_id(t[0]) if t else None
+                if dst is None:
+                    continue
+                seen += 1
+                square = e['button'] in (0, 3)
+                a = 1 if square else (sa if sa > 1 else 6 - sb)
+                if dst == (a, sb + 1):
+                    ok += 1
+                else:
+                    odd.append((n['motions'][0], t[0], dst == (a, sb + 1),
+                                a, sb + 1, dst))
+        # -- the just window
+        by_file = {i for i, v in lists.items()
+                   if any('_just' in x for x in v)}
+        by_edge = set()
+        for n in nodes.values():
+            for e in n['edges']:
+                t = nodes.get(e['to'], {}).get('motions') or []
+                if any(e['just']) and t:
+                    by_edge.add(t[0])
+        print(f'  {ok} of {seen} edges land on the id the combo string '
+              f'predicts')
+        for src, dst, _, a, b, got in odd:
+            print(f'    {src} -> {dst}: expected 3{a}{b}, '
+                  f'got 3{got[0]}{got[1]}')
+        print(f'  just window: {len(by_file)} lists carry a `_just` copy, '
+              f'{len(by_edge)} motions are the target of an edge that has '
+              f'one, {len(by_file & by_edge)} are both')
+        if by_file ^ by_edge:
+            print(f'    only one side: {sorted(by_file ^ by_edge)}')
+        print()
+        total['edges'] += seen
+        total['ok'] += ok
+        total['just'] += len(by_file & by_edge)
+        total['just_either'] += len(by_file | by_edge)
+        total['nodes'] += len(nodes)
+    print(f'{total["nodes"]} nodes over six classes; '
+          f'{total["ok"]} of {total["edges"]} edges obey the id arithmetic; '
+          f'{total["just"]} of {total["just_either"]} just windows and '
+          f'`_just` lists name the same motion')
+    return 0
+
+
 def main() -> int:
     a = sys.argv[1:]
     if not a:
@@ -974,6 +1192,8 @@ def main() -> int:
         return cmd_regions(rest[0], *rest[1:2])
     if cmd == 'trace':
         return cmd_trace(rest[0], *rest[1:2])
+    if cmd == 'combo':
+        return cmd_combo(rest[0], *rest[1:2])
     print(f'unknown command: {cmd}')
     return 1
 

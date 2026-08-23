@@ -432,6 +432,123 @@ these as a single `u16`. Others pack two `u16` into a word —
 `blessingParam`'s first is `0x00140078`, which is 20 and 120, and 120 frames
 is four seconds.
 
+### `s_combo_graph` — the player's decision, and it is a table
+
+The monster picks its next action out of `ProbList` with a weighted roll
+([`format_ai.md`](format_ai.md) section 11). **The player picks it with a
+button, and this is the table that says which one.** Six files, 189 nodes,
+266 edges, and it is the last table in the combat loop that had no reader.
+
+`s_combo_graph` is eight bytes — a count and a pointer to that many node
+pointers — and each node is sixteen:
+
+```
+  +0x00  u16   the node's own index
+  +0x02  u16   how many edges leave it
+  +0x04  ptr   the edge list, or zero on a finisher
+  +0x08  u8    how many motions the node plays
+  +0x09  u8    zero on all six classes
+  +0x0a  u16   the motion, when it plays exactly one
+  +0x0c  ptr   the motion list, when it plays more
+```
+
+and each edge is twelve:
+
+```
+  +0x00  u32   the button: 0, 1, 2 on the ground and 3, 4, 5 in the air
+  +0x04  u16   the node it leads to
+  +0x06  u8    the first frame the input is taken
+  +0x07  u8    the last
+  +0x08  u8    a frame inside that window
+  +0x09  u8    the first frame of a second, narrower window
+  +0x0a  u8    its last
+  +0x0b  u8    zero on all 266 edges
+```
+
+**Node 0 is the neutral state, it has exactly six edges on all six classes,
+and those six edges name the same six motions on all six**:
+
+```
+  button   0      1      2      3            4      5
+  motion   311    361    362    391    397 398 399   396
+           at_s   at_l   at_l_t (aerial at_s)        (aerial at_l_t)
+```
+
+Six is what says the field is a small enum and not a mask, and the split is
+the obvious one: 0, 1, 2 on the ground and 3, 4, 5 the same three in the air.
+Which of the three each is comes from the animation it starts — `at_s` is the
+square chain, `at_l` the triangle, and `at_l_t`'s `_t` is a held press, since
+the button-4 entry is the `_st` / loop / `_en` triple of one animation and
+button 5 is the separate `_t` list beside it. `python tools/elbn.py combo
+extract/tree sw` walks the whole of it:
+
+```
+  [ 0] []
+       triangle held, air   -> [29] [396]      frames   0..255 at   0
+       square, air          -> [19] [391]      frames   0..255 at   0
+       triangle, air        -> [24] [397, 398, 399] frames   0..255 at   0
+       triangle held        -> [18] [362]      frames   0..255 at   0
+       square               -> [ 1] [311]      frames   0..255 at   0
+       triangle             -> [17] [361]      frames   0..255 at   0
+  [ 1] [311]                  at_s
+       square               -> [ 2] [312]      frames   6..18  at  10
+       triangle             -> [12] [352]      frames   2..16  at  10
+  [ 4] [314]                  at_ssss
+       square               -> [ 5] [315]      frames   6..20  at  12
+       triangle             -> [ 6] [325]      frames   2..18  at  12  just 8..14
+```
+
+#### Two checks, and neither of them is the table checking itself
+
+**The id arithmetic.** The animation list for the combo `ssl` is called
+`<class>343at_ssl`, and `343` reads as `3AB` with `A = 6 - the number of
+leading squares` and `B = how many buttons have been pressed`. That is a
+reading taken off the *names*, and the graph never mentions a name. So the
+graph's edges can agree with the arithmetic or fail to, and they agree on
+**112 of 116** — every square edge landing on `3·1·(B+1)` and every triangle
+edge keeping the branch digit it already had.
+
+The four that do not are all the mage's, and they are named: `314 -> 326`,
+`334 -> 336`, `344 -> 346`, `354 -> 356`. The mage's finisher is a **special**
+— `mg326`, `mg336`, `mg346`, `mg356` are `sp2` to `sp5` — which occupies a
+four-id block where the other classes have one id, so the branch digit is
+still right on 116 of 116 and only the depth runs one past.
+
+**The just window.** Some edges carry a second, narrower frame window inside
+the first. The disc separately ships `_just` copies of some animation lists —
+`sw325at_ssssl_just`, `hs334at_sssl_just` — and neither fact mentions the
+other:
+
+```
+                _just lists   targets of an edge with a second window   both
+  hammersmith             6                                        6      6
+  warrior                 8                                        8      8
+  the other four          0                                        0      0
+```
+
+**14 of 14, in both directions.** The second window is the perfect-timing
+input, and the four classes with no `_just` animation have no edge that
+carries one.
+
+#### What the graph says that the names cannot
+
+The names give the tree; the graph gives the **transitions**, and they are not
+a tree. `at_sl` on button square leads to `at_sss` and not to `at_sls`: the
+node's depth is how many hits have landed, so a triangle spent at hit two
+puts the next square at hit three. Five of the warrior's nodes lead into
+`at_sssss` from five different places, and two separate nodes play `314`
+because two paths of length four arrive at it.
+
+A node that names more than one motion is a **hold**: three ids are the
+`_st`, the loop and the `_en` of one animation — `sw397a_at_l_st`,
+`sw398a_at_l`, `sw399a_at_l_en` — and four ids are a special, where the
+trailing value is 2 to 9 and matches the `sp<N>` in the animation's own name.
+
+Still open: the byte at `+0x08` of an edge, which is always inside the window
+and reads as the frame the transition is taken on; and the third and fourth
+entries of a four-motion node, one of which is the same id on every special
+of a class (`373` for the mage).
+
 ### The tension tables
 
 Four of them, all `(count, pointer)` with a stride of 8 — a **piecewise curve
@@ -573,9 +690,37 @@ tension tables use. Their strides are closed by the gap to the next array:
 Both hold at or above 1 to half way and then fall to a tenth on an axis that
 runs 0 to 100. The bow being the only class with them says what the axis is —
 a fraction of the arrow's reach — and the two say the reaction falls off
-before the damage does. `ht_arrow_tbl` beside them is 42 records at a stride
-of **80**, which the repeat period closes and the field values corroborate;
-its columns are not named.
+before the damage does.
+
+### `ht_arrow_tbl` — the arrow's flight
+
+Beside them, and the same `(count, pointer)` shape: **42 records at a stride
+of 80**, 15 distinct flights. The first four words are the whole of the
+motion —
+
+```
+  +0x00  u32   a bit field, eight distinct values over the 42
+  +0x04  u32   how many frames it lives
+  +0x08  f32   metres per frame
+  +0x0c  f32   metres per frame squared, downward
+  +0x20  f32   a launch angle in degrees, zero on 30 of the 42
+  +0x24  f32   two more angles, on the rows that carry them
+  +0x28  f32
+```
+
+— and two things outside the table say so. **A speed times a life is a
+distance**: 18 of the 42 rows read `13 frames, 1.64 m, -0.06`, which covers
+**21.3 m**, and the hunter's own JSON asks for a target inside
+`cmb_hmg_search_radius = 20 m`. And **the five rows that do not move** carry a
+launch angle of −90 degrees on four of them — straight down, which is a thing
+dropped rather than a thing shot, and the hunter is the class whose skill list
+holds `landMineBuleltParam`, `claymoreTrapBuleltParam`,
+`freezingTrapBuleltParam` and `flasherParam`.
+
+`python engine/player.py arrows extract/tree` prints the table and both
+checks. Which of the 42 rows a given arrow list uses is **not** joined yet:
+the id is presumably in the `.anmcmd` opcode that spawns it, and thirty of
+those opcodes are still unread.
 
 ## What the records still do not say
 
