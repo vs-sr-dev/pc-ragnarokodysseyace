@@ -93,11 +93,43 @@ each argument position is handed, and what the callers name the result -
 `localvarinfos` keeps the author's own variable names, so `getHpRate` comes
 back with `own_hp_rate` beside it.
 
+## The jumps go back into statements, all of them
+
+`src` used to print control flow as labels and `goto`. It does not any more:
+`Structure` turns the jump graph back into `if`/`else`/`switch`/`while`, and
+the measurement that says the reading is right is that **there is nothing left
+over**.
+
+**Squirrel has no `goto`.** Every jump in a `.psq` came out of a construct, so
+"most of them placed" would not be a result - the target is all of them, and
+`psq.py struct` reports the shortfall over the whole disc:
+
+    2,753 of 2,753 functions that carry a jump, structured with nothing left
+    0 jumps not placed, 0 statements stepped over
+
+    if 5,068   if/else 3,483   break 1,761   switch 248 (203 fall-throughs)
+    while 34   foreach 11      do..while 4
+
+plus the 2,635 `_OP_AND` and `_OP_OR`, which are folded a level down in
+`Trace` because they are expression and not control flow. That fold is not
+cosmetic: unfolded, `a && b` printed as a branch on `b` alone and silently
+lost `a`.
+
+**What separates a `switch` from an `else if` is a jump no `if` ever makes.**
+Both compile to a chain of tests on one register, but a `switch` case falls
+through by jumping into the *next case's body*, past that case's own test -
+and Squirrel emits that jump even when the case ended in `break`, which is why
+a `switch` shows two consecutive `_OP_JMP` where an `else if` shows one. The
+first discriminator written here was "three links or more"; it read a
+two-case `switch` in `sfQuestDemoInit` as a branch and left its `break`
+behind.
+
 Usage:
   python psq.py check <dir>               parse every file, exact consumption
   python psq.py list <dir>                every file, most instructions first
   python psq.py dump <dir> <name>         one file, annotated disassembly
-  python psq.py src <dir> <name>          one file, reconstructed statements
+  python psq.py src <dir> <name>          one file, reconstructed source
+  python psq.py struct <dir> [-v]         does every jump go back into one?
   python psq.py api <dir>                 every global called, with arities
   python psq.py calls <dir> [glob]        ... and its arguments and result
   python psq.py sites <dir> <glob> [n]    the call sites themselves
@@ -288,11 +320,14 @@ def reads(a1: int, word: int) -> set:
         return {a1, a2}
     if op in (0x08, 0x09):
         return {a2}
-    if op in (0x0A, 0x1D, 0x23, 0x25, 0x27, 0x2D, 0x2E, 0x2F, 0x36, 0x37):
+    if op in (0x0A, 0x1D, 0x25, 0x27, 0x2D, 0x2E, 0x2F, 0x36, 0x37):
         return {a1}
     if op in (0x0B, 0x0D, 0x3C):
         return {a1, a2, a3}
-    if op in (0x0C, 0x0E, 0x11, 0x12, 0x24, 0x26, 0x28, 0x35):
+    # `a += b` reads the accumulator *and* the value. Reading only the first
+    # made the right-hand side look dead, so a call there printed twice: once
+    # as a statement of its own and once inside the compound assignment.
+    if op in (0x0C, 0x0E, 0x11, 0x12, 0x23, 0x24, 0x26, 0x28, 0x35):
         return {a1, a2}
     if op == 0x3B:                             # base and attributes optional
         return ({a1} if signed(a1) >= 0 else set()) | \
@@ -314,22 +349,67 @@ def reads(a1: int, word: int) -> set:
     return set()
 
 
-def live(f, pc: int, reg: int) -> bool:
-    """Is `reg` read after `pc` before anything overwrites it?"""
-    for j in range(pc + 1, len(f.code)):
-        a1, w = f.code[j]
-        if reg in reads(a1, w):
-            return True
-        op, a0, a2, _ = fields(w)
-        if op in JUMPS:
-            return True                        # control flow: assume it is
-        if op in (0x04, 0x17) and reg in (a0, a2):
-            return False
-        if op == 0x14 and a0 <= reg < a0 + a1:
-            return False
-        if op not in (0x0B, 0x0D, 0x13, 0x3A) and a0 == reg:
-            return False
-    return False
+def writes(a1: int, word: int) -> set:
+    """Which registers an instruction fills. The mirror of `reads`, and the
+    other half of what liveness needs."""
+    op, a0, a2, a3 = fields(word)
+    if op in (0x0B, 0x0D, 0x13, 0x3A) or a0 == 0xFF:
+        return set()
+    if op == 0x14:                             # LOADNULLS fills a run
+        return set(range(a0, a0 + a1))
+    if op in (0x04, 0x17):                     # DLOAD and DMOVE fill two
+        return {a0, a2}
+    if op == 0x33:                             # FOREACH fills key, value, it
+        return {a2, a2 + 1, a2 + 2}
+    return {a0}
+
+
+def successors(f) -> list:
+    """The control-flow graph, as the jump fields give it."""
+    n = len(f.code)
+    out = []
+    for pc, (a1, w) in enumerate(f.code):
+        op = w >> 24
+        t = pc + 1 + signed(a1)
+        nxt = [pc + 1] if pc + 1 < n else []
+        if op == 0x18:
+            out.append([t])
+        elif op == 0x13:
+            out.append([])
+        elif op in (0x19, 0x1A, 0x2B, 0x2C, 0x33, 0x34):
+            out.append([t] + nxt)
+        else:
+            out.append(nxt)
+    return out
+
+
+def liveness(f) -> list:
+    """Which registers are read before they are written, at every pc.
+
+    Backward dataflow to a fixed point, over the real graph. The rule this
+    replaced walked forward and gave up at the first jump it met - *control
+    flow: assume it is* - which made a call at the end of a block look live
+    and dropped it from the listing. That hid **3,004 statement calls**, most
+    of them the last action of an `if` arm in a cutscene, and it stayed hidden
+    for as long as the arm's own end was printed as a `goto`.
+    """
+    n = len(f.code)
+    succ = successors(f)
+    lin = [frozenset()] * n
+    changed = True
+    while changed:
+        changed = False
+        for pc in range(n - 1, -1, -1):
+            a1, w = f.code[pc]
+            out = set()
+            for t in succ[pc]:
+                if 0 <= t < n:
+                    out |= lin[t]
+            new = frozenset((out - writes(a1, w)) | reads(a1, w))
+            if new != lin[pc]:
+                lin[pc] = new
+                changed = True
+    return lin
 
 
 def lit(f, i: int) -> str:
@@ -350,10 +430,14 @@ class Trace:
 
     def __init__(self, f):
         self.f = f
+        self.livein = liveness(f)
         self.reg = {}
         for i, name in enumerate(f.param):
             self.reg[i] = name
         self.note = {}                          # pc -> statement
+        self.cond = {}                          # pc -> the test a jump reads
+        self.eq = {}                            # pc -> (left, right) of a test
+        self.fold = []                          # (merge pc, register, lhs, op)
         self.targets = set()
         self.calls = []                         # (pc, callee, [argument])
         self.root = {}                          # register -> root-table name
@@ -367,6 +451,12 @@ class Trace:
 
     def r(self, i: int) -> str:
         return self.reg.get(i, 'r%d' % i)
+
+    def live(self, pc: int, reg: int) -> bool:
+        """Is the value this instruction just produced read anywhere? If it
+        is not, the instruction was a statement and not an expression."""
+        return (pc + 1 < len(self.livein)
+                and reg in self.livein[pc + 1])
 
     def bind(self, pc: int, reg: int, value: str):
         """Put an expression in a register, naming it if a local starts here."""
@@ -401,6 +491,14 @@ class Trace:
             op, a0, a2, a3 = fields(w)
             s1 = signed(a1)
             out = text = None
+            # `a && b` leaves `a` in a register and jumps here over `b`, so
+            # arriving at the merge is what completes the expression. Innermost
+            # first, which is why the list is drained from the end.
+            for k in range(len(self.fold) - 1, -1, -1):
+                at, reg, lhs, sym = self.fold[k]
+                if at == pc:
+                    self.reg[reg] = '(%s %s %s)' % (lhs, sym, self.r(reg))
+                    del self.fold[k]
             if op == 0x01:
                 out = lit(f, a1)
             elif op == 0x02:
@@ -417,7 +515,7 @@ class Trace:
                 out = '%s(%s)' % (self.r(a1), ', '.join(args))
                 if op == 0x05:
                     text = 'return ' + out
-                elif not live(f, pc, a0):
+                elif not self.live(pc, a0):
                     text = out
             elif op == 0x07:
                 self.reg[a3] = self.r(a2)
@@ -447,6 +545,8 @@ class Trace:
                 out = self.slot(a1, a2)
             elif op in (0x0F, 0x10):
                 rhs = lit(f, a1) if a3 else self.r(a1)
+                if op == 0x0F:
+                    self.eq[pc] = (self.r(a2), rhs)
                 out = '(%s %s %s)' % (self.r(a2),
                                       '==' if op == 0x0F else '!=', rhs)
             elif op in (0x11, 0x12):
@@ -466,6 +566,10 @@ class Trace:
             elif op == 0x18:
                 text = 'goto ' + self.label(pc, a1)
             elif op in (0x19, 0x1A):
+                # JZ jumps when the test is false, so the test itself is what
+                # an `if` was written with; JNZ is the negation of it.
+                self.cond[pc] = (self.r(a0) if op == 0x1A
+                                 else '!' + self.r(a0))
                 text = 'if (%s%s) goto %s' % ('' if op == 0x19 else '!',
                                               self.r(a0), self.label(pc, a1))
             elif op == 0x1C:
@@ -500,9 +604,12 @@ class Trace:
             elif op == 0x2A:
                 out = '(%s instanceof %s)' % (self.r(a1), self.r(a2))
             elif op in (0x2B, 0x2C):
-                text = 'if (%s%s) goto %s' % ('!' if op == 0x2B else '',
-                                              self.r(a0), self.label(pc, a1))
-                out = self.r(a0)
+                # Short-circuit, not control flow: the operand register is
+                # `a0` and `a2` alike - they are equal on all 2,635 of these
+                # on the disc - and the jump only skips the right-hand side.
+                self.fold.append((pc + 1 + s1, a0, self.r(a0),
+                                  '&&' if op == 0x2B else '||'))
+                self.targets.add(pc + 1 + s1)
             elif op == 0x2D:
                 out = '-' + self.r(a1)
             elif op == 0x2E:
@@ -515,6 +622,13 @@ class Trace:
             elif op == 0x31:
                 text = 'yield ' + self.r(a1)
             elif op == 0x33:
+                # The key and the value are written here, and `localvarinfos`
+                # has the author's names for both.
+                for k in (a2, a2 + 1):
+                    for name, pos, start, stop in f.local:
+                        if pos == k and start <= pc + 1 <= stop:
+                            self.reg[k] = name
+                            break
                 text = 'foreach ' + self.label(pc, a1)
             elif op == 0x34:
                 text = 'endforeach ' + self.label(pc, a1)
@@ -534,6 +648,305 @@ class Trace:
             if text:
                 self.note[pc] = text
         return self
+
+
+# -- the structurer --------------------------------------------------------
+
+STRUCT_JUMPS = (0x18, 0x19, 0x1A, 0x33)
+
+
+def bare(test: str) -> str:
+    """Drop the outer parentheses an expression already carries, so that a
+    test reads `if (a == b)` and not `if ((a == b))`."""
+    if not (test.startswith('(') and test.endswith(')')):
+        return test
+    depth = 0
+    for i, c in enumerate(test):
+        depth += (c == '(') - (c == ')')
+        if depth == 0 and i < len(test) - 1:
+            return test                        # the pair does not span it all
+    return test[1:-1]
+
+
+class Structure:
+    """The jump graph, put back into the statements it was compiled from.
+
+    **Squirrel has no `goto`.** Every jump in a `.psq` came out of an `if`, a
+    loop, a `break`, a `continue` or a short-circuit operator, so a correct
+    reconstruction places all of them and leaves nothing behind. `residual`
+    counts the jumps this pass could not place, which is what turns a wrong
+    reading into a number instead of a plausible-looking listing: `psq.py
+    struct` prints it over the whole disc.
+
+    `_OP_AND` and `_OP_OR` are handled a level down, in `Trace`, because they
+    are expression and not control flow - the jump only skips the right-hand
+    operand. Folding them is not cosmetic: unfolded, `a && b` prints as a
+    branch on `b` alone and silently loses `a`.
+    """
+
+    def __init__(self, f, tr):
+        self.f, self.tr = f, tr
+        self.jmp = {}
+        for pc, (a1, w) in enumerate(f.code):
+            op = w >> 24
+            if op in STRUCT_JUMPS:
+                self.jmp[pc] = (op, pc + 1 + signed(a1))
+        # A jump that lands at or before itself closes a loop. The *last* one
+        # that lands on a given instruction is the loop's own back edge.
+        self.back = {}
+        for pc, (op, t) in self.jmp.items():
+            if t <= pc and pc > self.back.get(t, -1):
+                self.back[t] = pc
+        self.residual = 0
+        self.used = set()               # every pc the tree accounts for
+        self.tree = self.body(0, len(f.code))
+        # Conservation: a statement that the walk stepped over is a statement
+        # lost, and dropping one is exactly how a wrong loop or branch would
+        # look right. `struct` sums this over the disc.
+        self.lost = sorted(set(tr.note) - self.used)
+
+    # -- the walk ----------------------------------------------------------
+
+    def body(self, lo, hi, loop=None, sw=None):
+        """The statements of `[lo, hi)`, as a tree. `loop` is `(header,
+        exit)` of the innermost enclosing loop and `sw` is `(end, body
+        starts)` of the innermost enclosing `switch`; between them they are
+        what names a jump `break`, `continue` or a fall-through."""
+        out, pc = [], lo
+        while pc < hi:
+            end = self.back.get(pc)
+            if end is not None and pc <= end < hi:
+                node, pc = self.loop(pc, end)
+                out.append(node)
+                continue
+            j = self.jmp.get(pc)
+            if j is None:
+                if pc in self.tr.note:
+                    out.append(('stmt', pc))
+                    self.used.add(pc)
+                pc += 1
+                continue
+            op, t = j
+            if op == 0x1A and pc < t <= hi:
+                links, sel = self.chain(pc, hi)
+                if self.is_switch(links, hi):
+                    node, pc = self.switch(links, sel, hi)
+                    out.append(node)
+                    continue
+            if op in (0x19, 0x1A) and pc < t <= hi:
+                node, pc = self.branch(pc, t, hi, loop, sw)
+                out.append(node)
+                continue
+            if op == 0x18:
+                if sw and t == sw[0]:
+                    out.append(('word', 'break'))
+                    self.used.add(pc)
+                    pc += 1
+                    continue
+                if sw and t in sw[1]:
+                    out.append(('word', '// falls through'))
+                    self.used.add(pc)
+                    pc += 1
+                    continue
+                if loop and t == loop[0]:
+                    out.append(('word', 'continue'))
+                    self.used.add(pc)
+                    pc += 1
+                    continue
+                if loop and t == loop[1]:
+                    out.append(('word', 'break'))
+                    self.used.add(pc)
+                    pc += 1
+                    continue
+                if t == hi:              # a jump to the end of this block is
+                    self.used.add(pc)    # the fall-through an `if` arm ends on
+                    pc += 1
+                    continue
+            out.append(('stmt', pc))     # not placed, so the goto stays
+            self.used.add(pc)
+            self.residual += 1
+            pc += 1
+        return out
+
+    def branch(self, pc, t, hi, loop, sw=None):
+        """A conditional jump forward is an `if`, and the instruction before
+        its target is an `else` jump when it goes forward past it - unless it
+        is the `break` of an enclosing loop or `switch`, which lands past the
+        target too and means something else entirely."""
+        cond = self.tr.cond.get(pc, '?')
+        tail = self.jmp.get(t - 1)
+        self.used.add(pc)
+        if (tail and tail[0] == 0x18 and t - 1 > pc
+                and t < tail[1] <= hi
+                and not (loop and tail[1] in loop)
+                and not (sw and (tail[1] == sw[0] or tail[1] in sw[1]))):
+            self.used.add(t - 1)
+            return ('if', cond, self.body(pc + 1, t - 1, loop, sw),
+                    self.body(t, tail[1], loop, sw)), tail[1]
+        return ('if', cond, self.body(pc + 1, t, loop, sw), None), t
+
+    def loop(self, h, end):
+        """`[h, end]` is a loop and `end` is the jump back to `h`."""
+        op0, a0, a2, _ = fields(self.f.code[h][1])
+        self.used.add(end)
+        if op0 == 0x33:                                  # foreach
+            leave = self.jmp[h][1]
+            self.used.update((h, h + 1))
+            return ('foreach', self.local(a2, h + 2), self.local(a2 + 1, h + 2),
+                    self.tr.r(a0),
+                    self.body(h + 2, end, (h, leave))), leave
+        leave = end + 1
+        for pc in range(h, end):                         # the test at the top
+            j = self.jmp.get(pc)
+            if j and j[0] in (0x19, 0x1A) and j[1] == leave:
+                self.used.add(pc)
+                return ('while', self.tr.cond.get(pc, '?'),
+                        self.body(pc + 1, end, (h, leave))), leave
+        if self.jmp[end][0] in (0x19, 0x1A):             # the test at the foot
+            return ('dowhile', self.tr.cond.get(end, '?'),
+                    self.body(h, end, (h, leave))), leave
+        return ('forever', self.body(h, end, (h, leave))), leave
+
+    # -- switch ------------------------------------------------------------
+
+    def chain(self, pc, hi):
+        """A run of tests of one register against constants, each jumping to
+        the next. This is what a `switch` compiles to - and two links of it
+        are also what an `else if` compiles to, so the caller asks for three
+        before calling it one."""
+        links, sel, p = [], None, pc
+        while p is not None and p < hi:
+            j = self.jmp.get(p)
+            if not (j and j[0] == 0x1A and p < j[1] <= hi):
+                break
+            got = self.tr.eq.get(p - 1) if p else None
+            if got is None or (sel is not None and got[0] != sel):
+                break
+            sel = got[0]
+            links.append((p, j[1], got[1]))
+            p = None
+            for k in range(j[1], hi):        # what follows the target is the
+                if k in self.jmp:            # next test, or a case body. a
+                    p = k                    # jump carries a statement too,
+                    break                    # so it has to be asked first
+                if k in self.tr.note:
+                    break
+        return links, sel
+
+    def is_switch(self, links, hi) -> bool:
+        """A chain of tests is a `switch` and not an `else if` when one of its
+        arms jumps **into another arm's body**, past that arm's own test.
+
+        Squirrel compiles a case's fall-through as a jump to the next case's
+        body, and emits it even when the case ended in `break` - which is why
+        a `switch` shows two consecutive `_OP_JMP` where an `else if` shows
+        one. Nothing else on the disc produces that, because the language has
+        no `goto`, so this is a discriminator and not a threshold: the first
+        one written here was "three links or more", and it read a two-case
+        `switch` in `sfQuestDemoInit` as a branch and left its `break` behind.
+        """
+        if len(links) < 2:
+            return False
+        bodies = {p + 1 for p, _, _ in links[1:]}
+        for k in range(links[0][0], links[-1][1]):
+            j = self.jmp.get(k)
+            if j and j[0] == 0x18 and j[1] in bodies:
+                return True
+        return False
+
+    def switch(self, links, sel, hi):
+        """`links` is `[(test pc, next test, case value)]`.
+
+        A case body runs from its own test to the next one. The jump that
+        ends it is a `break` when it leaves the whole statement and a
+        **fall-through** when it lands in the next case's body - which is the
+        thing no `if`/`else` ever does, and the reason this has to be read as
+        a `switch` rather than a chain of branches."""
+        last = links[-1][1]
+        end = last
+        for k in range(links[0][0], last):
+            j = self.jmp.get(k)
+            if j and j[0] == 0x18 and end < j[1] <= hi:
+                end = j[1]
+        sw = (end, {p + 1 for p, _, _ in links} | {last})
+        cases = []
+        for p, nxt, value in links:
+            self.used.add(p)
+            cases.append((value, self.trim(self.body(p + 1, nxt, None, sw))))
+        default = (self.trim(self.body(last, end, None, sw))
+                   if last < end else None)
+        return ('switch', sel, cases, default), end
+
+    @staticmethod
+    def trim(nodes):
+        """Squirrel emits a case's fall-through jump even when the case ended
+        in `break`, so the second of the two is unreachable."""
+        while (len(nodes) >= 2 and nodes[-1] == ('word', '// falls through')
+               and nodes[-2] == ('word', 'break')):
+            nodes.pop()
+        return nodes
+
+    def local(self, reg: int, pc: int) -> str:
+        """The author's name for a register, at one instruction."""
+        for name, pos, start, stop in self.f.local:
+            if pos == reg and start <= pc <= stop:
+                return name
+        return 'r%d' % reg
+
+    # -- rendering ---------------------------------------------------------
+
+    def render(self, nodes=None, depth: int = 0, out=None) -> list:
+        out = [] if out is None else out
+        pad = '    ' * depth
+        for n in (self.tree if nodes is None else nodes):
+            if n[0] == 'stmt':
+                out.append(pad + self.tr.note.get(n[1], ''))
+            elif n[0] == 'word':
+                out.append(pad + n[1])
+            elif n[0] == 'if':
+                out.append('%sif (%s) {' % (pad, bare(n[1])))
+                self.render(n[2], depth + 1, out)
+                els = n[3]
+                while els is not None:
+                    # An `else` holding nothing but an `if` is an `else if`,
+                    # which is also how a `switch` comes back.
+                    if len(els) == 1 and els[0][0] == 'if':
+                        out.append('%s} else if (%s) {'
+                                   % (pad, bare(els[0][1])))
+                        self.render(els[0][2], depth + 1, out)
+                        els = els[0][3]
+                        continue
+                    out.append(pad + '} else {')
+                    self.render(els, depth + 1, out)
+                    break
+                out.append(pad + '}')
+            elif n[0] == 'switch':
+                out.append('%sswitch (%s) {' % (pad, bare(n[1])))
+                for value, arm in n[2]:
+                    out.append('%s  case %s:' % (pad, value))
+                    self.render(arm, depth + 1, out)
+                if n[3] is not None:
+                    out.append(pad + '  default:')
+                    self.render(n[3], depth + 1, out)
+                out.append(pad + '}')
+            elif n[0] == 'while':
+                out.append('%swhile (%s) {' % (pad, bare(n[1])))
+                self.render(n[2], depth + 1, out)
+                out.append(pad + '}')
+            elif n[0] == 'dowhile':
+                out.append(pad + 'do {')
+                self.render(n[2], depth + 1, out)
+                out.append('%s} while (%s)' % (pad, bare(n[1])))
+            elif n[0] == 'forever':
+                out.append(pad + 'while (true) {')
+                self.render(n[1], depth + 1, out)
+                out.append(pad + '}')
+            elif n[0] == 'foreach':
+                out.append('%sforeach (%s, %s in %s) {'
+                           % (pad, n[1], n[2], n[3]))
+                self.render(n[4], depth + 1, out)
+                out.append(pad + '}')
+        return out
 
 
 # --------------------------------------------------------------------------
@@ -618,7 +1031,19 @@ def _dump(f, indent: str, src: bool) -> None:
     first = f.line[0][0] if f.line else 0
     print('%sfunction %s(%s)   // %s:%d, %d registers'
           % (indent, f.name, ', '.join(f.param[1:]), f.src, first, f.stack))
-    if f.local and not src:
+    if src:
+        s = Structure(f, t)
+        for row in s.render():
+            print(indent + '    ' + row)
+        if s.residual:
+            print('%s    // %d jump%s not placed' % (indent, s.residual,
+                                                     '' if s.residual == 1
+                                                     else 's'))
+        for c in f.child:
+            print()
+            _dump(c, indent + '  ', src)
+        return
+    if f.local:
         print('%s  locals %s' % (indent, ', '.join(
             'r%d=%s' % (p, n) for n, p, _, _ in reversed(f.local))))
     for pc, (a1, w) in enumerate(f.code):
@@ -627,10 +1052,6 @@ def _dump(f, indent: str, src: bool) -> None:
             print('%sL%d:' % (indent, pc))
         head = ('%s  /* %d */' % (indent, ln[pc]) if pc in ln
                 else indent).ljust(len(indent) + 13)
-        if src:
-            if pc in t.note:
-                print(head + t.note[pc])
-            continue
         raw = '%02x %02x %02x %02x %8d' % (op, a0, a2, a3, signed(a1))
         print('%s%4d %s  %-12s %s'
               % (head, pc, raw, OPS.get(op, '%#04x' % op), t.note.get(pc, '')))
@@ -645,6 +1066,82 @@ def cmd_dump(root, name, src=False) -> int:
     print()
     _dump(q.root, '', src)
     return 0
+
+
+def cmd_struct(root, verbose=False) -> int:
+    """Does the jump graph go back into statements, on every function?
+
+    Squirrel has no `goto`, so the honest target is not "most" but **all**:
+    a jump this pass cannot place is a hole in the reading, and a statement
+    it steps over is worse, because the listing still looks like source."""
+    files = funcs = withj = clean = 0
+    residual = lost = 0
+    shapes = collections.Counter()
+    bad = []
+    for path, blob in collect(root):
+        try:
+            q = Psq(blob, path)
+        except PsqError:
+            continue
+        files += 1
+        for f in q.functions():
+            funcs += 1
+            s = Structure(f, Trace(f).run())
+            if not s.jmp:
+                continue
+            withj += 1
+            for node in _shapes(s.tree):
+                shapes[node] += 1
+            residual += s.residual
+            lost += len(s.lost)
+            if s.residual or s.lost:
+                bad.append((path, f.name, s.residual, len(s.lost)))
+            else:
+                clean += 1
+    print(f'{files} files, {funcs} functions, {withj} of them carrying a jump')
+    print(f'  structured with nothing left over   {clean} of {withj}')
+    print(f'  jumps not placed                    {residual}')
+    print(f'  statements stepped over             {lost}')
+    print()
+    print('  what the jumps turned into')
+    for k, v in shapes.most_common():
+        print(f'    {k:<12} {v}')
+    if bad:
+        print()
+        print(f'  {len(bad)} function{"" if len(bad) == 1 else "s"} left '
+              f'something behind')
+        for path, name, r, l in bad[:40 if verbose else 12]:
+            print(f'    {path}  {name}   {r} jump(s), {l} statement(s)')
+    return 0
+
+
+def _shapes(nodes):
+    """Every construct in a tree, so the census says what was rebuilt."""
+    for n in nodes:
+        if n[0] == 'switch':
+            yield 'switch'
+            for _, arm in n[2]:
+                yield from _shapes(arm)
+            if n[3] is not None:
+                yield from _shapes(n[3])
+        elif n[0] == 'if':
+            yield 'if/else' if n[3] else 'if'
+            yield from _shapes(n[2])
+            if n[3]:
+                yield from _shapes(n[3])
+        elif n[0] in ('while', 'dowhile'):
+            yield n[0]
+            yield from _shapes(n[2])
+        elif n[0] == 'forever':
+            yield 'while(true)'
+            yield from _shapes(n[1])
+        elif n[0] == 'foreach':
+            yield 'foreach'
+            yield from _shapes(n[4])
+        elif n[0] == 'word':
+            yield n[1]
+        elif n[0] == 'stmt':
+            pass
 
 
 def cmd_api(root) -> int:
@@ -1038,6 +1535,8 @@ def main() -> int:
         return cmd_dump(rest[0], rest[1])
     if cmd == 'src':
         return cmd_dump(rest[0], rest[1], True)
+    if cmd == 'struct':
+        return cmd_struct(rest[0], len(rest) > 1)
     if cmd == 'xref':
         return cmd_xref(rest[0])
     if cmd == 'api':

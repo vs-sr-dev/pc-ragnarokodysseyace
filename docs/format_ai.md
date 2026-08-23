@@ -68,6 +68,10 @@ do not — which is allowed, because the selector normalises. The script proves
 that: `prt_select` computes `correct = 10000.0 / total` before it picks, and
 an action equal to `getLastActId()` has its weight passed through
 `getSelRevise` first, so a monster is biased away from repeating itself.
+Since session 21 that function prints as its own source — three `while` loops,
+the normalisation, the roll, and a Japanese fallback line that says *it was
+not selected* — so this paragraph can be read off it instead of reconstructed.
+See [`format_psq.md`](format_psq.md).
 
 ## `SelectScript.dat` and `ProwlScript.dat` — the rules
 
@@ -103,6 +107,37 @@ and this function is the reference implementation of the converted form.
 Every term dispatches to one host call, and `cond` is the `0x8000` flag —
 the function ends `ret = (ret == cond)`.
 
+**Since session 21 it prints as its own source.** `psq.py src` rebuilds
+control flow, so the function that this table was read out of by correlation
+now comes back as the `switch` it was written as, and the table can be checked
+against it line by line rather than inferred from call order. It also makes
+one row visible as the author wrote it: **terms 10 to 17 share a single case**,
+falling through to one body that calls `getTimeFromID(term)` and keys the
+timer on the term's own id — which is why the eight of them are one row here
+and not eight. See [`format_psq.md`](format_psq.md).
+
+```
+      case 10:
+        // falls through
+      ...
+      case 17:
+        local time = getTimeFromID(term)
+        if ((time == 0) || (time >= param)) {
+            ret = true
+        }
+        break
+      case 119:
+        local time = getTimeFromID(term)
+        if (time >= param) {
+            ret = true
+        }
+        break
+```
+
+The `||` in there is a fold the same session added: unfolded, that line
+printed as a test of `time >= param` alone, and `time == 0` — the case that
+makes an unstarted timer pass — was not in the listing at all.
+
 ```
 op     id   term            reads                     host call
 0x001    1  always          true
@@ -112,7 +147,7 @@ op     id   term            reads                     host call
 0x007    7  players         >= b                      getPlayerCount
 0x008    8  chance          rand < b percent          getRand
 0x009    9  ai_type         == b                      getAIType
-0x00a-11 10-17 act_time1-8  >= b seconds              getTimeFromID
+0x00a-11 10-17 act_time1-8  == 0 or >= b seconds      getTimeFromID
 0x012   18  boss_time       <= b seconds              getBossTime
 0x013   19  no_zako         no other zako alive       getOtherZakoCount
 0x014   20  boss_target     the target is boss b      isBossToTarget

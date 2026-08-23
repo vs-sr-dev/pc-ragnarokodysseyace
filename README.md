@@ -26,6 +26,23 @@ had reason to make while both were only being read. And a `borderline` is a
 closed loop - 105 of 145 stages - which had been an open question since
 session 8.
 
+Session 21 also gave the scripts their shape back. `psq.py src` used to print
+control flow as labels and `goto`; it now rebuilds `if`, `else`, `switch`,
+`while`, `foreach`, `break` and the short-circuit operators, and the number
+that says the reading is right is that **nothing is left over**. Squirrel has
+no `goto`, so every jump came out of a construct and "most of them" would not
+have been a result: **2,753 of 2,753 functions that carry a jump structure
+with 0 jumps unplaced and 0 statements stepped over**. What separates a
+`switch` from an `else if` turns out to be a jump no `if` ever makes - a case
+falls through into the *next case's body*, past its test - and a first
+discriminator that counted links instead stranded 100 jumps in 30 two-case
+switches. The count is what said so. It also exposed two holes that had been
+invisible: `a && b` was printing as a branch on `b` alone, and a liveness rule
+that gave up at the first jump was dropping **3,004 statement calls**, most of
+them the last action of an `if` arm. Both are fixed, and the AI's term
+dispatch and its weighted action selector now read as the source they were
+written as. See [the script layer](docs/format_psq.md).
+
 Session 21 wrote the fight down. [The combat
 loop](docs/combat_loop.md) traces one hit from the frame it fires to the
 number that comes off a health bar, through eight files, and says at each step
@@ -135,6 +152,7 @@ ELBN parameters  ->      707 files, 318 names   tools/elbn.py   0 errors
                        523 of 523 textures named in the pac beside them
   the state table->       89 files, count x stride closing on every one
 Squirrel script  ->    3,011 files, 315k insns tools/psq.py    0 errors
+  control flow   ->    2,753 of 2,753 functions structured, 0 jumps left over
   engine API     ->      285 native functions  named and described
   their arguments->   10,787 message ids, 1,220 motion ids, every cue id
                                                  resolving in its own table
@@ -334,7 +352,9 @@ python tools/anmcmd.py shapes <dir>          what `flag` says the three vectors 
 
 python tools/psq.py check|list <dir>          the Squirrel bytecode
 python tools/psq.py dump|src <dir> <name>    one file, disassembled or as
-                                             reconstructed statements
+                                             reconstructed source
+python tools/psq.py struct <dir>             does every jump go back into a
+                                             statement? all 20,032 of them do
 python tools/psq.py api|calls <dir> [glob]   the 285 host functions, with the
                                              constants each argument is handed
 python tools/psq.py sites <dir> <glob>       the call sites themselves

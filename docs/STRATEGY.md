@@ -87,7 +87,7 @@ Phase 3.
 | `ELBN` params | 707 | ✅ **solved** | [`format_elbn.md`](format_elbn.md) — the named-parameter container, 318 names; `objbin.bin` and `trace_par.bin` read |
 | `CNOM` motion | 3,043 | ✅ **solved** | [`format_cnom.md`](format_cnom.md) — 3.0M keys, quaternion rotations, bound to skeletons by name |
 | `CMTM` material | 91 | ✅ **solved** | [`format_cnom.md`](format_cnom.md) — `CNOM` with scalars; animates material colour |
-| `.psq` / `.cnut` | 3,011 | ✅ **solved** | [`format_psq.md`](format_psq.md) — **Squirrel 2.2 bytecode**; 11,232 functions decompile with their own names |
+| `.psq` / `.cnut` | 3,011 | ✅ **solved** | [`format_psq.md`](format_psq.md) — **Squirrel 2.2 bytecode**; 11,232 functions decompile with their own names, and all 20,032 jumps back into `if`/`switch`/`while` |
 | `.anmcmd` | 2,053 | ✅ **read** | [`format_anmcmd.md`](format_anmcmd.md) — the event lists; the hit record read and bound to the skeleton, 22 of 52 opcodes correlated |
 | `.mkc` | 2,690 | ✅ **solved** | [`format_mkc.md`](format_mkc.md) — the presentation track: 19,724 records, every sound reference naming a cue, and its emitter a place on the body |
 | `.CTXT` | 1,151 | ✅ **solved** | plain text: hit capsules and springs, bound to a bone through the model's locator table — which `.mkc` addresses too; see [`format_cmdl.md`](format_cmdl.md) |
@@ -222,6 +222,13 @@ milestone — *"a stage runs"* — needs a Squirrel VM, the 285 native functions
 stubbed, and nothing else that is not already read. **Session 18 wrote down
 what each of them does**, including the `suspend` protocol the host has to
 implement to resume a blocked script, so the stubs have specifications.
+
+**Session 21 finished the reading half of it.** The scripts now come back as
+source rather than as jump tables — 2,753 of 2,753 functions structured with
+nothing left over — so the phase machine a cutscene runs on, the AI's term
+dispatch and its weighted action selector can be read directly instead of
+reconstructed. Nothing between here and milestone 2 is a reading problem any
+more; what is left is the VM and the stubs.
 
 **As of session 12 the third has a monster that can act.** The AI's condition
 vocabulary, its action tables and its parameters are read, and an action id

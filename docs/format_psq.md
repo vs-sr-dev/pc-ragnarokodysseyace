@@ -145,13 +145,13 @@ function demoInit()
     setDemoObiHeight(50, 10)
     initDemoTelop(448, 332)
     cfSetCameraType(4, 0, 0)
-    if (!(bgmCueA != -1)) goto L31
-    cfSndPlayBGM(0, bgmCueA, 0)
+    if (bgmCueA != -1) {
+        cfSndPlayBGM(0, bgmCueA, 0)
+    }
 ```
 
-Control flow is printed as labels and `goto`, not rebuilt into `if`/`while`.
-That is a deliberate limit: the jumps are recovered exactly and the structure
-is not guessed at.
+**Control flow is rebuilt too, and all of it.** See *The jumps go back into
+statements* below.
 
 The comments are in the clear too. `quest.cpk/q00101.pac/010_01_01.psq` is
 three functions long and one of them is
@@ -164,6 +164,150 @@ function sfQuestInit()
 ```
 
 — "set the flag for the encyclopedia", with the global flag number beside it.
+
+## The jumps go back into statements, all of them
+
+*Session 21.* `src` used to print control flow as labels and `goto`, which
+this document called a deliberate limit. It is not one any more.
+`psq.py struct` measures the reconstruction, and the measurement is the point.
+
+### Why "most of them" would not have been a result
+
+**Squirrel has no `goto`.** There is no statement in the language that emits a
+free jump, so every one of the 20,032 jumps on this disc came out of an `if`,
+a loop, a `break`, a `continue`, a `switch` or a short-circuit operator. A
+reader that places 95% of them has not done well; it has found a construct it
+does not understand and is hiding it behind a label. So the target is **all**,
+and what a run prints is the shortfall:
+
+```
+3011 files, 11232 functions, 2753 of them carrying a jump
+  structured with nothing left over   2753 of 2753
+  jumps not placed                    0
+  statements stepped over             0
+
+  what the jumps turned into
+    if           5068
+    if/else      3483
+    break        1761
+    switch       248
+    // falls through 203
+    while        34
+    foreach      11
+    dowhile      4
+```
+
+The second counter is the one that catches the subtler failure. A walk that
+steps over an instruction loses a statement, and the listing still reads like
+source - so `Structure` records every pc it accounts for and subtracts, and
+`statements stepped over` is what is left. It has been 0 since the first run
+that placed every jump, and while jumps were still being left behind it was 0
+as well, which is what made the residual count trustworthy.
+
+**The loops are almost all not there.** 49 backward jumps on the whole disc,
+against 19,983 forward ones: the cutscene scripts are linear and the AI is
+table-driven, so what the structurer mostly does is nest branches. The 49 are
+19 `while` with a test at the top, 13 walks over `vargv`, 11 `foreach` and a
+handful with the test at the foot.
+
+### `&&` and `||` are expression, and unfolding them lost an operand
+
+`_OP_AND` and `_OP_OR` carry a jump, but it only skips the right-hand operand:
+the left one is already in the register and the jump is what makes the
+short-circuit short. They are folded in `Trace`, one level below the
+structurer, by remembering `(merge pc, register, left operand)` and completing
+the expression on arrival - innermost first, so `a && b && c` comes back
+nested rather than flattened.
+
+This was not a tidying pass. Printed as control flow, the pair
+
+```
+6  AND  r3, +6      if (!r3) goto L13
+13 JZ   r3, +28     if (!(cfGetGlobalFlag(650) == 0)) goto L42
+```
+
+reads as a branch on `cfGetGlobalFlag(650) == 0` alone, and the
+`counter == 12000` that `r3` was already holding is **silently gone from the
+listing**. It is one statement in `sfSignalCall`, and it changes what the
+script says. There are 2,635 of these on the disc, 1,832 `&&` and 803 `||`.
+
+### A `switch` is told from an `else if` by a jump no `if` ever makes
+
+Both compile to a chain of tests of one register against constants, each
+jumping to the next, so counting the links does not separate them. What
+separates them is what a case does when it *falls through*: it jumps into the
+next case's **body**, past that case's own test. Nothing else does that,
+because there is no `goto` to do it with.
+
+Squirrel emits that fall-through jump for every case, including the ones that
+ended in `break` - so a `switch` case shows two consecutive `_OP_JMP` where an
+`else if` arm shows one, and the second is unreachable:
+
+```
+28 JMP -> L56     the break, out of the whole statement
+29 JMP -> L43     the fall-through, into case 2's body - dead, after a break
+```
+
+The first discriminator written here was *three links or more*, on the
+grounds that two links are also an `else if`. It cost 100 stranded jumps in
+30 functions, all of them two-case switches like `sfQuestDemoInit`'s, and the
+count is what said so. The rule above leaves none.
+
+A `switch` on a cutscene's phase counter is what most of the 248 are, and it
+is the shape of every `demoUpdate` on the disc:
+
+```
+function demoUpdate()   // 010_01_01.psq.ppcut:1680, 9 registers
+    local frameA = getDemoFrame()
+    switch (demoPhase) {
+      case 0:
+          setBlackFade(5, 0)
+          demoPhase++
+          // falls through
+      case 1:
+          if (frameA[0] >= 120) {
+              if (90 != 1) {
+                  startDemoTelop(448, 332, 1, 15)
+                  telopLife = 90
+              }
+              demoPhase++
+          }
+          break
+      case 2:
+          telopLife--
+          if (telopLife <= 0) {
+              startDemoTelop(448, 332, 0, 45)
+              demoPhase++
+          }
+          break
+      ...
+    }
+    return
+```
+
+The `if (90 != 1)` is the preprocessor showing through, and it is the same
+thing this document already noted: the `.ppcut` folded nothing, so a macro
+argument arrives as a constant compared against a constant.
+
+### Structuring the flow exposed a hole in the liveness rule
+
+A call whose result nothing reads is a statement; a call whose result is read
+is an expression, and `src` decides which by asking whether the register is
+live afterwards. The rule that did the asking walked forward from the call and
+gave up at the first jump it met - *control flow: assume it is* - which made
+**a call at the end of a block always look live**, and dropped it.
+
+That is 3,004 statement calls across the disc, most of them the last action of
+an `if` arm in a cutscene, and it stayed invisible for as long as the arm's
+own end was printed as a `goto` and nobody was reading the arm as a block.
+The structurer made the arms into blocks, and the empty ones were the tell:
+`print_root_table`'s `foreach` came out with no body at all.
+
+The fix is the ordinary one, and the structurer is what made it available:
+**backward dataflow to a fixed point over the jump graph**, which the same
+jump fields already describe. `writes()` is the mirror of the existing
+`reads()`, `successors()` is the graph, and `liveness()` is twelve lines. The
+`foreach` body came back, and the census did not move: still 2,753 of 2,753.
 
 ## Two vocabularies: 296 script names and 291 engine names
 
@@ -299,9 +443,8 @@ on one side of that border and unread on the other.
 
 ## What is open
 
-- **control flow is not structured.** `src` prints labels and `goto`. Turning
-  the jump graph back into `if`/`else`/`while`/`switch` is ordinary work and
-  nobody needs it yet;
+- ~~**control flow is not structured.**~~ **Done in session 21** - see above.
+  0 of 20,032 jumps left over;
 - **the `.ppcut` preprocessor folded nothing.** `010_01_01.psq` contains
   `if (90 != 1)` as two `_OP_LOADINT` and a compare, and `setDemoID` is called
   with `((3000 + 10) + 0)` computed at runtime. So the constants in the

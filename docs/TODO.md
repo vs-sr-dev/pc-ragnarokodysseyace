@@ -5,48 +5,38 @@
 
 ---
 
-# Next session — the script's shape, and Milestone 2
+# Next session — Milestone 2 needs a VM, and nothing else read
 
-Session 21 wrote **[`combat_loop.md`](combat_loop.md)**, which had been item 1
-for three sessions. It closes that item and it did what the entry predicted:
-laying the chain out end to end named seven things and corrected one. Four
-things to carry:
+Session 21 did two things: it wrote **[`combat_loop.md`](combat_loop.md)**,
+which had been item 1 for three sessions, and it **structured the `.psq`
+control flow**, which had been item 2 for two. Both are closed. What to carry:
 
-- **the hit level is three values, and two tables agree about it.**
-  `se_hitlevel_tbl`'s fifteen player entries **tile cue ids 1000..1089
-  exactly**, six apart, and the six are `S M L` then `CS CM CL` — three sizes
-  and a critical flag, so `cue = base + size + 3 * critical`.
-  `eff_hitlevel_tbl` carries `(level, kind)` in its last word with levels
-  `{0,1,2}`, which corrects the *"kind × 10 + level"* reading its ids used to
-  get. **What computes the level is not on the disc**;
-- **the player's attack is not in its JSON.** `atk`, `def` and `hp` occur in 82
-  actors and all 82 are monsters. The attack is `it_db_weapon.bin` column 3,
-  and column 5 is the weapon kind — six values, seventy-five rows each, 450
-  rows, an exact partition. **The defence and the hit points are still not
-  located**;
-- **a boss takes no hit-stop.** `dmg_stop_mul` is zero on exactly the 23 `b*`
-  and non-zero on exactly the 59 `z*`, 82 of 82, and no file says so;
-- **the tension curves are per class.** All four share their thresholds across
-  the six and three of the four do not share their multipliers — and three of
-  them cut the assassin in the same direction by about half. `format_elbn.md`
-  said they were identical; `combat.py tension` was written to reproduce that
-  figure and refuted it on its first run.
+- **the scripts come back as source.** `psq.py src` rebuilds `if`, `else`,
+  `switch`, `while`, `foreach`, `break` and the short-circuit operators, and
+  **2,753 of 2,753 functions that carry a jump structure with 0 jumps unplaced
+  and 0 statements stepped over**. Squirrel has no `goto`, so the target was
+  all of them and the shortfall is the measurement: `psq.py struct`;
+- **a `switch` is told from an `else if` by a jump no `if` ever makes** — a
+  case falls through into the *next case's body*, past its own test. A first
+  discriminator that counted chain links instead left 100 jumps stranded in 30
+  two-case switches, and the count is what said so;
+- **two holes were invisible until the arms became blocks.** `a && b` printed
+  as a branch on `b` alone and lost the left operand, on 2,635 sites; and a
+  liveness rule that gave up at the first jump dropped **3,004 statement
+  calls**. Both fixed — the second by real backward dataflow over the jump
+  graph, which the structurer is what made available;
+- **the hit level is three values and two tables agree**, `atk` is not in a
+  player's JSON, a boss takes no hit-stop, and the tension curves are per
+  class. See [`combat_loop.md`](combat_loop.md) and its ledger of nine.
 
-The ledger at the end of [`combat_loop.md`](combat_loop.md) is the list of what
-a working loop still needs: **nine items, four of them ordinary disc work and
-five of them one function each inside the EBOOT**. Items 4, 5 and 7 below are
-three of the four readable ones.
+### 1. Milestone 2 — *"a stage runs"*.
 
-### 1. Structure the `.psq` control flow, and then Milestone 2.
-
-`psq.py src` prints labels and `goto`. Rebuilding `if`/`while`/`switch` is
-ordinary work and it is what is left between the disassembly and source, now
-that [`format_api.md`](format_api.md) makes the 285 native calls readable
-prose. **Milestone 2 is specified rather than described**: *"a stage runs"*
-needs a Squirrel VM — a dependency, not a project — the 285 functions stubbed
-and the `suspend` resume. Nothing else has to be read first. **Do this one
-first**; it has been item 2 for two sessions and item 1 has now cleared out of
-its way.
+Now the only thing in front of it, and no longer a reading problem.
+`010_01_01.psq` decompiles to readable Squirrel, its triggers name functions
+in it, and [`format_api.md`](format_api.md) specifies all 285 host functions
+including the `suspend` protocol. What it needs is a **Squirrel 2.2 VM** — a
+dependency, not a project — the 285 stubbed against
+[`engine/`](../engine)'s world, and the resume. **Do this one first.**
 
 ### 2. What turns a trail on.
 
@@ -68,13 +58,14 @@ never sees that; `trace_par.bin`'s `+0x18` is the newest example, where 25 of
 
 ### 4. The player's defence and hit points, and the rest of the `ECH` columns.
 
-Ledger item 2, and it merges with the item this list has carried for four
-sessions. `it_db_equip.bin` is 146 rows against 146 names with nineteen
-unnamed columns and column 16 (0..117) the only defence-shaped one; the reward
-side of a quest pac is `item_reward{,_multi,_region}.bin`, `weapon_decost.bin`,
-`destructible.bin`, `mapexception.bin` and the `q<NNNNN>.bin` header. The
-`CCLS` surface codes 1 to 13 are the other well-posed one, and the pose layer
-says where a foot is, so the triangle under it is a lookup away.
+[`combat_loop.md`](combat_loop.md) ledger item 2, and it merges with the item
+this list has carried for four sessions. `it_db_equip.bin` is 146 rows against
+146 names with nineteen unnamed columns and column 16 (0..117) the only
+defence-shaped one; the reward side of a quest pac is
+`item_reward{,_multi,_region}.bin`, `weapon_decost.bin`, `destructible.bin`,
+`mapexception.bin` and the `q<NNNNN>.bin` header. The `CCLS` surface codes 1
+to 13 are the other well-posed one, and the pose layer says where a foot is,
+so the triangle under it is a lookup away.
 
 ### 5. Two joins the combat ledger names and the disc can answer.
 
@@ -188,8 +179,9 @@ closes, whose eleven interesting kinds `eff_hitlevel_tbl` already names.
   and [`hitbox.py`](../engine/hitbox.py).
 - `.psq`: `_OP_COMPARITH`'s packed `_arg1`, exercised three times on the whole
   disc and read out of the interpreter rather than confirmed; and the `.ppcut`
-  macro names, which the preprocessor consumed. See
-  [`format_psq.md`](format_psq.md).
+  macro names, which the preprocessor consumed. **Control flow is no longer
+  among them** — 2,753 of 2,753 functions structure with nothing left over.
+  See [`format_psq.md`](format_psq.md).
 - The script interface: about a dozen of the 285 whose argument roles the disc
   does not separate — `cfSetCameraType`'s five camera types, the second
   argument of the `cfSetCmr*` family, `cfDialogParamAll`'s seven numbers,
@@ -264,7 +256,47 @@ closes, whose eleven interesting kinds `eff_hitlevel_tbl` already names.
 
 # Log
 
-## Session 21 — 2026-08-23
+## Session 21b — 2026-08-23
+
+- **The `.psq` control flow is structured, and all of it.** `psq.py src` no
+  longer prints labels and `goto`: it rebuilds `if`, `else`, `switch`,
+  `while`, `do..while`, `foreach`, `break` and the short-circuit operators.
+  `psq.py struct` measures it over the disc — **2,753 of 2,753 functions that
+  carry a jump, 0 jumps not placed, 0 statements stepped over.** Squirrel has
+  no `goto`, so every jump came out of a construct and *most of them* would
+  not have been a result; the shortfall is the whole instrument.
+- **What the 20,032 jumps turned into**: 5,068 `if`, 3,483 `if/else`, 1,761
+  `break`, 248 `switch` with 203 fall-throughs, 34 `while`, 11 `foreach`, 4
+  `do..while`, plus the 2,635 `&&` and `||` folded a level down as
+  expression. **Only 49 jumps on the whole disc go backwards** — the cutscenes
+  are linear and the AI is table-driven.
+- **A `switch` is told from an `else if` by a jump no `if` ever makes.** Both
+  compile to a chain of tests of one register against constants; a `switch`
+  case falls through by jumping into the **next case's body**, past that
+  case's own test, and Squirrel emits that jump even after a `break` — so a
+  `switch` shows two consecutive `_OP_JMP` where an `else if` shows one. The
+  first rule written was "three links or more"; it left 100 jumps stranded in
+  30 two-case switches, and the residual count is what said so.
+- **Two holes were invisible until the arms became blocks.** `_OP_AND` and
+  `_OP_OR` printed as control flow, so `a && b` read as a branch on `b` alone
+  and **the left operand was silently gone from the listing**, on 2,635 sites.
+  And the liveness rule gave up at the first jump it met, which made a call at
+  the end of a block always look live and dropped **3,004 statement calls** —
+  most of them the last action of an `if` arm. `print_root_table`'s `foreach`
+  came out with an empty body, which was the tell.
+- **The fix for the second is what the first made possible**: real backward
+  dataflow to a fixed point over the jump graph, which the same jump fields
+  already describe. `writes()` is the mirror of `reads()` and `liveness()` is
+  twelve lines. Also fixed on the way: `_OP_COMPARITHL` was declaring one
+  read where it makes two, so a call on the right of `+=` printed twice.
+- **The AI now reads as its author wrote it.** `check_converted_xml_term` is
+  the `switch` [`format_ai.md`](format_ai.md) reconstructed by correlation,
+  and `prt_select` is the weighted action selector with its three loops, its
+  10000 normalisation and a Japanese fallback line. Terms 10 to 17 are one
+  case falling through to `getTimeFromID(term)` — one row, not eight — and the
+  `||` fold restores the `time == 0` that made an unstarted timer pass.
+
+## Session 21a — 2026-08-23
 
 - **[`combat_loop.md`](combat_loop.md) exists**, which was item 1 for three
   sessions. One hit, from the frame it fires to the number that comes off a
@@ -1613,4 +1645,5 @@ closes, whose eleven interesting kinds `eff_hitlevel_tbl` already names.
 - `tools/arc.py` — `ARC`: 1,544 of 1,544 consistent, 13,820 entries, 13,798
   blocks each ending on its declared byte.
 - `docs/RECON.md`, `docs/STRATEGY.md`, `README.md`, `.gitignore` (BYOA).
+
 
