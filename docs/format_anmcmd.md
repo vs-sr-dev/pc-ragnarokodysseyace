@@ -416,6 +416,23 @@ The field is a **CRI Atom cue id in `sound.cpk/common.acb`**, which
 [`cpk.py`](../tools/cpk.py)'s `@UTF` reader already opens - an `.acb` is an
 `@UTF` table, so no new format had to be read to settle this.
 
+**It is a monster's field, and session 21 measured that.** Split the 6,193
+records by which side of the fight authored them and the two populations are
+complementary:
+
+```
+                 records   carry a cue   in 1000..1089
+  monster           5439          5245               0
+  player             754             7               0
+```
+
+**747 of the player's 754 records carry the sentinel.** The player's impact
+sound is not in the record at all: it is looked up at the moment of the hit
+from `se_hitlevel_tbl`, which allocates exactly the range 1000..1089 that no
+record on either side ever reaches. A monster's claw always sounds the same
+and a player's weapon does not. See [`combat_loop.md`](combat_loop.md) §1 and
+[`format_elbn.md`](format_elbn.md).
+
 941 of the 6,193 records carry 0 and 5,252 carry an id. **26 distinct ids are
 used and 25 of them name a cue**; the exception is 347, four times, in one
 monster's `z24_01_511`. Zero is a sentinel rather than a cue, and the disc says

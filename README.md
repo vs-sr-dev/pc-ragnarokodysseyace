@@ -10,7 +10,7 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-20 (2026-08-23). **Something runs, and now it has feet.** A capsule
+Sessions 1-21 (2026-08-23). **Something runs, and now it has feet.** A capsule
 with the game's own acceleration, run speed, turn rate and radius crosses the
 first field of the game in 405 frames - 13.5 seconds - without leaving the
 collision mesh, and walks 135 stages, 127 of them with the body on legal
@@ -25,6 +25,23 @@ and `<stage>.col` agree to a centimetre across 1,432 markers, a join nobody
 had reason to make while both were only being read. And a `borderline` is a
 closed loop - 105 of 145 stages - which had been an open question since
 session 8.
+
+Session 21 wrote the fight down. [The combat
+loop](docs/combat_loop.md) traces one hit from the frame it fires to the
+number that comes off a health bar, through eight files, and says at each step
+which numbers the disc gives and which it does not. It ends in a ledger of
+nine: four are ordinary disc work and five want the EBOOT, and each of the
+five is one function rather than a subsystem. Laying the chain out end to end
+paid the way that exercise usually does here - **the hit level turns out to
+be three values and two tables agree about it**, because
+`se_hitlevel_tbl`'s fifteen player entries tile the cue ids 1000..1089 exactly
+and the six above each base read `S M L` then `CS CM CL`, three sizes and a
+critical flag. **A boss takes no hit-stop**, on exactly the 23 `b*` files and
+none of the 59 `z*`. **The player's attack is not in its JSON at all** - it is
+column 3 of the weapon table, whose kind column partitions 450 rows into six
+classes of seventy-five. And the tool written to reproduce one of the
+document's own figures refuted it on its first run: the tension curves share
+their thresholds across the six classes and **not** their multipliers.
 
 Session 20 gave the blade a swoosh. `trace_par.bin` - 207 files, the second
 largest `ELBN` population and one nobody had a guess about - is **the weapon
@@ -149,6 +166,12 @@ CRI Atom audio   ->      274 banks, 7,756 waves tools/awb.py    0 errors
   decoding       ->    7,756 of 7,756 to WAV, and not one file encrypted
   a frame -> a wave->    7,592 of 7,608 .mkc references, the rest empty cues
 
+the combat loop  ->        8 files, 9 gaps     tools/combat.py
+  the hit level  ->       15 weapon kinds tiling cue ids 1000..1089 exactly
+  the impact cue ->      747 of 754 player records empty, 5,245 of 5,439 not
+  hit-stop       ->       23 of 23 bosses take none, 59 of 59 mobs do
+  the attack     ->      450 weapons, 6 kinds of 75, and none of it in a JSON
+
 a capsule runs   ->      135 stages walked   engine/run.py  127 clean
   one crossing   ->      405 frames over 010_01_01, 13.5 s at a run
   speed          ->     5.05 m/s achieved against 5.10 flat out
@@ -183,7 +206,9 @@ mercenary AI](docs/format_merc.md), [`.PTP`](docs/format_ptp.md),
 [`effect.bin`](docs/format_effect.md), [the quest
 tables](docs/format_quest.md),
 [`.mkc`](docs/format_mkc.md), [the sound banks](docs/format_awb.md),
-[the actor parameters](docs/params.md). What running it produced is in
+[the actor parameters](docs/params.md). How they fit together in a fight is
+[the combat loop](docs/combat_loop.md), which traces one hit end to end and
+ends in a ledger of what is still missing. What running it produced is in
 [milestone 1](docs/milestone_numbers.md) and [the pose](docs/pose.md), which
 now covers the hit volume as well as the foot. The
 plan is in
@@ -378,6 +403,12 @@ volume on the skeleton, and a driver that reports what comes out.
 
 ```
 python engine/run.py numbers <class json>          what the parameters produce
+python tools/combat.py hitlevel <dir>          the hit level, cues resolved
+python tools/combat.py cues|power <dir>       the hit record, by side
+python tools/combat.py weapons <dir>          the attack the JSON has not got
+python tools/combat.py stop|tension <dir>     the reaction, and what it earns
+python tools/combat.py all <dir>              every join in the combat loop
+
 python engine/run.py walk <stage dir> <class json> cross one stage with them
 python engine/run.py trace <stage> <json> <png>    draw the crossing
 python engine/run.py sweep <stage.cpk dir> <json>  cross every stage

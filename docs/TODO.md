@@ -5,78 +5,88 @@
 
 ---
 
-# Next session — the loop, on paper, and the script's shape
+# Next session — the script's shape, and Milestone 2
 
-Session 20 read `trace_par.bin` and `stobjbin.bin`, which are the second and
-third of the four `ELBN` populations. Four things to carry:
+Session 21 wrote **[`combat_loop.md`](combat_loop.md)**, which had been item 1
+for three sessions. It closes that item and it did what the entry predicted:
+laying the chain out end to end named seven things and corrected one. Four
+things to carry:
 
-- **`trace_par.bin` is the weapon trail**, 207 files, and both its names are
-  read. `ref_tbl` is two points in the space of a locator on the actor —
-  **351 of 357 non-zero ids resolve**, 156 of them to `node_r_weapon` — and
-  the points measure the blade: 0.74 m in each of the assassin's two hands,
-  1.80 m from a sword's guard to its tip, and two crossing segments for the
-  hammer's head. `par_tbl` is how the ribbon looks, and its first word is
-  **which texture in the same `trace.pac`, 523 of 523**. See
-  [`format_elbn.md`](format_elbn.md) and `elbn.py trace`;
-- **a packed colour's byte order is a per-format fact.** `trace_par.bin`'s are
-  `ARGB` where [`CMTM`](format_cnom.md)'s and the stage lights' are `RGBA`,
-  and the only thing that says so is the template pair `ff808080` fading to
-  `00808080`. Third format, third convention, nothing declaring it;
-- **`statusData` is in `stobjbin.bin` and not `objbin.bin`**, which is what
-  the vocabulary table said. Its header gives `(count, pointer, stride)` and
-  `count * stride` closes on all 89; the stride is 28 for a monster and 60 for
-  a class, the first 24 bytes are the same struct in both, and the id is
-  `16 * group + variant`. Which state each id is stays open;
-- **a `trace.pac` sits beside the `bowstring.pac`** the hunter's 25 bows ship,
-  and `bowstring_data`'s first 48 bytes are identical on all 25 while its
-  twelve `ARGB` colours are not. The string is shaped once and coloured per
-  bow.
+- **the hit level is three values, and two tables agree about it.**
+  `se_hitlevel_tbl`'s fifteen player entries **tile cue ids 1000..1089
+  exactly**, six apart, and the six are `S M L` then `CS CM CL` — three sizes
+  and a critical flag, so `cue = base + size + 3 * critical`.
+  `eff_hitlevel_tbl` carries `(level, kind)` in its last word with levels
+  `{0,1,2}`, which corrects the *"kind × 10 + level"* reading its ids used to
+  get. **What computes the level is not on the disc**;
+- **the player's attack is not in its JSON.** `atk`, `def` and `hp` occur in 82
+  actors and all 82 are monsters. The attack is `it_db_weapon.bin` column 3,
+  and column 5 is the weapon kind — six values, seventy-five rows each, 450
+  rows, an exact partition. **The defence and the hit points are still not
+  located**;
+- **a boss takes no hit-stop.** `dmg_stop_mul` is zero on exactly the 23 `b*`
+  and non-zero on exactly the 59 `z*`, 82 of 82, and no file says so;
+- **the tension curves are per class.** All four share their thresholds across
+  the six and three of the four do not share their multipliers — and three of
+  them cut the assassin in the same direction by about half. `format_elbn.md`
+  said they were identical; `combat.py tension` was written to reproduce that
+  figure and refuted it on its first run.
 
-### 1. The combat loop, on paper.
+The ledger at the end of [`combat_loop.md`](combat_loop.md) is the list of what
+a working loop still needs: **nine items, four of them ordinary disc work and
+five of them one function each inside the EBOOT**. Items 4, 5 and 7 below are
+three of the four readable ones.
 
-Third session on this list and it has not moved, while everything it needs has
-been described twice over. A hit is: an `.anmcmd` record placing a volume on a
-frame ([`hitbox.py`](../engine/hitbox.py)), against a monster's `col_hit`
-capsules; the capsule belongs to a `region_data`; the region carries a defence
-and six multipliers and hit points by `region_lv`; the actor's `.json` carries
-`atk`, the stagger thresholds and the status vectors; `s_tension_revise_*`
-says what the hit does to tension; and `se_hitlevel_tbl` and `eff_hitlevel_tbl`
-say what it sounds and looks like. Writing that down as one document would say
-exactly which numbers are still missing, and it is the cheapest way to find
-out. **Do this one first.**
-
-### 2. Structure the `.psq` control flow, and then Milestone 2.
+### 1. Structure the `.psq` control flow, and then Milestone 2.
 
 `psq.py src` prints labels and `goto`. Rebuilding `if`/`while`/`switch` is
 ordinary work and it is what is left between the disassembly and source, now
 that [`format_api.md`](format_api.md) makes the 285 native calls readable
 prose. **Milestone 2 is specified rather than described**: *"a stage runs"*
 needs a Squirrel VM — a dependency, not a project — the 285 functions stubbed
-and the `suspend` resume. Nothing else has to be read first.
+and the `suspend` resume. Nothing else has to be read first. **Do this one
+first**; it has been item 2 for two sessions and item 1 has now cleared out of
+its way.
 
-### 3. What turns a trail on.
+### 2. What turns a trail on.
 
 A weapon carries three `par_tbl` records and one `ref_tbl` entry to hang them
 on, so something outside the file picks between them — an `.anmcmd` or `.mkc`
 opcode, most likely, and thirty of `.anmcmd`'s fifty-two are still unread.
-That is a well-posed question aimed at the same unread opcodes item 4 asks
+That is a well-posed question aimed at the same unread opcodes item 3 asks
 about in general, which makes it the cheapest way in.
+
+### 3. The `.anmcmd` opcodes.
+
+Thirty of fifty-two. Session 17's lesson still applies — a selector byte
+inside a payload changes what the rest of it means, and counting occurrences
+never sees that; `trace_par.bin`'s `+0x18` is the newest example, where 25 of
+523 records mean something else. `.mkc` is down to six (`0805`, `0806`,
+`080c`, `080d`, `080f`, `0406`) and each has a file set that says something:
+`080f`'s 32 files are all `appear` or `die`, `0406`'s fifteen are all loops,
+`080c`'s 35 are all emotes. See [`format_mkc.md`](format_mkc.md).
+
+### 4. The player's defence and hit points, and the rest of the `ECH` columns.
+
+Ledger item 2, and it merges with the item this list has carried for four
+sessions. `it_db_equip.bin` is 146 rows against 146 names with nineteen
+unnamed columns and column 16 (0..117) the only defence-shaped one; the reward
+side of a quest pac is `item_reward{,_multi,_region}.bin`, `weapon_decost.bin`,
+`destructible.bin`, `mapexception.bin` and the `q<NNNNN>.bin` header. The
+`CCLS` surface codes 1 to 13 are the other well-posed one, and the pose layer
+says where a foot is, so the triangle under it is a lookup away.
+
+### 5. Two joins the combat ledger names and the disc can answer.
+
+`se_hitlevel_tbl`'s **third word**, 0 to 8 across the fifteen player entries
+and per class rather than global — it is what a weapon or a skill declares to
+pick its cue block, and it is *not* `it_db_weapon.bin` column 5, whose six
+values are a different space. `it_db_skill.bin` is the obvious other side.
+And **`ht_arrow_tbl`**, 42 records at a stride of 80 that the repeat period
+closes, whose eleven interesting kinds `eff_hitlevel_tbl` already names.
 
 ### Then
 
-4. **The `.anmcmd` opcodes.** Thirty of fifty-two. Session 17's lesson still
-   applies — a selector byte inside a payload changes what the rest of it
-   means, and counting occurrences never sees that; `trace_par.bin`'s `+0x18`
-   is the newest example, where 25 of 523 records mean something else.
-   `.mkc` is down to six (`0805`, `0806`, `080c`, `080d`, `080f`, `0406`) and
-   each has a file set that says something: `080f`'s 32 files are all `appear`
-   or `die`, `0406`'s fifteen are all loops, `080c`'s 35 are all emotes. See
-   [`format_mkc.md`](format_mkc.md).
-5. **Name the rest of the `ECH` columns.** What is left in a quest pac is the
-   reward side: `item_reward{,_multi,_region}.bin`, `weapon_decost.bin`,
-   `destructible.bin`, `mapexception.bin` and the `q<NNNNN>.bin` header. The
-   `CCLS` surface codes 1 to 13 are the other well-posed one, and the pose
-   layer says where a foot is, so the triangle under it is a lookup away.
 6. **The last two `ELBN` populations.** `stageparam.bin` is 154 files and only
    its lights are read; `mot_param.bin` is 60 and only its motion id is.
    `elbn.py records` is the instrument and it has now done three populations
@@ -149,17 +159,29 @@ about in general, which makes it the cheapest way in.
   [`format_quest.md`](format_quest.md).
 - `TXT`: what word 2 of a record selects; why attribute id 0 carries both RGBA
   colours and scale factors.
-- `params`: what records 1 and 2 of a player class are — record 1 is plainly a
-  buffed state but the disc never names it, and a search of all 25,288 messages
-  for "Fever" found nothing. Also the four unexplained elements of the `ab_*`
-  status vectors — **their order is settled**, since `isAbnormal(1, 3)` is the
+- `params`: what records 1 and 2 of a player class are — record 1 is plainly an
+  **empowered** state, and session 21 narrowed it: it zeroes `stiff`,
+  `stiff_dmg` and `stiff_act` as well as `stun_f`, so it takes no hit-stun at
+  all, and the only mechanic a class file has other machinery for is the one
+  its four `s_tension_*` tables fill the meter of. Record 2 changes four
+  locomotion fields and **the same four with the same values on all six**, so
+  it is a global movement state and not a class ability. The disc names
+  neither, and a search of all 25,288 messages for "Fever" found nothing. The
+  **player's `def` and `hp` are not on the disc yet**: `atk` is
+  `it_db_weapon.bin` column 3 and the other two are not located —
+  [`combat_loop.md`](combat_loop.md) ledger item 2. Also the four unexplained
+  elements of the `ab_*` status vectors — **their order is settled**, since `isAbnormal(1, 3)` is the
   player frozen and index 3 is `ab_frz`: [`format_api.md`](format_api.md).
   **`it_drop_break` is settled**: it is indexed by `region_data_brk`, the
   monster's breakable parts in order, and `region_lv` indexes the eight-slot
   arrays in `region_data`. Both in [`format_elbn.md`](format_elbn.md).
-- `.anmcmd`: thirty of the fifty-two opcodes; the unit of `+0x35`; why 554 of
-  the 2,053 name no motion; and opcode 10's effect id, which session 14 showed
-  resolves nowhere on the disc. **The hit record's geometry is settled** —
+- `.anmcmd`: thirty of the fifty-two opcodes; the unit of `+0x35`, which
+  [`combat_loop.md`](combat_loop.md) §5 narrows to two readings and gives the
+  measurement that separates them; why 554 of the 2,053 name no motion; and
+  opcode 10's effect id, which session 14 showed resolves nowhere on the disc.
+  **`+0x48` is settled and it is a monster's field** — 747 of the player's 754
+  records carry the sentinel and the player's impact sound is computed from
+  `se_hitlevel_tbl` instead. **The hit record's geometry is settled** —
   `flag` at `+0x01` is a shape, it says which vector is which, and session 19
   showed the offsets are turned by their bone. What is left of it is **what
   flag 4's three points bound**. See [`format_anmcmd.md`](format_anmcmd.md)
@@ -227,13 +249,75 @@ about in general, which makes it the cheapest way in.
   and `+0x1a`, and `bowstring_data`'s first 48 bytes, identical on all 25 bows
   and so carrying no evidence. `statusData` is read as records and **its ids
   are not named** — 99 of them, `16 * group + variant`, with no second
-  consumer on the disc. See [`format_elbn.md`](format_elbn.md).
+  consumer on the disc. **Both hit-level tables are read** and what they leave
+  is `se_hitlevel_tbl`'s **third word**, 0 to 8 across the fifteen player
+  entries, per class rather than global, and not `it_db_weapon.bin`'s weapon
+  kind; plus `eff_hitlevel_tbl`'s four identical `(2, id)` pairs, an axis this
+  build does not use. `ht_arrow_tbl` is 42 records at a stride of 80 that the
+  repeat period closes, columns unnamed. See
+  [`format_elbn.md`](format_elbn.md) and
+  [`combat_loop.md`](combat_loop.md) §6.
 - What the 14 empty `.cpk.patch` stubs would have overlaid, and whether a
   shipped title update exists that fills them.
 
 ---
 
 # Log
+
+## Session 21 — 2026-08-23
+
+- **[`combat_loop.md`](combat_loop.md) exists**, which was item 1 for three
+  sessions. One hit, from the frame it fires to the number that comes off a
+  health bar, through eight files, saying at each step which numbers the disc
+  gives and which it does not. It ends in a **ledger of nine**: four items are
+  ordinary disc work and five want the EBOOT, and each of the five is one
+  function rather than a subsystem. [`combat.py`](../tools/combat.py) is the
+  six joins behind it.
+- **The hit level is three values and two tables agree about it.**
+  `se_hitlevel_tbl`'s fifteen player entries are six apart and run 1000 to
+  1084, so they **tile the cue range 1000..1089 exactly** and 1090 is where
+  the monsters start; resolving the six against `common.acb` gives `S M L`
+  then `CS CM CL`, so `cue = base + size + 3 * critical`. The fifteen bases
+  are the fifteen weapon kinds — katar, somersault, mace, shield, holy,
+  godfist, drill, screw, arrow, staff, fire, gravity, thunder, ice, sword.
+- **`eff_hitlevel_tbl` carries its key in the open**, two `u16` `(level,
+  kind)` in the last word, levels `{0,1,2}` over all 48 records. That corrects
+  the *"weapon kind × 10 + hit level"* reading of its ids, which fits the
+  hunter and is contradicted by the other five classes.
+- **The player's impact sound is computed and the monster's is written down.**
+  747 of the player's 754 hit records carry the sentinel, 5,245 of the
+  monsters' 5,439 carry a cue, and **not one record on either side reaches
+  into 1000..1089**. A monster's claw always sounds the same and a player's
+  weapon does not. `format_anmcmd.md` had read `+0x48` as *the* impact sound;
+  it is a monster's field.
+- **`atk`, `def` and `hp` occur in 82 actors and all 82 are monsters.** The
+  player's attack is `it_db_weapon.bin` **column 3** and its weapon kind is
+  **column 5**, whose six values take **seventy-five rows each** — 450 rows,
+  an exact partition, pairing positionally with 450 names. The defence and the
+  hit points are still not located.
+- **A boss takes no hit-stop.** `dmg_stop_mul` is zero on exactly the 23 `b*`
+  and non-zero on exactly the 59 `z*`, 82 of 82. And the two families split as
+  giver and taker: `stop_mul` is a thousandth so its operand is damage, while
+  `dmg_stop_mul` is 1 so its operand is already frames.
+- **The tension curves are per class, and the tool caught the document.**
+  All four share their threshold column across the six and three of the four
+  do not share their multipliers; three cut the assassin in the same direction
+  by about half — 0.15 against the shield classes' 0.4, half the react rate,
+  and none of the 5.0/4.0 bonus above a full meter. `format_elbn.md` said
+  "identical across all six classes"; `combat.py tension` was written to
+  reproduce that line and refuted it on its first run.
+- **`cri` and `dmg_critical_factor` run opposite, rank for rank** — the
+  assassin crits most often and gains least, the warrior least often and gains
+  most, and the product varies by 1.8x where the rate varies by 3.3x.
+- **Record 1 of a player class zeroes `stiff`, `stiff_dmg` and `stiff_act`**
+  as well as `stun_f`, so it takes no hit-stun at all; record 2 changes four
+  locomotion fields and **the same four with the same values on all six**, so
+  it is a global movement state and not a class ability.
+- **The bow carries two falloff curves nobody else does**,
+  `ht_atk_revise_tbl` (stride 12) and `ht_react_revise_tbl` (stride 8), both
+  closed by the gap to the next array, both holding at or above 1 to half way
+  and then falling to a tenth on a 0..100 axis. The reaction falls off before
+  the damage does.
 
 ## Session 20 — 2026-08-23
 
@@ -1529,3 +1613,4 @@ about in general, which makes it the cheapest way in.
 - `tools/arc.py` — `ARC`: 1,544 of 1,544 consistent, 13,820 entries, 13,798
   blocks each ending on its declared byte.
 - `docs/RECON.md`, `docs/STRATEGY.md`, `README.md`, `.gitignore` (BYOA).
+

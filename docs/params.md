@@ -58,6 +58,28 @@ fields in all. Record 2 changes four movement fields, slightly.
 Record 1 is plainly a **buffed state**: faster, unstunnable, more resistant.
 Nothing in the file names it, and searching the game's text for a matching
 mechanic found nothing, so this document does not claim to know what it is.
+
+**Session 21 narrowed both records by diffing all six classes at once.**
+
+Record 1 does one more thing the field-count hid: it zeroes `stiff`,
+`stiff_dmg` and `stiff_act` as well as `stun_f`, so the state **takes no
+hit-stun at all**, not merely no stun. Those four fields plus the movement and
+the resistances make it an *empowered* state rather than a variant, and the
+only empowered state a class file has other machinery for is the one its four
+`s_tension_*` tables fill the meter of — see
+[`combat_loop.md`](combat_loop.md) §7. Still a reading, but a narrower one.
+
+Record 2 is a different animal, and the tell is that it is **identical on all
+six classes** — the same four fields with the same four values:
+
+```
+  acc      0.035 -> 0.032     gr_brk   0.032 -> 0.029
+  run_sp    0.17 -> 0.19      walk_sp   0.05 -> 0.045
+```
+
+Locomotion only, no combat field touched, no per-class variation. So it is a
+global movement state and not a class ability. Which one, the disc still does
+not say.
 The Yggdrasil tower has a "fever" mechanic with its own tables
 (`yggdrasill_fever_status_up.bin` grants a 60-second buff) which is the obvious
 candidate, but no data on the disc connects the two.
@@ -126,6 +148,47 @@ Orc King      stg_p   [70, 110, 180, 240]
 
 Every reaction is zero at stage 0 — nothing under 70 points moves him at all,
 which is super-armour written as data — and stage 3 is a guaranteed knockdown.
+
+## The three fields the player has not got
+
+`atk`, `def` and `hp` occur in **82 actors, and all 82 are monsters.** The six
+player classes carry none of the three, and this is not an oversight: a class
+file holds the *shape* of the fight — how it moves, how long it flinches, what
+its critical rate is — and the magnitudes arrive with the equipment.
+
+**The attack is `it_db_weapon.bin` column 3.** 450 rows pairing positionally
+with 450 names, and column 5 is the weapon kind — six values, `0, 1, 3, 4, 5,
+7`, **seventy-five rows each and no row left over**:
+
+```
+    #  kind  atk   name
+    0     0   48   Katar                   the assassin
+    1     1   52   War Mace                the cleric
+    2     3   75   War Hammer              the hammersmith
+    3     4   42   Hunter Bow              the hunter
+    4     5   35   Long Staff              the mage
+    5     7   52   Two-Handed Sword        the warrior
+  440     3  270   Rytha Mjollnir          the largest attack on the disc
+```
+
+Column 27 is an `f32` from 0 to 0.1, which is the same range and the same
+units as the class's own `cri`. **The defence and the hit points are still not
+located** — `it_db_equip.bin` is 146 rows against 146 names with nineteen
+unnamed columns, and column 16 (0..117) is the only defence-shaped one. See
+[`combat_loop.md`](combat_loop.md) §3.
+
+## A boss takes no hit-stop, and the field says which is which
+
+`dmg_stop_mul` is the multiplier on the hit-stop an actor suffers when it is
+hit, and it is **zero on 23 monsters and non-zero on 59**. The 23 are exactly
+the `b*` and the 59 are exactly the `z*` — 82 of 82, no exceptions. The disc's
+own filename prefix separates bosses from mobs and this field agrees with it
+without either saying so.
+
+The paired family reads the other way: `stop_mul` is 0.003 to 0.01, a
+thousandth, so its operand is a damage number and its result is frames, while
+`dmg_stop_mul` is 1, so its operand is **already** frames — a giver and a
+taker of the same quantity. See [`combat_loop.md`](combat_loop.md) §5.
 
 ## A core schema plus a per-move vocabulary
 
@@ -197,7 +260,9 @@ was counted.
 
 ## Open
 
-- What records 1 and 2 of a player class are.
+- What records 1 and 2 of a player class are. Record 1 is now read as the
+  state the tension meter buys, on the strength of the hit-stun fields; record
+  2 is a global locomotion variant. Neither is named on the disc.
 - The remaining four elements of the `ab_*` vectors.
 - `sz`, `flash_c`, `back_angle`, `turn_ang`, `limit_height`, `spin_blow_r`,
   `wall_dmg`, `wall_stop` — present in the core but unexamined.

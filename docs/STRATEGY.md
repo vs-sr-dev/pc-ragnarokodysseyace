@@ -1,6 +1,6 @@
 # PC-ROA — strategy
 
-*Aligned to the end of session 18 (2026-08-23). Detail and priorities live in
+*Aligned to the end of session 21 (2026-08-23). Detail and priorities live in
 [`TODO.md`](TODO.md); this document is the frame.*
 
 Goal: a **native PC reimplementation** of *Ragnarok Odyssey ACE*, the PS3
@@ -102,7 +102,9 @@ Phase 3.
 **Phase 2 has no open rows.** Every format the disc ships is read, and what is
 left inside them is columns and opcodes rather than containers: the `ELBN`
 records field by field, the `ECH` column names, thirty `.anmcmd` opcodes and
-ten of `.mkc`'s. From here the work is building rather than reading.
+six of `.mkc`'s. From here the work is building rather than reading — and
+[`combat_loop.md`](combat_loop.md) is the first document here written from the
+building side, which is why it is a chain and a ledger rather than a format.
 
 ## Phase 3 — The EBOOT as oracle
 
@@ -116,6 +118,17 @@ where the quest state machine or the boss AI live — those are script — nor,
 since session 18, where *what those functions do* has to be read:
 [`format_api.md`](format_api.md) has them off the call sites. What is left
 inside it is the implementation and the combat loop.
+
+**And since session 21 that is a list rather than a category.**
+[`combat_loop.md`](combat_loop.md) traces one hit through the eight files that
+touch it and ends in a ledger of nine gaps. Four are ordinary disc work. The
+other five are what the EBOOT is actually needed for, and each is one function
+rather than a subsystem: **the damage expression**, **what the hit record's
+`+0x35` is a strength of**, **what computes the hit level**, **the sign of a
+region's flat modifier**, and **what `react_p` is a pool of**. That is a
+smaller and much better specified reason to decrypt the binary than "the
+combat loop" was, and it is the fourth time on this project that writing
+something down has shrunk the phase it was supposed to justify.
 
 **But the method note from the sister project still applies, and applies
 harder here**, and session 10 is the sharpest instance yet. `.psq` sat on the

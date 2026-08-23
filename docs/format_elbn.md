@@ -434,35 +434,148 @@ is four seconds.
 
 ### The tension tables
 
-Four of them, identical across all six classes, all `(count, pointer)` with a
-stride of 8 — a **piecewise curve of `(threshold, multiplier)` pairs**:
+Four of them, all `(count, pointer)` with a stride of 8 — a **piecewise curve
+of `(threshold, multiplier)` pairs**, looked up by scanning until the
+threshold is passed.
+
+**They are not identical across the six classes, and this section used to say
+they were.** Session 21 printed all six side by side, which is the only way to
+see it: **the threshold column is identical on all six in all four tables, and
+the multiplier column is not** in three of them.
 
 ```
-s_tension_revise_hp_tbl        4 pairs   (0.10, 2.00) (0.25, 1.50)
-                                         (0.50, 1.25) (0.75, 1.10)
-s_tension_revise_damage_tbl   13 pairs   (6.0, 0.15) .. (1.0, 0.00) ..
-                                         (0.1, -0.50) (0.0, -0.90)
+s_tension_revise_hp_tbl            4 pairs, one profile
+  thresholds   0.1    0.25   0.5    0.75
+  all six      2      1.5    1.25   1.1
+
+s_tension_revise_damage_tbl        13 pairs, four profiles
+  thresholds   6     5     4     3     2     1.5   1.2   1     0.7 .. 0
+  as           0.15  0.15  0.15  0.15  0.1   0.08  0.03  0     -0.2 .. -0.9
+  hs, ht       0.25  0.25  0.25  0.25  0.15  0.12  0.1   0     -0.2 .. -0.9
+  mg           0.3   0.3   0.3   0.3   0.2   0.15  0.1   0     -0.2 .. -0.9
+  cl, sw       0.4   0.4   0.4   0.3   0.2   0.15  0.1   0     -0.2 .. -0.9
+
+s_tension_revise_react_damage_tbl  11 pairs, two profiles
+  thresholds   1.1   1.3   1.5   1.75  2     3     4     5     6    7    10
+  as           0     0.1   0.15  0.2   0.25  0.25  0.3   0.3   0.3  0.3  0.3
+  the other 5  0     0.1   0.2   0.3   0.4   0.5   0.6   0.6   0.6  0.6  0.6
+
+s_tension_revise_tension_tbl       8 pairs, two profiles
+  thresholds   2     1.5   1     0.5   0.25  0.1   0     -10
+  as           1     1     1     1     0.85  0.75  0.5   3
+  the other 5  5     4     1     1     0.85  0.75  0.5   3
 ```
 
-The first reads straight off: at a tenth of your health you earn tension twice
-as fast. The damage table runs the other way, from a six-times multiplier
-earning +0.15 down to a tenth earning −0.50, and its rows descend — so both
-are looked up by scanning until the threshold is passed.
+The hp table reads straight off: at a tenth of your health you earn tension
+twice as fast, and every class earns it at the same rate. The damage table
+runs the other way, from a six-times multiplier down to a tenth, and its rows
+descend where the react table's ascend.
+
+**Three of the four cut the assassin, in the same direction, by about half** —
+0.15 against the shield classes' 0.4, half the react rate, and none of the
+5.0/4.0 bonus above a full meter. It is the class that hits fastest, and the
+tension economy is where that is paid for. The *losing* side of the damage
+table, from threshold 1.0 down, is identical on all six: what varies is
+earning, not spending. See [`combat_loop.md`](combat_loop.md) §7 and
+`combat.py tension`.
 
 ### `eff_hitlevel_tbl` and `se_hitlevel_tbl`
 
-Both are `(count, pointer)`. `se_hitlevel_tbl`'s stride is 12 and its middle
-word is a sound id: the six player classes take 1000, 1006, 1012, 1018, 1048,
-1054 … **in steps of six**, and the monsters share 1090 to 1102. A block of
-six consecutive ids per entry is what a table called *hit level* looks like
-when the level is added to the base. The third word is 0 on 76 of 85 records
-and takes the values 1 to 8 on the rest, one per extra row a class carries,
-and the disc does not say what it selects.
+*Session 21 read both, by joining them to lists that had been printed for two
+sessions. See [`combat_loop.md`](combat_loop.md) §6 and `combat.py hitlevel`.*
 
-`eff_hitlevel_tbl`'s stride is 40: four `(2, id)` pairs, a zero, and a packed
-word. Category 2 is [`.PTP`](format_ptp.md)'s settled one — the actor's own
-[`effect.bin`](format_effect.md) addressed by row id — and `effect.py
-hitlevel` already joins it.
+Both are `(count, pointer)`.
+
+**`se_hitlevel_tbl` is a base cue id, and the block above it is three sizes
+and a critical flag.** The record is `(0, base, selector)` at stride 12. The
+six player classes carry **fifteen entries between them** and their bases are
+
+```
+  1000 1006 1012 1018 1024 1030 1036 1042 1048 1054 1060 1066 1072 1078 1084
+```
+
+— fifteen bases six apart, starting at 1000 and ending at 1084, so they **tile
+1000..1089 with no gap and no overlap** and 1090 is where the monsters begin.
+That is a build-time allocation, and resolving the six against
+`sound.cpk/common.acb` says what the six are:
+
+```
+  1000  KATAR_DMG_S  KATAR_DMG_M  KATAR_DMG_L  KATAR_DMG_CS  KATAR_DMG_CM  KATAR_DMG_CL
+  1012  MACE_DMG     1018 SHIELD_DMG  1024 HOLY_DMG    1030 GODFIST_DMG
+  1036  DRILL_DMG    1042 SCREW_DMG   1048 ARROW_DMG   1054 STAFF_DMG
+  1060  FIRE_DMG     1066 GRAVITY_DMG 1072 THUNDER_DMG 1078 ICE_DMG
+  1084  SWORD_DMG    1006 SOMERSAULT_DMG
+```
+
+So `cue = base + size + 3 * critical`, with `size` in `{0, 1, 2}`, and the
+fifteen bases are the fifteen weapon kinds the six classes ship. The third
+word is 0 on all 59 monster entries and takes 0 to 8 across the fifteen player
+ones — a per-class selector, and **not** `it_db_weapon.bin`'s weapon kind,
+whose six values are a different space.
+
+The 59 monsters take a base inside the hand-made group above 1090, where the
+ladders are `S M L LL` and four wide, so a monster picks a family — blunt,
+slash, strike — **and a rung to start from**:
+
+```
+  base   n   base+0..3                                     median atk
+  1090  15   HIT_DMG_S    _M   _L   _LL                           230
+  1091   9   HIT_DMG_M    _L   _LL  _CS                           165
+  1092   9   HIT_DMG_L    _LL  _CS  _CM               weight 100  260
+  1097   1   SLASH_DMG_S  _M   _L   _LL                            90
+  1098  10   SLASH_DMG_M  _L   _LL  STRIKE_S                      192
+  1099   5   SLASH_DMG_L  _LL  STRIKE_S  _M                       215
+  1101   8   STRIKE_DMG_S _M   _L   _LL                           110
+  1102   2   STRIKE_DMG_M _L   _LL  FLAME_M                       188
+```
+
+In the two families where the rung moves more than once it moves with the
+monster's attack; in `HIT` it moves with weight instead.
+
+**`eff_hitlevel_tbl` carries its key in the open.** Stride 40: four `(2, id)`
+pairs, a zero, and one packed word. 48 records over the six classes, and the
+four pairs are **identical on all 48** — four slots for an axis this build does
+not use. The last word is two `u16`, `(level, kind)`:
+
+```
+  0x0000_0001   level 0, kind 1
+  0x0001_0001   level 1, kind 1
+  0x0002_0001   level 2, kind 1
+```
+
+Levels are exactly `{0, 1, 2}` and kinds are `{1,2,3,4,5,7,8,10,13,14,15}`. So
+the effect id is only a row in the class's own
+[`effect.bin`](format_effect.md) — category 2 is [`.PTP`](format_ptp.md)'s
+settled one — and it carries **no arithmetic**; the last word does. Five
+classes carry three records, one kind by three levels; the hunter carries 33,
+eleven kinds by three, and its eleven kinds are arrow types.
+
+**The two tables agree that the hit level has three values**, S/M/L, at the
+effect scales 0.5, 0.8 and 1.0 [`format_effect.md`](format_effect.md) already
+measured. What computes the level is not on the disc.
+
+### The hunter's two falloff curves
+
+`ht_atk_revise_tbl` and `ht_react_revise_tbl` sit in the bow's `objbin.bin`
+and in nobody else's, and both are the `(threshold, multiplier)` shape the
+tension tables use. Their strides are closed by the gap to the next array:
+
+```
+  ht_react_revise_tbl   stride 8, 10 pairs
+      (0, 1) (60, 0.9) (65, 0.8) (70, 0.7) (75, 0.6)
+      (80, 0.5) (85, 0.4) (90, 0.3) (95, 0.2) (100, 0.1)
+
+  ht_atk_revise_tbl     stride 12, 12 triples, third column 1.0 on all twelve
+      (0, 1.1) (10, 1.1) (20, 1.1) (30, 1.1) (40, 1.1) (50, 1.0)
+      (60, 0.9) (70, 0.8) (80, 0.7) (85, 0.5) (90, 0.3) (100, 0.1)
+```
+
+Both hold at or above 1 to half way and then fall to a tenth on an axis that
+runs 0 to 100. The bow being the only class with them says what the axis is —
+a fraction of the arrow's reach — and the two say the reaction falls off
+before the damage does. `ht_arrow_tbl` beside them is 42 records at a stride
+of **80**, which the repeat period closes and the field values corroborate;
+its columns are not named.
 
 ## What the records still do not say
 

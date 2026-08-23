@@ -155,8 +155,7 @@ pairs resolve.** `python effect.py hitlevel extract/tree`:
 fht  33 rows  33 distinct (2, id), 33 resolve   scales [0.5, 0.8, 1.0]
 ```
 
-`fht`'s ids are 110, 111, 112, 120, 121, 122, 130 … 250, 251, 252 — the
-"weapon kind × 10 + hit level" the earlier reading guessed at — and each
+`fht`'s ids are 110, 111, 112, 120, 121, 122, 130 … 250, 251, 252, and each
 triple is **one `.PTP` slot at scale 0.5, 0.8 and 1.0**:
 
 ```
@@ -170,6 +169,16 @@ triple is **one `.PTP` slot at scale 0.5, 0.8 and 1.0**:
 
 Eleven weapon kinds, three hit levels, and the hit level is the *scale*. The
 same three numbers — 0.5, 0.8, 1.0 — come out of all twelve player tables.
+
+**And the ids carry no arithmetic — session 21 found the key written out.**
+The "weapon kind × 10 + hit level" this section used to read into them fits
+the hunter and is contradicted by the other five classes, whose kind-1 triple
+is 101, 102, 103 under the same key. The key is the record's **last word, two
+`u16` `(level, kind)`**: levels are exactly `{0, 1, 2}` over all 48 records
+and kinds are `{1,2,3,4,5,7,8,10,13,14,15}`. The ids are only rows in this
+file. See [`format_elbn.md`](format_elbn.md) and
+[`combat_loop.md`](combat_loop.md) §6, where the sound table turns out to
+agree that the hit level has three values.
 
 ---
 
