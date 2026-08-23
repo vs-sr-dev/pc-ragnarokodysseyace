@@ -186,6 +186,22 @@ recovered from the geometry of the locomotion cycles — the planted foot of a
 run slides backwards at exactly `run_sp`, and the resulting gait is a human one
 only at 30 fps. See [`units.md`](units.md).
 
+## Two motion sets are keyed for a rig this disc does not ship
+
+`fgn` and `mgn` — 72 animations — **carry no `xrot` track at all** and key
+`node_hip` at `y = 0.899`. Every other player set keys the hip at about 0.07
+and leaves `xrot` where the model puts it, which is 0.9. Played on the
+`fgn1`/`mgn1` skeleton the disc ships, the 0.9 is therefore counted twice and
+the whole body floats a metre off the ground: no foot ever touches, and both
+`gn` locomotion cycles report no planted frame at all.
+
+Drop the `xrot` contribution and the walk's planted foot sits at −0.0014 m
+over 29 frames of contact, which identifies the fault exactly — the set was
+exported from a rig whose hip hangs directly off the root. Nothing on the disc
+supplies that rig: of the 180 models with an `xrot` node, the only three that
+put it at the origin are `b18_00`, `b18_01` and `b18_02`. Found by
+[`pose.py`](../engine/pose.py); see [`pose.md`](pose.md).
+
 ## Still open
 
 - The `u8` at `+0x04` of a channel — `0x0f` on the twelve-byte channels and

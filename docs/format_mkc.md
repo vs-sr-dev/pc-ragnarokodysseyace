@@ -224,6 +224,31 @@ same event under two names. Which of them is the character's own sound and
 which is the ground's is not settled here; the ground has a surface code in
 [`CCLS`](format_ccls.md) and nothing on the disc joins the two yet.
 
+### Session 16 measured it against the skeleton
+
+The reading above is from the file name outwards. Session 16 checked it from
+the other side — [`CNOM`](format_cnom.md) played on the
+[`CMDL`](format_cmdl.md) skeleton, asking the joint itself when a foot comes
+down — and the full report is in [`pose.md`](pose.md). Three results bear on
+this section:
+
+- **`7ffa` is a landing.** Over 650 firings on the 259 animations whose feet
+  leave the floor, **79.5 % fire within one frame of the skeleton putting a
+  foot down** and 47.1 % on the frame exactly, against 25.2 % and 8.8 % for a
+  frame of the same animation picked at random. The median offset is zero.
+- **The lower foot is 40 times deeper into a descent at a firing** than at an
+  ordinary frame: 21.8 mm of fall over the three frames into the event,
+  against 0.5 mm. No tolerance is involved in that one.
+- **`kind = 3` is not a footstep at all**, and the skeleton is what says so.
+  Split the same measurement by cue and the fall into the event is 6.9 mm for
+  `WALK`, 138 mm for `RUN` and 353 mm for `LANDING` — the three order
+  themselves exactly as their names do — while `DRESS` comes in at
+  **−0.2 mm**, which is no arrival whatsoever. Set it aside and the agreement
+  over the remaining 601 firings rises to 81.9 % within a frame.
+
+So `WALK`, `RUN` and `LANDING` are the ground and `DRESS` is cloth, and the
+`kind` argument is not one vocabulary but two.
+
 ---
 
 ## Effects
@@ -309,7 +334,13 @@ Three things that were open before this file was read:
 
 - **The emitter namespace.** 23 values, paired left and right, provably a
   place on the body, and not tied to any table on the disc. The `CMDL` node
-  lists are the obvious place to look next.
+  lists are the obvious place to look next — and since session 16 there is a
+  sharper instrument than a node list: [`pose.py`](../engine/pose.py) knows
+  *which* foot landed on a given frame, and `7ff9`'s `STEP` alternates 1700
+  and 1800. If those two agree, half the vocabulary is named in one pass.
+- **`7ffb`.** It fires a frame either side of `7ffa` — after it in
+  `fas213run`, before it in `fas211walk` — and the skeleton measurement of
+  [`pose.md`](pose.md) does not touch it.
 - **Fourteen pacs address an effect past the end of their `effect.bin`** —
   `b02` 79 against 73 rows, `b15` 67 against 48, `z09` 20 against 16, and
   `fht`/`mht` a lone 253 against 43, used twice, at frame 0 of

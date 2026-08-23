@@ -222,8 +222,10 @@ consuming to the byte.
 - **Milestone 3, "a monster fights"**, needs the AI loop of
   [`format_ai.md`](format_ai.md) driving this same capsule, plus the 40-odd
   state predicates.
-- The obvious immediate extension is to give the capsule the animation:
-  [`CNOM`](format_cnom.md) poses the skeleton and
-  [`.anmcmd`](format_anmcmd.md) says what happens on which frame, and both are
-  read. That would also settle *which of the hit record's three vectors is
-  which*, which has been open since session 9.
+- The obvious immediate extension was to give the capsule the animation, and
+  **session 16 did it**: [`pose.md`](pose.md) plays a `CNOM` on the walking
+  body and puts its planted foot three millimetres above the collision mesh,
+  checked against `.mkc`'s own footfall opcode over 650 firings. What that
+  layer still does not settle is *which of the hit record's three vectors is
+  which*, open since session 9 — but it now has the forward kinematics that
+  question needs.

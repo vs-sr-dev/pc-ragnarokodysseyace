@@ -77,6 +77,14 @@ at their own speeds, which is why they are excluded: the six player classes are
 [`params.md`](params.md) already established that they share one movement
 model.
 
+**Session 16 got the same three numbers from a different definition of a
+planted foot** — the height the contact node stands at in the model's *rest*
+pose, rather than the lowest the ankle gets in that particular animation. The
+medians come back 0.0484, 0.1696 and 0.2769 against the 0.0492, 0.1699 and
+0.2790 above, and the point of the exercise was the new definition rather than
+the old result: it is one a body can carry into an attack or a fall, where
+there is no cycle to take a floor from. See [`pose.md`](pose.md).
+
 ## The frame is 1/30 of a second
 
 Now the gait is in metres per frame, and the only free parameter left is how
