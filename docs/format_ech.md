@@ -152,3 +152,12 @@ Column 0 is the item id, and the six-figure values in columns 6–7 are ids into
 - Field *semantics*. The types are inferable; the meanings are not, and this is
   where the EBOOT will eventually earn its keep — or where a careful reading of
   the names, as with `enemy_gen.bin` above, will make it unnecessary.
+
+  The 69 `effect.bin` are the first tables whose columns are named end to end,
+  and neither the EBOOT nor the type inference did it: the *consumers* did.
+  `.mkc` addresses a row, a `.PTP` bank has to accept the pair the row holds,
+  a `CMDL` locator table has to accept the id at `+0x04`, and a stage script
+  declares the whole record in the clear. See
+  [`format_effect.md`](format_effect.md). It is also a warning about the
+  inference: `ech.py` reads the first four bytes of a motion row as one `u32`
+  and they are four separate one-byte fields, two of which are an address.

@@ -71,13 +71,17 @@ values wide; see `docs/format_mkc.md` for what is still open about it.
 
 ## Effect
 
-    0801 (index)     spawn effect `index`
-    080e (index, 0)  the same, second form
+    0801 (id)     spawn effect `id`
+    080e (id, 0)  the same, second form
 
-The index is **1-based into the `effect.bin` sitting beside the `.mkc.pac`** -
-an `ECH` table of 60-byte rows, one per effect the motion set can spawn. On 29
-of the 54 pacs that use the opcode the largest index is exactly the row count,
-and the index is never 0 on any of the 2,690 files.
+The argument names a row of the `effect.bin` sitting beside the `.mkc.pac` -
+an `ECH` table of 60-byte rows, one per effect the motion set can spawn, read
+by [`effect.py`](effect.py). **It is the row's own id byte at `+0x01`, not its
+position**: 4,187 of the 4,190 references resolve as an id against 4,125 as a
+position, and the only pac left asking for something its table has not got is
+`z07`. The census below is the *position* reading, kept because the ceiling is
+what first tied the two files together - on 29 of the 54 pacs the largest
+argument is exactly the row count. `python effect.py refs` prints both.
 
 ## Ground contact
 
@@ -443,6 +447,8 @@ def cmd_effects(root) -> int:
               + ('   <- past the end' if max(v) > rows else ''))
     print(f'{exact} pacs where the highest index is exactly the row count, '
           f'{under} below it, {over} above')
+    print('read as a row id rather than a row position all but one of those '
+          'resolve: python effect.py refs')
     return 0
 
 

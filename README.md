@@ -95,9 +95,14 @@ mercenary AI     ->       12 classes, 48 tables tools/merc.py   0 errors
 PTCP effects     ->       67 files, 1,108 blocks tools/ptp.py    0 errors
   resources      ->    2,002 assets, 4,451 references, named in the clear
   addressing     ->      104 of 104 (category, slot) pairs resolving
+  category 2     ->       96 of 96 ids, and it is not a bank at all
+effect.bin       ->       69 files, 3,918 rows  tools/effect.py 0 errors
+  the .PTP slot  ->    2,410 of 2,434 motion rows on a filled block
+  the locator    ->      455 of 457 on the actor's own CMDL S4
+  a stage marker ->    1,483 of 1,484 ambient rows on a marker of their room
 .mkc sound track ->    2,690 files, 19,724 recs tools/mkc.py    0 errors
   sound cues     ->    7,540 of 7,608 references naming a cue in an .acb
-  effects        ->       69 effect.bin tables, indexed 1-based from here
+  effects        ->    4,187 of 4,190 references, read as a row id
 PAMF movies      ->       46 files, 22.7 minutes tools/pam.py    0 errors
   video          ->    720p29.97 MPEG-2, and no audio track on any of them
 CRI Atom audio   ->      274 banks, 7,756 waves tools/awb.py    0 errors
@@ -129,6 +134,7 @@ survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 [`ELBN`](docs/format_elbn.md), [`.anmcmd`](docs/format_anmcmd.md), [the script
 layer](docs/format_psq.md), [the monster AI](docs/format_ai.md), [the
 mercenary AI](docs/format_merc.md), [`.PTP`](docs/format_ptp.md),
+[`effect.bin`](docs/format_effect.md),
 [`.mkc`](docs/format_mkc.md), [the sound banks](docs/format_awb.md),
 [the actor parameters](docs/params.md). What running it produced is in
 [milestone 1](docs/milestone_numbers.md) and [the pose](docs/pose.md). The
@@ -267,6 +273,12 @@ python tools/ptp.py check|survey <dir>       the particle effect banks
 python tools/ptp.py list <dir> <name>        one bank, slot by slot
 python tools/ptp.py slot <dir> <name> <n>    one block, hex and assets
 python tools/ptp.py refs <dir>               where the (category, slot) pairs go
+
+python tools/effect.py check|survey <dir>    the effect tables
+python tools/effect.py list <dir> <name>     one table, decoded
+python tools/effect.py refs <dir>            .mkc, as a row and as an id
+python tools/effect.py hitlevel <dir>        category 2, the hit-level scales
+python tools/effect.py locators <dir>        +0x04 against the models' S4
 
 python tools/mkc.py check|census <dir>       the presentation track
 python tools/mkc.py survey <dir>             every file, one line each

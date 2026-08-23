@@ -1,7 +1,8 @@
 # `.PTP` — the particle effect banks
 
-**Status: container solved; the addressing solved and proven three ways; the
-interior of a block open.** 70 files, three of them zero bytes; **67 read,
+**Status: container solved; the addressing solved, proven three ways, and
+all three categories now named; the interior of a block open.** 70 files,
+three of them zero bytes; **67 read,
 1,108 `PTB` blocks, 2,002 resources, 4,451 resource references, 0 unreadable**,
 with sixteen arithmetic identities closing on every file. Reader:
 [`../tools/ptp.py`](../tools/ptp.py).
@@ -128,18 +129,34 @@ Three consumers, three files, one addressing:
 | `<monster>/objbin.bin` | `eff_vari_tbl`, pairs | 0 and 1 |
 | `job.cpk/<class>/objbin.bin` | `eff_hitlevel_tbl`, pairs | 2 — see below |
 
+## Category 2 is not a bank
+
+*Session 17.* `eff_hitlevel_tbl` in each of the six classes' `objbin.bin` is
+three or thirty-three rows of *four* `(2, id)` pairs followed by
+`(0, level << 16 | 1)`. The sword's ids are 101, 102, 103 and the bow's are
+110, 111, 112, 120, 121, 122, … 250, 251, 252. Those numbers reach 252, no
+`PTCP` on the disc has that many slots, and a search of all 32,600 leaves for
+the magic finds `PTCP` in 67 `.PTP` and nowhere else — because **category 2 is
+the class's own [`effect.bin`](format_effect.md), addressed by row id**, and
+that is a different kind of table entirely. **96 of 96 pairs resolve**;
+`python effect.py hitlevel extract/tree` prints it.
+
+The reading of the ids survives intact and is now confirmed from the other
+side: `fht`'s eleven triples are eleven weapon kinds by three hit levels, each
+triple is *one* slot of `job.cpk/ht/effect.PTP`, and the three rows differ
+only in their scale — 0.5, 0.8 and 1.0. **The hit level is the scale**, and
+the same three numbers come out of all twelve player tables.
+
+So the addressing is three banks and a table, not four banks:
+
+| category | what it names |
+|---|---|
+| 0 | `misc.cpk/misc.PTP`, the common bank |
+| 1 | the actor's or the stage's own `effect.PTP` |
+| 2 | the actor's own `effect.bin`, by row id — which then names a `(0, slot)` or `(1, slot)` of its own |
+
 ## Still open
 
-- **Category 2, and the weapon trail.** `eff_hitlevel_tbl` in each of the six
-  classes' `objbin.bin` is three or thirty-three rows of *four* `(2, id)` pairs
-  followed by `(0, level << 16 | 1)`. The sword's ids are 101, 102, 103 — one
-  per hit level — and the bow's are 110, 111, 112, 120, 121, 122, … 250, 251,
-  252, which read as **weapon kind × 10 + hit level**: eleven kinds, and
-  `weapon_effect_excel_data` in the mage's file lists eleven weapon ids. Those
-  numbers reach 252 and no `PTCP` on the disc has that many slots, and a search
-  of all 32,600 leaves for the magic finds `PTCP` in 67 `.PTP` and nowhere
-  else. So category 2 is a fourth bank that is not shipped as a `PTCP`, or it
-  is a different subsystem altogether — a ribbon trail is not a particle.
 - **The inside of a `PTB`.** The header is read far enough to walk it —
   `'PTB\0'`, `u16 2`, `u16 11`, an emitter count, a header size of `0x40`, then
   five `(count, offset)` pairs — but not one field of an emitter is described.

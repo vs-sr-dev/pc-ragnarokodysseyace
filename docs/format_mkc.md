@@ -338,27 +338,39 @@ So `WALK`, `RUN` and `LANDING` are the ground and `DRESS` is cloth, and the
 
 ## Effects
 
-    0801 (index)
-    080e (index, 0)
+    0801 (id)
+    080e (id, 0)
 
-The index is **1-based into the `effect.bin` sitting beside the `.mkc.pac`** —
-an `ECH` table of 60-byte rows, one row per effect that motion set can spawn.
-69 of these exist, one per pac.
+The argument names a row of the **`effect.bin` sitting beside the `.mkc.pac`**
+— 54 of these exist, one per motion set, and they are read in
+[`format_effect.md`](format_effect.md).
 
-The evidence is the ceiling. `python mkc.py effects extract/tree`: on **29 of
-the 54 pacs** that use the opcode the largest index is *exactly* the table's
-row count — `b01` 49/49, `b05` 104/104, `b09` 89/89, `b10` 255/255, `b11`
-143/143, `b18` 101/101, `z01` 25/25 — 11 more stay under it, and the index is
-**never 0 on any of the 2,690 files**. Hitting the row count on the nose,
-repeatedly, is not something a number does to an unrelated table.
+**It is the row's own id byte, not its position.** Every row of an
+`effect.bin` opens with `(kind, id, category, slot)`, the id is unique inside
+each table, and it skips wherever an effect was cut — `b15` has 48 rows and
+ids that run to 67. Over the 4,190 references:
 
-The 14 pacs that overshoot are listed under *Still open*.
+| the argument read as | resolves |
+|---|---:|
+| a 1-based row position | 4,125 |
+| **the id byte at `+0x01`** | **4,187** |
 
-The `effect.bin` row itself is not read here. It is 60 bytes of which the last
-44 are usually zero, opening on two `u16` ids, a `u32` that is 0 or 10000, four
-bytes of which one is `0x40` and one `0xff`, and **a float at `+0x0C`** that is
-1.0, 0.8 or 0.7 — a scale, in all likelihood. That is an `ECH` column-naming
-job, which is [its own open item](format_ech.md).
+The ceiling is what made the position reading look right in the first place:
+on **29 of the 54 pacs** the largest argument is exactly the table's row
+count — `b01` 49/49, `b05` 104/104, `b09` 89/89, `b10` 255/255 — which is
+true of dense tables under either reading. The sparse ones tell them apart,
+and they say the id.
+
+That closes **thirteen of the fourteen pacs** that used to index past the end
+of their own table: `b02`'s 79 against 73 rows, `b15`'s 67 against 48, `z09`'s
+20 against 16 and `fht`'s lone 253 against 43 are all ids that are simply
+there. The one left is `z07`, which asks for 4, 5 and 6 and carries ids 1, 2,
+3, 7 and 8.
+
+The row itself says which `.PTP` block to spawn, at what scale, offset and
+rotation, and — in the `u32` at `+0x04` — **which locator on the body to hang
+it off**, drawn from the same `CMDL` `S4` table as `7ff9`'s emitter above. See
+[`format_effect.md`](format_effect.md).
 
 ---
 
@@ -399,8 +411,9 @@ runs alongside `0400` in every attack that has one.
 
 Three things that were open before this file was read:
 
-- **`effect.bin` has a consumer.** 69 `ECH` tables nobody had a reason to open
-  turn out to be the per-motion-set effect list, addressed by index from here.
+- **`effect.bin` has a consumer.** 54 `ECH` tables nobody had a reason to open
+  turn out to be the per-motion-set effect list, addressed by row id from
+  here. They are [read now](format_effect.md).
 - **A motion set can be shared.** `z18`, `z19`, `z20` and `z27` all ship the
   *same* `z19.mkc.pac`, and all four fire bank 4190 — one animation set and
   one sound bank across four palette swaps.
@@ -426,11 +439,10 @@ Three things that were open before this file was read:
 - **`7ffb`.** It fires a frame either side of `7ffa` — after it in
   `fas213run`, before it in `fas211walk` — and the skeleton measurement of
   [`pose.md`](pose.md) does not touch it.
-- **Fourteen pacs address an effect past the end of their `effect.bin`** —
-  `b02` 79 against 73 rows, `b15` 67 against 48, `z09` 20 against 16, and
-  `fht`/`mht` a lone 253 against 43, used twice, at frame 0 of
-  `act_8_en_sharp_shooting` and plainly a sentinel. Either a second table is
-  concatenated at load or the high ids are shared, and the disc does not say.
+- **One pac addresses an effect its table has not got.** `z07` asks for ids
+  4, 5 and 6, three references between them, and its `effect.bin` carries 1,
+  2, 3, 7 and 8. The other thirteen that looked like this are
+  [settled](format_effect.md): the argument is a row id, not a row number.
 - **Eight files whose last frame is past the paired `CNOM`'s length**:
   `fht398a_at_l` and `mht398a_at_l` (31 against 9), `fsw315at_sssss` (37/28),
   `b09511at5` (211/166), `z03274dam_wall` (36/21), `z04211walk` (37/26),
@@ -456,6 +468,7 @@ Three things that were open before this file was read:
     python mkc.py banks   extract/tree           bank ids, and what they name
     python mkc.py cues    extract/tree 250       one bank's cue list
     python mkc.py effects extract/tree           indices against effect.bin
+    python effect.py refs extract/tree           the same, read as a row id
 
 `b09502at2` — Hraesvelgr's second attack — reads:
 
