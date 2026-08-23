@@ -5,50 +5,35 @@
 
 ---
 
-# Next session — name the effect table
+# Next session — the hit record's geometry
 
-Session 16 gave the capsule a skeleton and checked it against the disc. The
-whole report is in [`pose.md`](pose.md); the two numbers to carry are that
-**the planted foot of a walking body sits 3 mm above the collision mesh** and
-that **`.mkc`'s `7ffa` fires within a frame of the skeleton landing a foot on
-79.5 % of 650 firings, against 25.2 % at random**. The pose layer is
-[`engine/pose.py`](../engine/pose.py) and it is small: a contact node, the
-height it stands at, and forward kinematics along its chain.
+Session 17 read [`effect.bin`](format_effect.md), the last unread link in the
+effect layer. The three numbers to carry are that **`.mkc`'s `0801` addresses
+a row's own id byte and not its position** — 4,187 of 4,190 references, which
+closes thirteen of the fourteen pacs that indexed past the end of their table
+— that **the `u32` at `+0x04` is a `CMDL` locator id**, so an effect hangs off
+the same sockets a sound comes out of, and that **`.PTP` category 2 is this
+file**, 96 of 96, which was the last unplaced piece of the effect addressing.
+The reader is [`tools/effect.py`](../tools/effect.py).
 
-It also named `7ff9`'s emitter, which turned out to need no pose at all: it
-is a [`CMDL`](format_cmdl.md) locator id, and 2,715 of the 2,716 references
-resolve. What is left is the effect table, one geometry question, and the
-script surface.
+What is left is the geometry, the script surface, and the opcodes.
 
-### 1. `effect.bin` — 69 tables and nobody has named a column.
-
-Untouched, and still the largest unread thing on the disc.
-[`.mkc`](format_mkc.md) opcode `0801` indexes them, 1-based, 3,926 times. They
-are `ECH` tables of 60-byte rows of which the last 44 are usually zero. The
-head reads as two `u16` ids, a `u32` that is 0 or 10000, a `0x40`/`0xff` pair
-and a float at `+0x0C` that is 1.0, 0.8 or 0.7. The obvious question is
-whether one of the two ids is a `(category, slot)` half of the
-[`.PTP`](format_ptp.md) address, which would join the effect layer end to end
-— and 14 pacs index past the end of their own table, which is the other half
-of the same question.
-
-### 2. Which of the hit record's three vectors is which.
+### 1. Which of the hit record's three vectors is which.
 
 [`.anmcmd`](format_anmcmd.md) carries three signed vec3s per hit and the
 natural readings are an offset, an end point and a direction. The record names
 the bone it hangs off, and [`pose.py`](../engine/pose.py) can put that bone in
 world space on the frame the hit fires. An offset from the bone and a point in
 the actor's own space look nothing alike once both are plotted against the
-body's extent. Open since session 9, and it was waiting on forward kinematics
-that now exist.
+body's extent. Open since session 9, it was waiting on forward kinematics, and
+those have existed since session 16.
 
-The emitter half of this item is **done**: `7ff9`'s third argument is a `CMDL`
-locator id, 2,715 of 2,716 resolve, and the vocabulary reads itself. See
-[`pose.md`](pose.md) and [`format_mkc.md`](format_mkc.md). The same table is
-the obvious first place to look for anything else the disc addresses by a bare
-number and never defines.
+It is also the *same shape of question* the effect table just answered from
+the other side: `effect.bin`'s offset is an offset **from a named locator**,
+in metres, with a rotation beside it. If the hit record turns out to read the
+same way, the two agree and the answer is cheap.
 
-### 3. The 289 native script functions.
+### 2. The 289 native script functions.
 
 `psq.py api` gives each one a name and an arity histogram, and the call sites
 give the argument values. That is enough to write down what most of them do
@@ -64,31 +49,46 @@ The ones a **stage** needs first are still `cfSetEnableEmGen`,
 `cfSetEnableHitArea`, `cfSetEnableBorderline`, `cfMapJump`, `cfStartPieceLock`,
 `cfGetGlobalFlag`, `cfSetGlobalFlag`, `chrSetMotion`.
 
-### 4. The opcodes that are left, in both event formats.
+`effStart`, `effSetPos`, `effSetRot` and `getHTAPos` can be crossed off in
+passing: [`format_effect.md`](format_effect.md) shows what each of them is
+handed and where it comes from.
+
+### 3. The opcodes that are left, in both event formats.
 
 Thirty of `.anmcmd`'s fifty-two and ten of `.mkc`'s twenty-one. The positional
 method is close to exhausted on `.anmcmd`; what would move it further is the
-geometry, which is item 2. `.mkc`'s ten are easier and worth doing in the same
+geometry, which is item 1. `.mkc`'s ten are easier and worth doing in the same
 pass, because six of them are players-only or monsters-only and that is where
 a correlation starts: `0803`, `0804`, `0805`, `080d` are the players'
 (624 records), `080f` is the monsters' (193), and `0802`'s four arguments are
 a camera shake whose roles are unread.
 
+### 4. The `ELBN` records, field by field.
+
+The container is solved and 318 names are addressable; not one record is
+described. `job.cpk/<class>/objbin.bin` is the best target, because it is the
+same territory as the JSON in [`params.md`](params.md) — and because
+`eff_hitlevel_tbl`, one of its 318, has just been read end to end, which shows
+what the rest of them will cost.
+
 ### Then
 
-5. **The `ELBN` records, field by field.** The container is solved and 318
-   names are addressable; not one record is described. `job.cpk/<class>/
-   objbin.bin` is the best target, because it is the same territory as the
-   JSON in [`params.md`](params.md).
-6. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
+5. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
    small, well-posed instances with known consumers: the `.psq` calls name
    their rows, so the columns can be read against the script that uses them.
+   `effect.bin` is the worked example — its columns were named by its
+   consumers, not by the type inference, which read its first four bytes as
+   one `u32` and got an address wrong four ways.
    The `CCLS` surface codes 1 to 13 are the other one — and `.mkc` gives them
    a second consumer, since `7ffa` fires a footstep and the ground is what has
    to choose its sound. **The pose layer now says where that foot is**, so the
    triangle under it, and therefore its surface code, is a lookup away.
-7. **The minimap transform.** 137 `.map` images, each visibly the silhouette
+6. **The minimap transform.** 137 `.map` images, each visibly the silhouette
    of its own stage's collision. A small job that gives the UI layer a map.
+7. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
+   `+0x0a`. They are bit fields, they correlate with whether the row carries a
+   locator and whether it carries an offset, and the obvious reading is a
+   space or follow mode. Nothing on the disc tests it; a renderer would.
 8. **Structure the `.psq` control flow.** `psq.py src` prints labels and
    `goto`. Rebuilding `if`/`while`/`switch` is ordinary work and nobody needs
    it yet.
@@ -128,7 +128,9 @@ a camera shake whose roles are unread.
   four triangles. See [`format_ccls.md`](format_ccls.md).
 - `ECH`: what the header word at `0x08` is for (zero on all 4,941 files, so the
   disc offers no evidence either way); the one-byte row width; column
-  semantics.
+  semantics everywhere except the 69 `effect.bin`, which are now named end to
+  end by their consumers rather than by the type inference. See
+  [`format_effect.md`](format_effect.md).
 - `TXT`: what word 2 of a record selects; why attribute id 0 carries both RGBA
   colours and scale factors.
 - `params`: what records 1 and 2 of a player class are — record 1 is plainly a
@@ -143,19 +145,21 @@ a camera shake whose roles are unread.
   disc and read out of the interpreter rather than confirmed; and the `.ppcut`
   macro names, which the preprocessor consumed. See
   [`format_psq.md`](format_psq.md).
-- `.PTP`: what category 2 addresses — `eff_hitlevel_tbl` reaches ids up to 252
-  and no `PTCP` on the disc has that many slots — and the inside of a `PTB`,
-  which nothing needs until something renders. See
-  [`format_ptp.md`](format_ptp.md).
+- `.PTP`: the inside of a `PTB`, which nothing needs until something renders.
+  See [`format_ptp.md`](format_ptp.md). **Category 2 is settled**: it is the
+  actor's own [`effect.bin`](format_effect.md) addressed by row id, 96 of 96,
+  and not a bank at all.
 - `.acb`: the waveform `ExtensionData`, empty on all 7,756; the command
   streams past opcode 2000 (volume, pitch, panning, AISAC); which member of a
   variation set the game picks and with what weights; and the `.acf`'s 16
   mixer categories and 40 buses. See [`format_awb.md`](format_awb.md).
 - `.mkc`: ten of the twenty-one opcodes, the argument roles of the camera
-  shake, `7ffb` — which the footfall measurement does not touch — the
-  fourteen pacs that index past the end of their own `effect.bin`, and whether
+  shake, `7ffb` — which the footfall measurement does not touch — and whether
   `7ff9` and `7ffd` differ at all. See [`format_mkc.md`](format_mkc.md).
-  `7ffa` and the emitter are both settled: [`pose.md`](pose.md).
+  `7ffa` and the emitter are both settled: [`pose.md`](pose.md). So is the
+  effect index, which is a row **id** and not a row number, leaving `z07` as
+  the only pac that asks for something its table has not got:
+  [`format_effect.md`](format_effect.md).
 - The AI's own leftovers: ten of the 76 condition terms, which the six
   `.cnut` predate and so cannot name; what the `2xx` action block means, given
   that its ids resolve to the same motions as the `1xx`; the `kind` byte of
@@ -172,12 +176,92 @@ a camera shake whose roles are unread.
   flag word at `+0x08`; the seven words of a `target_NN`; command 16, used
   twice; and the message ids in the two roster tables. See
   [`format_merc.md`](format_merc.md).
+- `effect.bin`: the three bit-field bytes at `+0x08`..`+0x0a` of a motion row,
+  which correlate with whether the row carries a locator and whether it
+  carries an offset without matching either; the two at `+0x08`..`+0x09` of a
+  stage row; the `kind` byte, 0 on 102 rows of 2,434 with nothing else
+  splitting with it; and the near/far pair of distances a stage row carries.
+  See [`format_effect.md`](format_effect.md).
 - What the 14 empty `.cpk.patch` stubs would have overlaid, and whether a
   shipped title update exists that fills them.
 
 ---
 
 # Log
+
+## Session 17 — 2026-08-23
+
+- **`effect.bin` is read, both schemas, and it is the file that says where an
+  effect goes.** See [`format_effect.md`](format_effect.md) and
+  [`tools/effect.py`](../tools/effect.py). 69 files, 3,918 rows, 0 failures.
+  A `.PTP` block is a particle system with no placement in it; this is what
+  supplies the placement. The 69 turn out to be **two unrelated structs that
+  share a name, a width and a container**: 54 motion tables with no string
+  pool, and 15 stage tables with one.
+- **`.mkc`'s `0801` addresses a row's own id byte, not its position.** Every
+  row opens `(kind, id, category, slot)`; the id is unique inside all 54
+  tables and skips wherever an effect was cut. **4,187 of 4,190 references
+  resolve as an id against 4,125 as a position**, and thirteen of the fourteen
+  pacs listed in [`format_mkc.md`](format_mkc.md) as *indexing past the end of
+  their own table* stop doing so — `b15`'s 67 against 48 rows is an id that is
+  simply there. `z07` is the one left, asking for 4, 5 and 6 out of a table
+  holding 1, 2, 3, 7 and 8.
+  - the reason the position reading looked right is the ceiling: on 29 of the
+    54 pacs the largest argument is exactly the row count, which a dense table
+    satisfies under either reading. The sparse tables are what tell them apart.
+- **The `u32` at `+0x04` is a `CMDL` locator id** — the same `S4` namespace
+  session 16 named for `7ff9`'s emitter. **455 of the 457 non-zero values
+  resolve** on the actor's own rig, and the vocabulary reads itself again:
+  `node_r_weapon` on 66 rows, which is the weapon trail; `node_hip`, the
+  hands, the head, `node_jaw`, the toes; `big_gun`, which is the shield
+  stage's own turret; and the `eff_*` sockets. The other 1,977 rows leave it
+  at 0 and hang the effect off the actor's origin. One table, two consumers,
+  one answer: a sound and an effect come out of the same socket.
+- **`.PTP` category 2 is this file, and not a fourth bank.**
+  `eff_hitlevel_tbl` reaches id 252, no `PTCP` on the disc has 252 slots, and
+  the reason is that category 2 addresses **the class's own `effect.bin` by
+  row id — 96 of 96 pairs resolve**. That closes the last unplaced piece of
+  the effect addressing; see [`format_ptp.md`](format_ptp.md).
+  - and the table then explains the numbers. `fht`'s ids are 110, 111, 112,
+    120, 121, 122 … 250, 251, 252, and each triple is **one `.PTP` slot at
+    scale 0.5, 0.8 and 1.0**. Eleven weapon kinds by three hit levels, and
+    **the hit level is the scale** — the same three numbers out of all twelve
+    player tables.
+- **The rest of the motion row reads as placement.** A scale, an `(x, y, z)`
+  offset in metres, and up to two rotations written as `(axis 1..3, degrees)`
+  — 168 of the 181 angles are a whole multiple of five and **no row ever names
+  the same axis twice**, which is what an artist typing Euler angles leaves
+  behind. `z01`'s rows 16 to 24 are one smoke puff at half size scattered a
+  metre either way with `y` left at zero: nine dust clouds on the ground.
+- **The stage table is a placement list, and a script names its columns.**
+  A row is one effect standing on one named marker in one room. All 1,484 rows
+  land on a filled block of **the stage's own `effect.PTP`** — there is no
+  category lane because there is no choice, and 24 of them are on a slot
+  `misc.PTP` has not got, which is what rules the common bank out.
+  - `stage.cpk/050_02_03/param.pac` declares `class EffData { _hta_name;
+    _eff_cate; _eff_id; _rnd_radius; _y_offset; _sec_fix; _sec_rnd; _cue_id;
+    _work }` and lists **the same six markers the binary lists for the same
+    room**. The two agree field for field: slots 8, 8, 9, 8, 9, 8; `y` −8.5 on
+    all six; a period of 5 s + 5 s on all six. The script carries one field the
+    table does not, `_rnd_radius`;
+  - **a row names a cue exactly when it carries a period**: 44 do both, 1,440
+    do neither, 0 disagree. A fire that restarts every five seconds makes a
+    noise when it does; embers and smoke run continuously and are silent;
+  - **a row stands on a marker its room declares**: 1,483 of 1,484 `(room,
+    marker)` pairs are in that room's `hta.bin`, so the table joins straight
+    through to a world position. The one that is not is `080_01_02`'s
+    `ef_uplight001`, in a room that declares `ef_uplight002` and no `001`.
+- **What this says about the `ECH` type inference.** `effect.bin` is the first
+  `ECH` whose columns are named end to end, and neither the EBOOT nor
+  `ech.py`'s classifier did it — the *consumers* did, four of them, each with
+  its own reason to reject a wrong reading. `ech.py` reads the first four
+  bytes of a motion row as one `u32`; they are four one-byte fields, two of
+  which are an address. Noted in [`format_ech.md`](format_ech.md), because it
+  is the method that transfers, not the table.
+- **Still open here**: the three bit-field bytes at `+0x08`..`+0x0a` of a
+  motion row, the two at `+0x08`..`+0x09` of a stage row, the `kind` byte that
+  is 0 on 102 rows and 1 on 2,332 with nothing else splitting with it, and the
+  near/far pair of distances a stage row carries.
 
 ## Session 16 — 2026-08-23
 
