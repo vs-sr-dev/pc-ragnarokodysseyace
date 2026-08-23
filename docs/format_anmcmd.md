@@ -1,7 +1,7 @@
 # `.anmcmd` — the animation command lists
 
-**Status: container solved, the hit record read and its geometry named,
-the opcodes partly named.**
+**Status: container solved, the hit record read and its geometry named and
+placed, the opcodes partly named.**
 2,053 files, **6,802 blocks, 10,175 commands, 0 unreadable**, and every
 arithmetic check closing on every file. Reader:
 [`../tools/anmcmd.py`](../tools/anmcmd.py).
@@ -281,26 +281,62 @@ three vectors mirror together, by the same rule, in the same lane. Whatever
 the third one bounds on flag 4, it is the same kind of quantity as the first
 two — and a rotation is not.
 
+### The offset is turned by its bone — settled on an animated frame
+
+*Session 19.* This was down as open, with a note that the two attempts made on
+it had failed and that **"an animated frame with a bent elbow would"** separate
+the readings. It does, and [`hitbox.py`](../engine/hitbox.py) is the file that
+runs it: `pose.py` gained a `matrix()` so a bone arrives with its orientation
+and not only its origin, and every hit record on the disc is then placed twice
+on the frame it actually fires, over the `CNOM` it belongs to.
+
+    turned    p = M_bone * v          the offset is in the bone's own frame
+    carried   p = origin(M_bone) + v  the offset is in the actor's frame
+
+**The measurement.** For every record whose bone has a child, take the angle
+between the offset and the world direction from that bone to its child. The
+child direction is a quantity the record never mentions and neither reading was
+fitted to. `python engine/hitbox.py turned extract/tree`, restricted to the
+1,435 placements where the two readings differ by more than a degree:
+
+| reading | n | median | within 26° | z | within 60° | z |
+|---|---:|---:|---:|---:|---:|---:|
+| turned | 1,435 | 90.0° | **13.5 %** | **+14.6** | **33.9 %** | **+7.8** |
+| carried | 1,435 | 88.6° | 5.6 % | +1.0 | 27.7 % | +2.4 |
+| chance | | 90.0° | 5.1 % | | 25.0 % | |
+
+The baseline matters more than the difference. A uniformly random direction
+falls within 26° of a fixed one **5.1 %** of the time, and the *carried*
+reading scores 5.6 % — it finds nothing at all, at one standard deviation.
+The *turned* reading scores 13.5 %, fourteen standard deviations above chance
+on the same sample of the same records. **The offsets are written in the bone's
+own frame**, and the earlier rest-pose measurement (29.3 % against 15.2 %) was
+pointing the right way with a weaker instrument.
+
+Two things worth carrying out of the negative half of this:
+
+- **the median is 90° under both readings**, which says a hit offset is
+  usually *perpendicular* to its own bone rather than along it — a swing arc,
+  not a reach. That is why the test needs the chance baseline to be readable
+  at all: the signal is in the tail, not the middle;
+- **the capsule-axis test does not work.** Measuring the capsule's axis
+  against the limb between its two bones scores 53 % and 56 % within 26° for
+  the two readings — both far above chance, and indistinguishable from each
+  other, because both readings share the limb term and it dominates. Nor does
+  a floor test: 7.2 % of turned offsets and 6.1 % of carried ones land below
+  `y = 0`, and the deepest is 13 m under either, because a monster in the air
+  has no floor to be under. Both are in `hitbox.py` and both are printed, so
+  the next reader can see they were tried.
+
+**`col_hit` says the same thing without an animation.** The `ELBN` body
+capsule — see [`format_elbn.md`](format_elbn.md) — is the same idea in the
+same engine, and its numbers are large enough to read straight off: a player's
+body is two capsules on `node_hip` running to `(0, 0, ±0.6)`, and `node_hip`'s
+own `z` axis points down, so turned they stand the body up from `y = 0.07` to
+`y = 1.87` and carried they lie flat through the hips over 0.60 m. Two records,
+two methods, one answer.
+
 ### What is still open about them
-
-**Whether an offset is turned by the bone or only carried with it.** The
-weapon case argues for the bone's own frame — `sw311at_s` puts its hit at
-`(0, 1, 0)` on `node_r_weapon`, which is a metre up the blade only if the
-frame is the blade's — and so does a weak measurement: over the 1,893 records
-whose bone has a child, **29.3 % of offsets point within 26° of the direction
-to that child in the bone's own frame against 15.2 % in the actor's**, medians
-0.211 against 0.031. But the rest pose cannot settle it, and the two attempts
-that failed are written down here so the next reader does not repeat them:
-
-- **the mirror test does not separate them.** Over 266 mirrored bone pairs the
-  twin's offset is `x`-negated 141 times and *identical* 102 times, with 9
-  `y`-negated and 4 `z`-negated — and the same bone gives both answers in
-  different files, so what differs is the animator, not the convention;
-- **the capsule-length test does not either.** Over 249 parent/child capsules
-  the capsule comes out 1.25 limb-lengths long turned by the bones and 1.10
-  not turned, within a factor of two on 79 % either way. These rigs' bind
-  rotations sit too close to identity for a rest pose to tell the readings
-  apart. An animated frame with a bent elbow would.
 
 **What flag 4's three points bound** — a wedge, a triangle, a box — and what
 separates flag 2 from flag 1 beyond `|v1|` running to 18.9 m at the median
@@ -423,9 +459,11 @@ The families also fall where the monster does. `b02_00` and `b07_00` reach for
 
 ## Still open
 
-- **Whether a hit offset is turned by its bone or only carried with it**, and
-  what flag 4's three points bound. Both are under *The three vectors* above,
-  with the two measurements that failed to separate the readings.
+- **What flag 4's three points bound** - a wedge, a triangle, a box. Under
+  *The three vectors* above. **Whether a hit offset is turned by its bone is
+  settled**: it is, on an animated frame, fourteen standard deviations above
+  chance while the other reading is at one. See the same section and
+  [`hitbox.py`](../engine/hitbox.py).
 - **Opcode 10's effect id is a catalogue number and it does not resolve on the
   disc.** The payload is twelve bytes and reads
 

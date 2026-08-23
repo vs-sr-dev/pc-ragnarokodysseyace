@@ -1,8 +1,12 @@
 # `ELBN` — the named-parameter container
 
-**Status: solved as a container.** 707 files, 3,983 entries, **318 distinct
-parameter names, 13,437 relocations, 0 unreadable**, every check closing on
-every file. Reader: [`../tools/elbn.py`](../tools/elbn.py).
+**Status: the container is solved and `objbin.bin`'s records are read.** 707
+files, 3,983 entries, **318 distinct parameter names, 13,437 relocations, 0
+unreadable**, every check closing on every file. Reader:
+[`../tools/elbn.py`](../tools/elbn.py). *The records* below describes the
+geometry, the monster body regions and the player skill parameters; the other
+three populations — `trace_par.bin`, `stageparam.bin`, `mot_param.bin` — are
+still only containers.
 
 `ELBN` sat on the deferred list for six sessions as *"unidentified, no consumer
 waiting"*. It is the format on this disc that **names its own contents**: the
@@ -130,7 +134,7 @@ class**, with the names spelled out: `backStabParam`, `soulBreakerParam`,
 `s_quick_dash_par`, `s_tension_revise_hp_tbl` and three more `s_tension_*`
 tables, `s_breathing_prob`, `eff_hitlevel_tbl`, `se_hitlevel_tbl`. That is the
 same territory the JSON in [`params.md`](params.md) covers, in a second file
-per class, and the two have not been compared.
+per class. *The records* below reads both it and the monsters' side.
 
 ## The vocabulary
 
@@ -168,26 +172,316 @@ works on it is the same one `params.md` used: correlate against something else.
 `elbn.py survey` prints all 318 with the sizes each takes; `elbn.py field
 <name>` prints every file that carries one.
 
-## Still open
+---
 
-- **Every field inside every value.** The container is solved; the records are
-  not. `stage_param`'s light and fog records are the only ones read far enough
-  to name anything.
-- Whether `objbin.bin` is what the stage's `obj*` markers place. It carries
-  `clip_distance`, `col_hit` and `jostle_data`, which is what a pushable crate
-  needs, and the three `objbin.cpp` files sit in `kibako.pac` (crate),
-  `kibako_bomb.pac` and `taru.pac` (barrel).
-- What the five 100s at the tail of a motion row are a percentage of.
-- `trace_par.bin`'s `par_tbl` and `ref_tbl` — 207 files, the largest
-  population, and no guess.
-- **The payload tail.** Past the last byte any entry, name or pointer target
-  reaches, 447 files hold nothing but zeros and 260 hold data — the
-  continuation of arrays whose length is declared by the count beside their
-  pointer rather than by any extent in the file. A reader that follows counts
-  gets there; one that only measures does not. `dc_demo_data.bin`'s tail is the
-  string `app0:movie/dictionary/stg_173.mp4`, which is a PS3 filesystem path
-  and the only one seen so far in an `ELBN`.
-- `col_hit`, 1,172 records of 32 bytes across 100 files. Its leading word is a
-  small integer on most records and the locator id `1000` — the hip, per
-  [`CMDL`](format_cmdl.md) — on 53, so it is not one thing, and the mixture
-  is not explained.
+# The records
+
+*Session 19.* The container had been solved for a session and not one record
+described. This chapter describes the ones in `objbin.bin`, which is the
+combat parameter set of a player class and the body of a monster, and it is
+the largest of the four `ELBN` populations. Tools:
+`elbn.py records`, `elbn.py capsules`, `elbn.py regions`.
+
+The method is the one [`ech.py`](format_ech.md) uses on a column and nothing
+cleverer: **look down the same word across every file that carries the
+record**. One file cannot tell a constant from a payload or an index from a
+measurement; eighty-three can. `elbn.py records <name>` does exactly that, and
+everything below came out of reading its output.
+
+## How an array is written, and how to find its stride
+
+The `(count, pointer)` shape is everywhere, and the array it points at carries
+no length of its own. The stride is recoverable anyway, because an array is
+packed against whatever is allocated after it:
+
+    stride = (the next allocated offset - the pointer) / count
+
+That is exact whenever the array really is the last thing before the next
+allocation, and wrong when padding or the payload tail stretches the gap — so
+`elbn.py records` takes the **mode** over every file carrying the name rather
+than believing any one file's arithmetic. On `se_hitlevel_tbl` the naive
+answer is 12 on 59 files, 20 on nine and 16 on five; 12 is right, and the nine
+and the five are trailing padding.
+
+**A count word is a maximum as often as a length.** Several records declare
+eight and use three, and the eight slots are there whether or not the file has
+eight things to put in them. Where that happens it is said so below.
+
+## The geometry: `col_hit`, `jostle_data`, `pgs_data`
+
+Three records, 2,371 of them across 100 files, and all three are the same
+thing at three lengths. Each begins with a **bone** and continues with points
+in that bone's own space.
+
+```
+col_hit        32 bytes   u32 bone; f32 a[3]; f32 b[3]; f32 radius
+jostle_data    56 bytes   u32 bone; f32 a[3]; f32 b[3]; f32 r0; f32 r1;
+                          then 0, 0, 0, a f32 near 1, and -0.0
+pgs_data       28 bytes   u32 bone; f32 centre[3]; f32 radius; u32; u32
+```
+
+**`col_hit` is a capsule and it is the actor's body.** A player class carries
+exactly two, both on `node_hip`, running to `(0, 0, -0.6)` and `(0, 0, +0.6)`
+with a radius of 0.3 — and `node_hip`'s own `z` axis points straight down in
+the rest pose of every player model, so the pair stands the body up from
+`y = 0.07` to `y = 1.87` on a model whose rest pose runs 0.00 to 1.78. See
+[`hitbox.py`](../engine/hitbox.py), which prints both that reading and the one
+where the offsets are not turned by the bone — under which the same two
+capsules lie flat through the hips, 0.60 m of body. One of those is a person.
+
+**The bone word addresses two spaces, and the value says which**, exactly as
+[`.anmcmd`](format_anmcmd.md)'s does: below 1000 it is a node index, at or
+above it a [`CMDL`](format_cmdl.md) `S4` locator id. 53 of the 1,161 records
+in an `objbin.bin` use the locator route, all of them `1000`, which is
+`node_hip`. **Every record whose actor has a model on the disc resolves inside
+it — 1,148 of 1,148.** The thirteen that do not belong to `_01`, a directory
+that ships an `objbin.bin` and nothing else.
+
+**`jostle_data` is the same capsule with two radii** — a cone rather than a
+sleeve — and the word at `+0x34` is `0x80000000`, which is `-0.0f`, on 933 of
+its 941 records. That is a sentinel written by a compiler, not a number.
+
+**`pgs_data` is a sphere**: one bone, one centre, one radius. The two words
+after it are zero on all 252 monster records and `6` and `15` on the six
+player ones.
+
+## The monster's body regions
+
+`region_data`, 336 bytes, **315 records over 83 monsters**, and the first word
+is a pointer to a name an artist typed:
+
+```
+b18_00   HORN_D HEAD NECK WEAK TOGE CHEST WAIST HIP HAND_L HAND_R LEG_L LEG_R
+b17_00   HEAD BODY L_ARM R_ARM LEG L_WING_01 .. L_WING_05 R_WING_01 .. _05
+b19_00   LANCE HUMAN_CHEST HUMAN_HIP HUMAN_ARM_L .. HEAD NECK CHEST HIP ..
+z04_00   head body tail arm_l arm_r foot_l foot_r
+z01_00   all
+```
+
+That is the part-breaking, part-targeting layer the genre runs on, and 40 of
+the 83 monsters have exactly one region called `all`.
+
+### The record, and the chain that closes on itself
+
+```
++0x000  ptr        the region's name
++0x004  u32   n    then u32[20]: indices into this actor's own `col_hit`
++0x058  u32   4    then u32[4]:  indices into `pgs_data`
++0x06C  u32   8    then u32[8]:  indices into `jostle_data`
++0x090  u32        an index into `s_region_group_data`, or -1
++0x094  u32        0 or 1
++0x098  f32        0 or 30
++0x09C  u32   8    then f32[16], eight used: a flat modifier by `region_lv`
++0x0E0  f32        a scale, near 1
++0x0E4  u32   6    then f32[6]:  six multipliers, near 1
++0x100  u32   8    then u32[16], eight used: hit points by `region_lv`
++0x144  u32        811..817, or -1
++0x148  u32, u32   zero on all 315
+```
+
+Unused slots in the index arrays are `0xFFFFFFFF`, and the count word is a
+maximum rather than a length: `+0x04` reads 8 on 311 records and 14 on two,
+and the two spend all fourteen. **Every index lands inside the array it names
+— 274 `pgs_data` indices and 27 `jostle_data` indices, none out of range —
+and so does every `col_hit` one.**
+
+**The chain closes on itself, and nothing in the file says it should.** A
+region names `col_hit` capsules by index; a capsule names a node index; the
+node has a name in the `CMDL`; and **the node's name is the region's own**.
+`elbn.py regions` counts it with a synonym table a reader can inspect —
+`HEAD` is satisfied by `node_head`, `node_jaw` or `node_neck` — and gets
+**259 of the 266 regions the table has a word for**. It prints all seven
+misses and all 49 words it has no entry for, so a table that is too generous
+shows up as a pass and a table that is too strict shows up as a miss:
+
+```
+z04_00   7 regions, 0 breakable, 8 capsules
+    head     hit [0]     node_head
+    body     hit [1]     node_hip
+    tail     hit [2, 3]  node_tail node_tail2
+    arm_l    hit [4]     node_l_forearm
+    foot_r   hit [7]     node_r_calf
+```
+
+The seven that miss are the interesting ones and every one of them is the
+reader's fault: `b11_00`'s `HARA` sits on `node_hara`, a bat's `wing` on
+`node_l_upperarm`, and `b05_01`'s `L_HAND_B` on `node_l_thigh`, because the
+rig calls a quadruped's hind limb a hand — the same convention
+[`pose.md`](pose.md) found in the footfall cues.
+
+### The eight slots are `region_lv`
+
+Two of the arrays are eight long — the flat modifier at `+0x9C` and the hit
+points at `+0x100` — and the monster's own JSON carries a field called
+**`region_lv`** whose value across all 89 files is exactly **0 to 7**. See
+[`params.md`](params.md), where it is the field that separates a monster's
+difficulty tiers. The name says what it indexes and the range agrees to the
+slot.
+
+It is not a perfect join in the other direction: 61 of the 79 monsters fill
+only slots their JSON declares, and eighteen fill more than that — a table
+filled defensively past the levels the game asks for. Reading `b18_00`'s
+`HEAD` across the eight gives 500, 600, 700, 1,000, 1,200, 1,400, 700, 1,400
+hit points, which is a difficulty curve and not eight unrelated numbers.
+
+**The flat modifier is very likely a defence.** It is negative on the parts a
+designer calls a weak point and positive on the armoured ones: on `b11_00`,
+`HARA` — the belly — is −450 while `THORN` and the legs are +500 and the
+shoulder +300; on `b18_00` the head, neck and hands are −130 to −200 while the
+chest, waist and hip are 0. That is what it looks like; the disc does not name
+it, and nothing here proves it is subtracted rather than added to something
+else.
+
+**The six multipliers are six of something and the disc has one six.** They
+sit near 1 — `b11_00`'s `HEAD` reads 1.10, 1.20, 1.05, 1.20, 1.50, 1.05 — and
+the only population of six in this game is the six player classes, which are
+also the six directories `job.cpk` ships. That is a guess and it is written
+down as one.
+
+### Breaking a part, and the table `params.md` could not index
+
+`region_data_brk`, **752 bytes, 87 records over 23 monsters**, is
+`region_data`'s 336 bytes followed by 416 more. The prefix has the same layout
+— name, capsule indices, defence, multipliers — and the tail adds:
+
+```
++0x150  u32   8    two more index arrays, the same shape as the first
++0x190  u32   8
++0x1D8  u32   8    then 8 f32: hit points again, 800 to 60,000
++0x21C  u32   8    then 8 u32
++0x260  u32   8    then 8 f32: a second flat modifier, negative throughout
++0x2A4  f32        a scale, then u32 6 and six more multipliers
++0x2C4  u32   4    then u16[4]: ids from a family keyed on the part
++0x2D0  u32   4    then u16[4]: the same family, ten lower
++0x2E0  u32        a node index — the part's own bone
++0x2E8  u32        801..804, or 811..813
+```
+
+**Its record count is `it_drop_break`.** The monster JSON carries a list
+called `it_drop_break` whose members are drop-table ids — `4150`, `4151`, and
+every one of them is a file in
+`item.cpk/it_drop.pac/it_drop_table.pac/it_drop_db_<id>.bin`. What the list
+had no index for was *which part*. It is this table, positionally, and the
+lengths agree on **23 of 23 monsters**: `b18_00` breaks `HORN_U1`, `HORN_U2`,
+`TAIL`, `WING_L` and `WING_R` and drops 7950, 7951, 7952, 7953, 7954 in that
+order. That names one of the leftovers [`params.md`](params.md) listed.
+
+The break hit points are an order of magnitude above the region's — 15,000 for
+a horn against 500 for a head — so the two are separate pools, which is what a
+game with both a stagger meter and a breakable part needs.
+
+### `region_data_tbl` is how the two tables are reached
+
+Sixteen bytes, one per monster, and it is two `(pointer, count)` pairs in the
+order *broken* then *whole*:
+
+```
++0x00  ptr   region_data_brk, or null
++0x04  u32   how many
++0x08  ptr   region_data
++0x0C  u32   how many
+```
+
+On all 83 the first pair is null on exactly the 60 monsters that ship no
+`region_data_brk` and set on exactly the 23 that do, both pointers land on the
+entry they name, and both counts equal that entry's size divided by 752 and
+336.
+
+### `s_region_group_data`
+
+48 bytes, 197 records, and **the first eight words are `0xFFFFFFFF` on all
+197**. An array of indices that is empty in every file on the disc is not
+data; it is a runtime slot the build initialised and left. What the record
+actually carries is the three floats at the end — `(-15, 20, -30)`,
+`(-20, 35, -45)`, seven, six and five distinct values — and a `region_data`
+points into this table by its index at `+0x90`, one entry per region.
+
+## The player's combat parameters
+
+`job.cpk/<class>/objbin.bin`, six files, 78 distinct names, and **the names
+are the class's skill list**. Fourteen names are common to all six; the rest
+split by class and read as the roster of *Ragnarok Odyssey*:
+
+```
+sw   provokeParam hardProvokeParam magnumBreakParam furyStanceParam
+     guardStanceParam s_mastersword_par s_just_combo_inf s_combo_motA
+as   backStabParam soulBreakerParam stickParam backLoadBulletParam
+     s_quick_dash_par soul_breaker_attack_param_tbl
+hs   hammerFallParam drillCannonParam drillUpperParam absorbTwisterParam
+     loudVoiceParam s_spin_par s_spin_data
+ht   arrowStormParam sharpShootingParam trapParam flasherParam
+     landMineBuleltParam freezingTrapBuleltParam claymoreTrapBuleltParam
+     ht_arrow_tbl ht_atk_revise_tbl ht_react_revise_tbl ht_slow
+mg   fireBallParam frostWaveParam crimsonRockParam quagMireParam
+     teleportParam safetyCoatParam enhancedAuraParam rapidStrikeParam
+     mg_magic_tbl mg_charge_data weapon_effect_offset_data
+cl   healParam blessingParam gloriaParam sanctuaryParam kyrieEleisonParam
+     coluceoHealParam
+```
+
+`Bulelt` is the disc's own spelling. A skill that fires something carries a
+second entry, `<skill>BulletParam`, and **its first word is the projectile's
+lifetime in frames**: 30 for a fireball, 60 for a frost wave, 180 for a
+crimson rock, 300 for a quagmire — one, two, six and ten seconds at the
+30 fps [`units.md`](units.md) settles.
+
+Several `*Param` entries are **two bytes long**, which is worth noticing on
+its own: `ELBN` sizes a value to the byte and the engine's C++ kept some of
+these as a single `u16`. Others pack two `u16` into a word —
+`blessingParam`'s first is `0x00140078`, which is 20 and 120, and 120 frames
+is four seconds.
+
+### The tension tables
+
+Four of them, identical across all six classes, all `(count, pointer)` with a
+stride of 8 — a **piecewise curve of `(threshold, multiplier)` pairs**:
+
+```
+s_tension_revise_hp_tbl        4 pairs   (0.10, 2.00) (0.25, 1.50)
+                                         (0.50, 1.25) (0.75, 1.10)
+s_tension_revise_damage_tbl   13 pairs   (6.0, 0.15) .. (1.0, 0.00) ..
+                                         (0.1, -0.50) (0.0, -0.90)
+```
+
+The first reads straight off: at a tenth of your health you earn tension twice
+as fast. The damage table runs the other way, from a six-times multiplier
+earning +0.15 down to a tenth earning −0.50, and its rows descend — so both
+are looked up by scanning until the threshold is passed.
+
+### `eff_hitlevel_tbl` and `se_hitlevel_tbl`
+
+Both are `(count, pointer)`. `se_hitlevel_tbl`'s stride is 12 and its middle
+word is a sound id: the six player classes take 1000, 1006, 1012, 1018, 1048,
+1054 … **in steps of six**, and the monsters share 1090 to 1102. A block of
+six consecutive ids per entry is what a table called *hit level* looks like
+when the level is added to the base. The third word is 0 on 76 of 85 records
+and takes the values 1 to 8 on the rest, one per extra row a class carries,
+and the disc does not say what it selects.
+
+`eff_hitlevel_tbl`'s stride is 40: four `(2, id)` pairs, a zero, and a packed
+word. Category 2 is [`.PTP`](format_ptp.md)'s settled one — the actor's own
+[`effect.bin`](format_effect.md) addressed by row id — and `effect.py
+hitlevel` already joins it.
+
+## What the records still do not say
+
+- **The six multipliers.** Six of what. The classes are the only six.
+- **The flat modifier's sign convention** — read here as a defence, on the
+  strength of which parts are negative, and not proved.
+- **`region_data_brk`'s two `u16[4]` arrays.** Their values are drawn from a
+  generated family: the *k*-th breakable part of a monster gets `6100 + 100k`
+  in one and `6110 + 100k` in the other, running to `6820`. They are not
+  effect ids (an `effect.bin` reaches 255), not motion ids, not `se.acb` cues
+  (37 in a monster bank), and searching all 4,941 `ECH` tables for a column
+  holding the family found nothing. Their coincidence with `it_drop_db_<id>`
+  filenames is a coincidence: every `x20` in the range happens to exist and
+  almost no `x10` does.
+- **`s_region_group_data`'s three angles**, and why its eight index slots are
+  empty on every file.
+- **`pgs_data`'s trailing `6` and `15`**, on the players only.
+- **`chuck_off_param`'s third word**, which is not one field: it reads
+  `04 64 00 00`, `03 64 00 00`, `02 1e 00 00` — a small index and a 100 or a
+  30, the four-`u8`-in-a-lane trap [`ech.py`](format_ech.md) warns about.
+- **`trace_par.bin`'s `par_tbl` and `ref_tbl`**, 207 files and still no guess.
+- Everything in the other three populations: `stageparam.bin` past the lights,
+  `mot_param.bin` past the motion id, and the mercenary AI's four tables.

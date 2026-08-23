@@ -5,88 +5,84 @@
 
 ---
 
-# Next session — the records nobody has described
+# Next session — the tables nobody has opened, and the loop
 
-Session 18 read the engine's script interface: **285 native functions**, what
-each is handed and what it does, in [`format_api.md`](format_api.md). The
-number moved because `psq.py api` had been missing two kinds of call for six
-sessions — `_OP_TAILCALL`, and a root call through a computed key, which hid
-`cfGetCntKillGenPieceLockOnly` and its 892 calls. Five things to carry:
+Session 19 opened the `ELBN` records, placed a hit volume on a moving
+skeleton, and read four more `.mkc` opcodes. Five things to carry:
 
-- **the interface is not only functions.** `suspend(n)` is the protocol: the
-  script hands the host a number and stops, and the host resumes it. Thirteen
-  numbers cover every blocking thing in the game;
-- **the arguments join tables that are already read**, and that is what settles
-  them. Every one of 10,787 `talk` message ids is inside `msg_npc_talk.bin`;
-  1,220 of 1,331 motion ids name a `.CNOM` of the character they are played on
-  and the 111 that do not all ask for 201, a sentinel; 1,120 of 1,144
-  `chrPlayVoice` calls name a cue carrying the speaker's own name;
-- **`isAbnormal(1, 3)` is the player frozen**, so the status kind is a
-  zero-based index into the `ab_*` block in the JSON's own declared order.
-  That is one of the four things [`params.md`](params.md) had open;
-- **a stage script writes `sec * 30`** to turn an effect's period into a frame
-  countdown. [`units.md`](units.md) had a declared frame rate down as
-  EBOOT-only;
-- **`chrSetAttachArticle`'s 4000 is `node_r_weapon`** — a fourth consumer of
-  the `CMDL` locator numbering, after `.CTXT`, `.mkc` and `effect.bin`.
+- **`objbin.bin` is the actor's body and the class's skill list.**
+  [`format_elbn.md`](format_elbn.md) now describes `col_hit` (a capsule per
+  bone), `jostle_data` (the same with two radii), `pgs_data` (a sphere),
+  `region_data` (the monster's named body parts) and `region_data_brk` (its
+  breakable ones);
+- **the chain closes on itself.** A region names `col_hit` capsules by index,
+  a capsule names a node, and the node's name is the region's own — 259 of the
+  266 the reader's table has a word for. That is three files agreeing and none
+  of them declaring it;
+- **an offset is turned by its bone.** The question `.anmcmd` left open for two
+  sessions is settled by [`hitbox.py`](../engine/hitbox.py) on an animated
+  frame: 13.5 % of turned offsets land within 26° of the direction to the
+  bone's child against a **chance baseline of 5.1 %**, and the other reading
+  scores 5.6 %, which is chance;
+- **`region_data_brk` indexes `it_drop_break`**, positionally, 23 of 23
+  monsters — which names one of [`params.md`](params.md)'s leftovers;
+- **`.mkc`'s `0400` is a show/hide on a locator** and `0807`'s argument is
+  which foot, 28 of 28 on the players. See [`format_mkc.md`](format_mkc.md).
 
-What is left is records and opcodes. Nothing on the disc is unopened.
+### 1. The other three `ELBN` populations.
 
-### 1. The `ELBN` records, field by field.
+`objbin.bin` is 89 of the 707 files. `trace_par.bin` is **207** and its two
+names — `par_tbl`, `ref_tbl` — still have no guess at all; `stageparam.bin` is
+154 and only its lights are read; `mot_param.bin` is 60 and only its motion id
+is. `elbn.py records` is the instrument and it took one session to do the
+first population with it. Also `statusData` and `statusDataHeader`, 89 files,
+which the session never reached.
 
-The container is solved and 318 names are addressable; not one record is
-described. `job.cpk/<class>/objbin.bin` is the best target, because it is the
-same territory as the JSON in [`params.md`](params.md) — and because
-`eff_hitlevel_tbl`, one of its 318, has been read end to end, which shows what
-the rest of them will cost. 707 files.
+### 2. Structure the `.psq` control flow, and then Milestone 2.
 
-### 2. The opcodes that are left, in both event formats.
+`psq.py src` prints labels and `goto`. Rebuilding `if`/`while`/`switch` is
+ordinary work and it is what is left between the disassembly and source, now
+that [`format_api.md`](format_api.md) makes the 285 native calls readable
+prose. **Milestone 2 is specified rather than described**: *"a stage runs"*
+needs a Squirrel VM — a dependency, not a project — the 285 functions stubbed
+and the `suspend` resume. Nothing else has to be read first.
 
-Thirty of `.anmcmd`'s fifty-two and ten of `.mkc`'s twenty-one. The positional
-method looked exhausted on `.anmcmd` until session 17 showed what it was
-missing — a selector byte inside a payload changes what the rest of the payload
-means, and counting occurrences of an opcode never sees that. Worth a second
-pass with that in mind. `.mkc`'s ten are easier and worth doing alongside,
-because six of them are players-only or monsters-only and that is where a
-correlation starts: `0803`, `0804`, `0805`, `080d` are the players' (624
-records), `080f` is the monsters' (193). **`0802`'s four arguments now have a
-sibling**: `cfCmrQuake(kind, 0, n, m)` is a camera shake with four arguments
-too, and its first is inside `0802`'s `kind 1..12` — but its fourth is 0, 15 or
-20 against `0802`'s 0..4, so the two do not line up and somebody should find
-out why. See [`format_api.md`](format_api.md).
+### 3. The combat loop, on paper.
 
-### 3. Draw a hitbox on a posed skeleton.
-
-Everything it needs exists: [`pose.py`](../engine/pose.py) puts the bone in
-world space on the firing frame, and the hit record's shape, offsets and radii
-are named. It would also settle the one thing the rest pose could not —
-whether an offset is turned by its bone — because an animated frame with a bent
-elbow separates the two readings that a bind pose does not.
+Everything it needs is now described and nothing has been assembled. A hit is:
+an `.anmcmd` record placing a volume on a frame ([`hitbox.py`](../engine/hitbox.py)),
+against a monster's `col_hit` capsules; the capsule belongs to a `region_data`;
+the region carries a defence and six multipliers and hit points by
+`region_lv`; the actor's `.json` carries `atk`, the stagger thresholds and the
+status vectors; `s_tension_revise_*` says what the hit does to tension; and
+`se_hitlevel_tbl` and `eff_hitlevel_tbl` say what it sounds and looks like.
+Writing that down as one document would say exactly which numbers are still
+missing, and it is the cheapest way to find out.
 
 ### Then
 
-4. **Name the rest of the `ECH` columns.** The quest `.pac`'s four tables are
-   done — [`format_quest.md`](format_quest.md) — and so is `npc.bin`, the cast
-   list. What is left in a quest pac is the reward side:
-   `item_reward{,_multi,_region}.bin`, `weapon_decost.bin`,
+4. **The `.anmcmd` opcodes.** Thirty of fifty-two. Session 17's lesson still
+   applies — a selector byte inside a payload changes what the rest of it
+   means, and counting occurrences never sees that. `.mkc` is down to six
+   (`0805`, `0806`, `080c`, `080d`, `080f`, `0406`) and each has a file set
+   that says something: `080f`'s 32 files are all `appear` or `die`, `0406`'s
+   fifteen are all loops, `080c`'s 35 are all emotes. See
+   [`format_mkc.md`](format_mkc.md).
+5. **Name the rest of the `ECH` columns.** What is left in a quest pac is the
+   reward side: `item_reward{,_multi,_region}.bin`, `weapon_decost.bin`,
    `destructible.bin`, `mapexception.bin` and the `q<NNNNN>.bin` header. The
    `CCLS` surface codes 1 to 13 are the other well-posed one, and the pose
-   layer now says where a foot is, so the triangle under it is a lookup away.
-5. **The minimap transform.** 137 `.map` images, each visibly the silhouette
+   layer says where a foot is, so the triangle under it is a lookup away.
+6. **The minimap transform.** 137 `.map` images, each visibly the silhouette
    of its own stage's collision. A small job that gives the UI layer a map.
-6. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
-   `+0x0a`. They are bit fields, they correlate with whether the row carries a
-   locator and whether it carries an offset, and the obvious reading is a
-   space or follow mode. Nothing on the disc tests it; a renderer would.
-7. **Structure the `.psq` control flow.** `psq.py src` prints labels and
-   `goto`. Rebuilding `if`/`while`/`switch` is ordinary work, and it is worth
-   more now than it was: [`format_api.md`](format_api.md) makes the
-   disassembly readable prose, and the structure is what is left between it and
-   source.
-8. **Milestone 2 is now specified rather than described.** *"A stage runs"*
-   needs a Squirrel VM — a dependency, not a project — the 285 functions
-   stubbed, and the `suspend` resume. Every stub has a signature and most have
-   a meaning. Nothing else has to be read first.
+7. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
+   `+0x0a`. Bit fields; they correlate with whether the row carries a locator
+   and whether it carries an offset, and the obvious reading is a space or
+   follow mode. Nothing on the disc tests it; a renderer would.
+8. **Draw it.** `hitbox.py obj` writes a frame as Wavefront OBJ — bones, body
+   capsules and hit volumes together. Nobody has looked at one yet, and the
+   two things it would catch cheaply are a flag-4 shape read wrong and a
+   monster whose capsules do not cover it.
 
 ---
 ## Deferred, with reasons
@@ -147,13 +143,16 @@ elbow separates the two readings that a bind pose does not.
   for "Fever" found nothing. Also the four unexplained elements of the `ab_*`
   status vectors — **their order is settled**, since `isAbnormal(1, 3)` is the
   player frozen and index 3 is `ab_frz`: [`format_api.md`](format_api.md).
+  **`it_drop_break` is settled**: it is indexed by `region_data_brk`, the
+  monster's breakable parts in order, and `region_lv` indexes the eight-slot
+  arrays in `region_data`. Both in [`format_elbn.md`](format_elbn.md).
 - `.anmcmd`: thirty of the fifty-two opcodes; the unit of `+0x35`; why 554 of
   the 2,053 name no motion; and opcode 10's effect id, which session 14 showed
-  resolves nowhere on the disc. **The hit record's three vectors are
-  settled** — `flag` at `+0x01` is a shape and it says which is which — but
-  two things about them are not: whether an offset is turned by its bone, and
-  what flag 4's three points bound. See
-  [`format_anmcmd.md`](format_anmcmd.md).
+  resolves nowhere on the disc. **The hit record's geometry is settled** —
+  `flag` at `+0x01` is a shape, it says which vector is which, and session 19
+  showed the offsets are turned by their bone. What is left of it is **what
+  flag 4's three points bound**. See [`format_anmcmd.md`](format_anmcmd.md)
+  and [`hitbox.py`](../engine/hitbox.py).
 - `.psq`: `_OP_COMPARITH`'s packed `_arg1`, exercised three times on the whole
   disc and read out of the interpreter rather than confirmed; and the `.ppcut`
   macro names, which the preprocessor consumed. See
@@ -173,14 +172,16 @@ elbow separates the two readings that a bind pose does not.
   streams past opcode 2000 (volume, pitch, panning, AISAC); which member of a
   variation set the game picks and with what weights; and the `.acf`'s 16
   mixer categories and 40 buses. See [`format_awb.md`](format_awb.md).
-- `.mkc`: ten of the twenty-one opcodes, the argument roles of the camera
-  shake — which now has a sibling in the script layer, `cfCmrQuake`, agreeing
-  on its first argument and disagreeing on its fourth — `7ffb` — which the footfall measurement does not touch — and whether
-  `7ff9` and `7ffd` differ at all. See [`format_mkc.md`](format_mkc.md).
-  `7ffa` and the emitter are both settled: [`pose.md`](pose.md). So is the
-  effect index, which is a row **id** and not a row number, leaving `z07` as
-  the only pac that asks for something its table has not got:
-  [`format_effect.md`](format_effect.md).
+- `.mkc`: **six** of the twenty-one opcodes — `0805`, `0806`, `080c`, `080d`,
+  `080f`, `0406` — the argument roles of `0800` and of the camera shake, which
+  has a sibling in the script layer in `cfCmrQuake` that agrees on its first
+  argument and disagrees on its fourth; `7ffb`, which the footfall measurement
+  does not touch; and whether `7ff9` and `7ffd` differ at all. See
+  [`format_mkc.md`](format_mkc.md). Session 19 read `0400`, `0803`, `0804` and
+  `0807`, and `0807` says **which foot**, which is what `7ffa` never did:
+  [`pose.md`](pose.md). `7ffa`, the emitter and the effect index are all
+  settled, leaving `z07` as the only pac that asks for something its table has
+  not got: [`format_effect.md`](format_effect.md).
 - The AI's own leftovers: ten of the 76 condition terms, which the six
   `.cnut` predate and so cannot name; what the `2xx` action block means, given
   that its ids resolve to the same motions as the `1xx`; the `kind` byte of
@@ -204,12 +205,75 @@ elbow separates the two readings that a bind pose does not.
   stage row; the `kind` byte, 0 on 102 rows of 2,434 with nothing else
   splitting with it; and the near/far pair of distances a stage row carries.
   See [`format_effect.md`](format_effect.md).
+- `ELBN`: the six multipliers in a `region_data`, which are six of something
+  and the classes are the only six; the sign convention of its flat modifier,
+  read as a defence and not proved; `region_data_brk`'s two `u16[4]` arrays,
+  whose ids come from a family keyed on the part and resolve against nothing
+  on the disc; `s_region_group_data`'s three angles and its eight empty index
+  slots; and everything in `trace_par.bin`, `stageparam.bin` past the lights
+  and `mot_param.bin` past the motion id. See
+  [`format_elbn.md`](format_elbn.md).
 - What the 14 empty `.cpk.patch` stubs would have overlaid, and whether a
   shipped title update exists that fills them.
 
 ---
 
 # Log
+
+## Session 19 — 2026-08-23
+
+- **The `ELBN` records are read, for the population that matters most.**
+  [`format_elbn.md`](format_elbn.md) gains a chapter and
+  [`elbn.py`](../tools/elbn.py) gains `records`, `capsules` and `regions`.
+  `objbin.bin` is the actor's body and the player class's skill list, and the
+  method was the one `ech.py` uses on a column: look down the same word across
+  every file that carries the record.
+- **`col_hit` is a capsule per bone and it is the body.** 1,172 records over
+  100 files: a bone, two endpoints in that bone's own space, a radius. Every
+  one whose actor has a model resolves inside it, **1,148 of 1,148**, through
+  the same dual numbering `.anmcmd` uses — a node index below 1000, a `CMDL`
+  locator id above. `jostle_data` is the same with two radii, `pgs_data` is a
+  sphere.
+- **A monster has named body parts, and three files agree about them without
+  saying so.** `region_data`, 315 records over 83 monsters, first word a
+  pointer to `HEAD`, `HARA`, `L_WING_03`. A region names `col_hit` capsules by
+  index, a capsule names a node, and **the node's name is the region's own**
+  on 259 of the 266 a reader's synonym table has a word for. All seven misses
+  are the table's fault and every one is printed: `HARA` is on `node_hara`, a
+  bat's `wing` on `node_l_upperarm`.
+- **`region_data_brk` is the index `it_drop_break` never had.** 87 records
+  over 23 monsters, and its record count equals the length of the JSON's
+  `it_drop_break` list on **23 of 23**. `b18_00` breaks `HORN_U1`, `HORN_U2`,
+  `TAIL`, `WING_L`, `WING_R` and drops 7950 to 7954 in that order.
+- **The eight-slot arrays are `region_lv`**, a field the monster JSON already
+  carried and whose range across all 89 files is exactly 0 to 7. Hit points
+  and a flat modifier, per difficulty tier.
+- **An offset is turned by its bone — settled, on an animated frame.**
+  [`hitbox.py`](../engine/hitbox.py) is new: `pose.py` gained a `matrix()` so
+  a bone arrives with its orientation, and every hit record on the disc is
+  placed twice on the frame it fires. Against the direction from the bone to
+  its child, the turned reading lands within 26° on **13.5 %** of 1,435
+  placements — **chance is 5.1 %** — and the carried reading lands on 5.6 %,
+  which is chance. Fourteen standard deviations against one.
+  `col_hit` says the same thing in the rest pose without a measurement: turned
+  by `node_hip`, whose own `z` points down, the player's two capsules stand a
+  body up from 0.07 to 1.87 m; not turned, they lie flat over 0.60 m.
+  **Two measurements that did not work are written down** — the capsule axis
+  against the limb, where both readings share the limb term and score the
+  same, and a floor test, where a monster in the air has no floor to be under.
+- **Four more `.mkc` opcodes.** `0400` carries a state and a **locator id**,
+  and grouped by (file, locator) the state alternates on **722 of 722**
+  groups, which is a switch and not a parameter — the hunter's string attacks
+  show something on `node_r_weapon` at frame 2 and hide it at frame 6, and
+  frame 7 plays `ARROW_DUMMY_S`. `0803` fires on the same frames with the
+  opposite value. `0804` is not an event at all: 24 records, all at frame 0,
+  on exactly the twelve player bodies' `213run` and `215run_dash`.
+- **`0807`'s argument is which foot**, and that is the thing `7ffa` never
+  said. `pose.py foot` puts the skeleton under all 66 firings: **28 of 28 on
+  the players**, 0 the right and 1 the left, 47 of 55 over every actor, and
+  the eight that miss are two scuffing damage reactions, a cutscene where
+  neither foot is near the floor, and one monster that also uses 2 and 3.
+
 
 ## Session 18 — 2026-08-23
 

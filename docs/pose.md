@@ -1,6 +1,7 @@
 # The pose — a skeleton standing on the ground
 
-*Produced by [`engine/pose.py`](../engine/pose.py) and
+*Produced by [`engine/pose.py`](../engine/pose.py),
+[`engine/hitbox.py`](../engine/hitbox.py) and
 [`engine/run.py`](../engine/run.py)'s `stride`.*
 
 Session 14 gave the project a body that moves: a capsule with the game's own
@@ -265,6 +266,33 @@ Four things, all of them stated in
 
 ---
 
+## The body has a shape, and the attack has one too
+
+*Session 19.* The pose layer put a bone in world space. It did not put the
+bone's **orientation** there, and that was the whole of what was missing to
+place a hit volume: an offset written in a bone's own frame has to be turned
+as well as moved. `Play.matrix()` now returns the whole matrix, and
+[`engine/hitbox.py`](../engine/hitbox.py) uses it on the two records that
+describe a volume attached to a bone.
+
+- **`col_hit`**, from the `ELBN` `objbin.bin` — see
+  [`format_elbn.md`](format_elbn.md) — is the actor standing still. A player
+  is two capsules on `node_hip`, and because `node_hip`'s own `z` axis points
+  down in the rest pose, turning them by the bone stands the body up from
+  `y = 0.07` to `y = 1.87` on a model whose rest pose runs 0.00 to 1.78. Not
+  turning them lays 0.60 m of body flat through the hips.
+- **the `.anmcmd` hit record** — see [`format_anmcmd.md`](format_anmcmd.md) —
+  is the attack, and it is where the same question had been open for two
+  sessions with a note that only an animated frame could settle it. It does:
+  measured against the direction from the bone to its child, the turned
+  reading lands within 26° on 13.5 % of 1,435 placements against a **chance
+  baseline of 5.1 %**, and the carried reading lands on 5.6 %, which is
+  chance. One reading has found something and the other has found nothing.
+
+`hitbox.py obj` writes a frame out as Wavefront OBJ — the bones as lines, the
+body capsules and the hit volumes as tubes — so the answer can be looked at
+rather than only counted.
+
 ## Still open
 
 - **The `gn` motion sets are authored for a different rig.** `fgn` and `mgn`
@@ -294,10 +322,14 @@ Four things, all of them stated in
 - **`7ffb`, the matching second event.** It fires one frame either side of
   `7ffa` — after it in `fas213run`, before it in `fas211walk` — and this
   measurement does not touch it.
-- **Which foot `7ffa` means.** `7ffa` names a surface kind and not a side.
-  `7ff9`'s emitter is settled — it is a locator id — but `7ffa` has no such
-  field, and nothing on the disc says whether the engine tracks the side
-  itself or simply plays one cue for either foot.
+- ~~**Which foot `7ffa` means.**~~ **Settled, by a different opcode.** `7ffa`
+  still has no side field, but `.mkc`'s `0807` does: `python engine/pose.py
+  foot extract/tree` puts the skeleton under all 66 of its firings and its
+  argument is **the right foot on 0 and the left on 1, 28 of 28 on the
+  players**, 47 of 55 over every actor. It is not the same event — 33 of the
+  66 share a frame with neither `7ffa` nor `7ffb` — so what the engine tracks
+  the side *for* is still open, but the disc does carry it. See
+  [`format_mkc.md`](format_mkc.md).
 - **Four pacs resolve to no skeleton**: `bird_a`, `recycle_box`, `shield` and
   `treasure_big`, all of them stage props whose model sits somewhere the
   three arrangements in `skeleton_for` do not look.
@@ -310,9 +342,14 @@ Four things, all of them stated in
     python engine/pose.py track      extract/tree fas213run
     python engine/pose.py footfall   extract/tree
     python engine/pose.py emitter    extract/tree
+    python engine/pose.py foot       extract/tree
     python engine/pose.py locomotion extract/tree extract/tree/job.cpk/sw/sw.json
     python engine/run.py  stride     <stage dir> <class json> extract/tree \
                                      msw213run [gait] [start] [cycles]
+    python engine/hitbox.py body     extract/tree job.cpk/as
+    python engine/hitbox.py show     extract/tree b01_00_507.anmcmd
+    python engine/hitbox.py turned   extract/tree
+    python engine/hitbox.py obj      extract/tree b01_00_507.anmcmd 46 hit.obj
 
 `track` is the one to read first — one animation, one line a frame, both feet,
 which of them is down and how fast the planted one is sliding:

@@ -10,7 +10,7 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-16 (2026-08-23). **Something runs, and now it has feet.** A capsule
+Sessions 1-19 (2026-08-23). **Something runs, and now it has feet.** A capsule
 with the game's own acceleration, run speed, turn rate and radius crosses the
 first field of the game in 405 frames - 13.5 seconds - without leaving the
 collision mesh, and walks 135 stages, 127 of them with the body on legal
@@ -25,6 +25,19 @@ and `<stage>.col` agree to a centimetre across 1,432 markers, a join nobody
 had reason to make while both were only being read. And a `borderline` is a
 closed loop - 105 of 145 stages - which had been an open question since
 session 8.
+
+Session 19 gave it a shape to be hit on. The `ELBN` `objbin.bin` turns out to
+carry **the actor's body as capsules on bones** and, for a monster, **its
+named body parts** - `HEAD`, `HARA`, `L_WING_03` - each owning the capsules it
+is hit through. The chain closes on itself and nothing in the files declares
+it: a region names a capsule by index, the capsule names a node, and the
+node's name is the region's own on 259 of the 266 regions a reader's synonym
+table has a word for. The same table is what `it_drop_break` in the monster's
+JSON had always been indexed by, 23 of 23. And placing those capsules settled
+a question two sessions old - **a hit offset is written in its bone's own
+frame**, which is now measured on an animated frame at fourteen standard
+deviations against a chance baseline the other reading sits on exactly. See
+[`ELBN`](docs/format_elbn.md) and [the pose](docs/pose.md).
 
 Session 16 gave that capsule a skeleton. An animation played on the walking
 body puts its **planted foot three millimetres above the collision mesh**, and
@@ -83,6 +96,9 @@ CMTM material    ->       91 files, 1,388 keys  tools/cmtm.py   0 errors
   impact sounds  ->       25 of 26 cue ids       named in common.acb
 ATIH + fences    ->      163 stages, 5,934 marks tools/stage.py 0 errors
 ELBN parameters  ->      707 files, 318 names   tools/elbn.py   0 errors
+  body capsules  ->    1,172 col_hit, 1,148 of 1,148 bones resolving
+  body regions   ->      315 named parts, 259 of 266 on a bone of that name
+  breakable parts->       87 over 23 monsters, indexing it_drop_break 23/23
 Squirrel script  ->    3,011 files, 315k insns tools/psq.py    0 errors
   engine API     ->      285 native functions  named and described
   their arguments->   10,787 message ids, 1,220 motion ids, every cue id
@@ -128,6 +144,12 @@ a body has feet  ->    0.003 m from the planted foot to the mesh, walking
                        a frame of walk_sp and run_sp
   sound emitters ->    2,715 of 2,716 resolving to a CMDL locator id,
                        and 508 of 514 front/rear step cues agreeing with it
+  which foot     ->       28 of 28 player .mkc 0807 firings agreeing with
+                       the foot the skeleton has on the ground
+
+a hit has a place->   1,435 hit offsets placed on the frame they fire
+  turned by bone ->    13.5% within 26 deg of the bone's own direction
+  not turned     ->     5.6%, against a chance baseline of 5.1%
 ```
 
 Formats are documented in [`docs/`](docs): [the disc
@@ -144,7 +166,8 @@ mercenary AI](docs/format_merc.md), [`.PTP`](docs/format_ptp.md),
 tables](docs/format_quest.md),
 [`.mkc`](docs/format_mkc.md), [the sound banks](docs/format_awb.md),
 [the actor parameters](docs/params.md). What running it produced is in
-[milestone 1](docs/milestone_numbers.md) and [the pose](docs/pose.md). The
+[milestone 1](docs/milestone_numbers.md) and [the pose](docs/pose.md), which
+now covers the hit volume as well as the foot. The
 plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
@@ -152,9 +175,10 @@ plan is in
 What is still unread: no format at all - the disc's last container was opened
 in session 15. What is left is inside them. Ten of the AI's 76 condition
 terms, because the shipped tables turned out to be newer than the scripts
-that document them; the `ELBN` records, addressable by name but not described
-field by field; thirty of the fifty-two `.anmcmd` opcodes, though the two
-commonest are read and they are the hitbox; ten of `.mkc`'s twenty-one; and a
+that document them; three of the four `ELBN` populations, now that
+`objbin.bin`'s records are described and `trace_par.bin`'s 207 files still
+have no guess; thirty of the fifty-two `.anmcmd` opcodes, though the two
+commonest are read and they are the hitbox; six of `.mkc`'s twenty-one; and a
 dozen of the engine's 285 script functions whose argument roles the disc does
 not separate.
 
@@ -325,11 +349,11 @@ read.
 
 ## Engine
 
-`engine/` is where the reading stops and the reimplementation starts. Four
+`engine/` is where the reading stops and the reimplementation starts. Five
 files, no renderer, no VM, no combat: a world that answers where the floor is
 and where the fence is, an actor that moves under the game's parameter table,
-a pose layer that puts a skeleton on the ground, and a driver that reports
-what comes out.
+a pose layer that puts a skeleton on the ground, a hitbox layer that puts a
+volume on the skeleton, and a driver that reports what comes out.
 
 ```
 python engine/run.py numbers <class json>          what the parameters produce
@@ -347,6 +371,13 @@ python engine/pose.py track <tree> <motion>        where it is, frame by frame
 python engine/pose.py footfall <tree>              against .mkc's own footfall
 python engine/pose.py emitter <tree>               where a sound comes from
 python engine/pose.py locomotion <tree> <json>     against walk_sp and run_sp
+python engine/pose.py foot <tree>                  .mkc 0807 against the foot
+
+python engine/hitbox.py body <tree> job.cpk/as     the body capsules, placed
+python engine/hitbox.py show <tree> <anmcmd>       a hit volume, both readings
+python engine/hitbox.py turned <tree>              which reading the disc uses
+python engine/hitbox.py obj <tree> <anmcmd> <f> <out.obj>
+                                                   one frame as Wavefront OBJ
 ```
 
 `numbers` needs no disc geometry at all - it turns the parameter table into

@@ -61,16 +61,16 @@ listed under [Still open](#still-open).
 | `0802` | 4 | 1,275 | 64 | 1,207 | 4 | camera shake — see below |
 | `0404` | 2 | 971 | 440 | 350 | 181 | open a bracket |
 | `0405` | 2 | 948 | 426 | 348 | 174 | close it |
-| `0400` | 2 | 936 | 895 | 0 | 1 | a flag and an id |
-| `0803` | 1 | 300 | 300 | 0 | 0 | a bracket, players only |
+| `0400` | 2 | 936 | 895 | 0 | 1 | **show or hide an attached article** |
+| `0803` | 1 | 300 | 300 | 0 | 0 | **`0400`'s complement** |
 | `0806` | 1 | 441 | 24 | 37 | 380 | unread |
 | `080f` | 4 | 193 | 0 | 193 | 0 | unread, monsters only |
-| `0807` | 1 | 66 | 28 | 0 | 38 | unread |
-| `0800` | 4 | 63 | 48 | 12 | 3 | unread |
+| `0807` | 1 | 66 | 28 | 0 | 38 | **which foot** |
+| `0800` | 4 | 63 | 48 | 12 | 3 | unread; arg 1 is a locator |
 | `0406` | 1 | 45 | 0 | 12 | 33 | unread |
 | `0805` | 1 | 36 | 36 | 0 | 0 | unread, argument always 14 |
 | `080c` | 1 | 35 | 11 | 0 | 0 | unread, argument always 0 |
-| `0804` | 0 | 24 | 24 | 0 | 0 | unread, no arguments |
+| `0804` | 0 | 24 | 24 | 0 | 0 | **the 24 player run cycles** |
 | `080d` | 2 | 2 | 2 | 0 | 0 | unread |
 
 The three families are visible in the numbering — `04xx`, `08xx`, `7ffx` — and
@@ -428,6 +428,116 @@ Three things that were open before this file was read:
 
 ---
 
+---
+
+## Four more opcodes, and one of them says which foot
+
+*Session 19.* `python mkc.py toggles extract/tree` and
+`python engine/pose.py foot extract/tree`.
+
+### `0400` shows or hides an attached article, and `0803` is its complement
+
+`0400` was down as *a flag and an id*. **The id is a locator** — the same
+numbering as [`CMDL`](format_cmdl.md)'s `S4`, `7ff9`'s emitter and the
+script's `chrSetAttachArticle`, which makes this the fifth consumer of it:
+
+```
+locator 25100    635   fzz001_leg, fzzz_leg — the leg equipment models
+locator  4000    300   node_r_weapon x173, node_r_hand x8, node_weapon x7
+locator     1      1   no model declares it
+```
+
+**And the flag is a switch, not a parameter.** Grouped by (file, locator) the
+values strictly alternate on **722 of 722** groups — never two `1`s or two
+`0`s in a row, in any file, on either locator. A parameter does not do that; a
+show and a hide do.
+
+The hunter's whole attack string says what it is showing, and the sound
+department signs it. `python mkc.py list extract/tree mht311at_s`:
+
+```
+    2  0400 article   (1, 4000)
+    2  0803 article2  (0)
+    6  0400 article   (0, 4000)
+    6  0803 article2  (1)
+    6  7ffc voice     (23)     ATK_S
+    7  7ff9 sound     (100, 3003, 0)   common.acb  ARROW_DUMMY_S
+```
+
+Something appears on the weapon locator at frame 2, is gone by frame 6 as the
+hunter grunts, and on frame 7 the shared sound bank plays a cue whose name is
+**`ARROW_DUMMY_S`**. The article is the nocked arrow, and it is called a dummy
+because the real projectile is spawned by the `.anmcmd` on release. Every one
+of the hunter's string attacks carries the same four records on the same two
+frames, and rapid-fire animations carry the pair ten times over. The 538 files
+that carry only `0400 (0, 25100)` at frame 0 are hiding the leg article for
+the length of the animation.
+
+**`0803` fires on the same frames with the opposite value** — 264 of the 274
+coincidences are `0/1` or `1/0`, and only ten are `0/0`. On `mht311at_s` it is
+`0803(0)` at frame 2 and `0803(1)` at frame 6, exactly against `0400`'s
+`1` and `0`. It carries no locator, so whatever it switches is a fixed
+subject; two switches thrown together, one showing the drawn arrow and the
+other hiding what it was drawn from, is what the frames look like.
+
+### `0804` is not an event, it is a set
+
+Twenty-four records, every one at frame 0, no arguments at all — and the
+twenty-four files are exactly the twelve player bodies' `213run` and
+`215run_dash`:
+
+```
+fas213run fas215run_dash fcl213run fcl215run_dash ... msw213run msw215run_dash
+```
+
+Six classes, two bodies, two locomotion cycles each. An opcode with no
+argument, on frame 0, on precisely the set of animations that loop while the
+actor is travelling, is a flag on the animation and not a thing that happens
+in it. `0805`, whose argument is always 14, occurs on the same twenty-four
+files and nowhere else.
+
+### `0807`'s argument is which foot — and it is the one `7ffa` does not say
+
+[`pose.md`](pose.md) had this open: *"`7ffa` names a surface kind and not a
+side, and nothing on the disc says whether the engine tracks the side itself
+or simply plays one cue for either foot."* Something on the disc does. `0807`
+is a one-argument opcode on 31 files, **all of them locomotion**, and its
+argument is 0 and 1 in about equal numbers.
+
+Put the skeleton under it — `python engine/pose.py foot extract/tree` — and
+ask which foot is actually the lower one on that frame:
+
+| argument | left foot lower | right foot lower |
+|---:|---:|---:|
+| 0 | 0 | **14** |
+| 1 | **14** | 0 |
+
+**28 of 28 on the players, with no exceptions**: 0 is the right foot and 1 is
+the left. Over every actor it is 47 of 55, and the eight that miss are two
+damage reactions where a foot scuffs rather than lands, a 760-frame cutscene
+where neither foot is near the floor, and `z24`, which fires arguments 2 and 3
+as well — so on some monsters the value is a foot *index* rather than a side.
+
+It is not the same event as `7ffa`: of the 66 firings, 33 share a frame with
+neither `7ffa` nor `7ffb`, 23 with `7ffb` and 10 with `7ffa`.
+
+### `0800`'s second argument is a locator too
+
+Sixty-three records, 59 of them at frame 0, and the second of its four
+arguments takes 0, 4000, 10200, 10300 and 1200 — `node_r_weapon`, `eff_10200`,
+`eff_10300` and `node_r_hand`, all declared. The first argument runs 3 to 15
+over nineteen values and the third is 0 or 1; neither is read.
+
+### `0404` and `0405` balance
+
+Their first argument is a bracket id and the two sides agree on it almost
+exactly — 55/55, 54/54, 40/40, 13/13, 4/4 and 4/4 for ids 2 to 7, against
+515/501 and 286/277 for 0 and 1. Brackets left open at the end of a file
+account for the difference, and the exact agreement on the rarer ids is what
+says the id is the same id on both sides.
+
+---
+
 ## Still open
 
 - **The emitter namespace.** 23 values, paired left and right, provably a
@@ -449,10 +559,16 @@ Three things that were open before this file was read:
   `z26505at5` (135/61), `bird_a.mot` (771/601). Every one of them is a motion
   that loops or blends into a successor, so the track outliving the clip is a
   reading rather than a defect — but it is not shown here.
-- **Ten opcodes with no reading**: `0800`, `0804`..`0807`, `080c`, `080d`,
-  `080f`, `0406`, and the argument roles of `0802`. Between them they are
-  1,105 of the 19,724 records. `080f` is monsters only and `0803`, `0804`,
-  `0805`, `080d` are players only, which is where a correlation would start.
+- **Six opcodes with no reading**: `0805`, `0806`, `080c`, `080d`, `080f`,
+  `0406`, and the argument roles of `0800` and `0802`. Session 19 read
+  `0400`, `0803`, `0804` and `0807` — see *Four more opcodes* above — which
+  leaves 772 of the 19,724 records. What is known about the six:
+  `0805`'s argument is always 14 and it occurs only on `0804`'s twenty-four
+  run cycles; `0806`'s argument is 0 to 3 and it alternates in pairs like a
+  switch, 441 records over 106 files; `080c` is 35 records, all at frame 0,
+  all on the shared emote set; `080f` is monsters only and every one of its
+  32 files is an `appear`, `appear2` or `die`; and `0406`'s fifteen files are
+  all loops — `at3_loop`, `walk`, `run`.
 - **Whether `7ff9` and `7ffd` differ at all**, and likewise `0801` and `080e`.
   Each pair takes the same arguments and appears in the same places; the
   second of each is roughly a tenth as common. A one-shot against a looping
@@ -469,6 +585,8 @@ Three things that were open before this file was read:
     python mkc.py cues    extract/tree 250       one bank's cue list
     python mkc.py effects extract/tree           indices against effect.bin
     python effect.py refs extract/tree           the same, read as a row id
+    python mkc.py toggles extract/tree           0400, 0803, 0804
+    python engine/pose.py foot extract/tree      0807 against the skeleton
 
 `b09502at2` — Hraesvelgr's second attack — reads:
 
