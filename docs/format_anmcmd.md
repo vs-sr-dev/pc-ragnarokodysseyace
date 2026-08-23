@@ -193,6 +193,15 @@ all 5,616 of their records; flag 0 leaves `v1` at zero on all 3,258. A field
 that is a payload under one selector value and absent under another is a
 field under a selector.
 
+**And `+0x2C` behaves as a radius when something swings it.** Session 22 put
+every monster's hit volumes on its own skeleton and measured how far they get
+from the body, taking `+0x2C` as the radius the way
+[`../engine/hitbox.py`](../engine/hitbox.py) already draws one. The result
+correlates at **0.590** with `_act.par`'s declared range for the same action
+over 250 actions, against 0.051 for the same pairs reshuffled - which is a
+second file agreeing about a distance, and would not happen if the field were
+something else. See [`milestone_fight.md`](milestone_fight.md).
+
 **On flags 3 and 5 the second vector is a direction and the third is a bare
 number.** All 131 second vectors have length exactly 1, 98 of them on the `y`
 axis alone; all 129 third vectors carry a value in `x` and nothing in `y` or

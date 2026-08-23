@@ -10,7 +10,16 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-22 (2026-08-23). **The game's own scripts run.** `010_01_01`
+Sessions 1-22 (2026-08-23). **The game's own scripts run, and its monsters
+fight.** An Orc stands on the spawner its stage declares for it, a body with
+the player class's own parameters runs at it, and the Orc reads its own
+decision tables, rolls an action, closes when that action's gate says the
+target is too far, plays the animation the action names and lands a blow whose
+volume reaches the player. 83 of 83 monsters decide on every one of 40 random
+states. That is [milestone 3](docs/milestone_fight.md), *"a monster fights"* -
+[`engine/brain.py`](engine/brain.py) and [`engine/fight.py`](engine/fight.py).
+
+**And the scripts run.** `010_01_01`
 initialises itself out of its own compiled Squirrel, a capsule with the game's
 own parameters crosses it, the trigger volume at the exit fires the function
 `trigger.trg` names, and the `cfMapJump` inside it loads the next stage and
@@ -203,6 +212,11 @@ the combat loop  ->        8 files, 9 gaps     tools/combat.py
   the attack     ->      450 weapons, 6 kinds of 75, and none of it in a JSON
   the stats      ->      162 of 233 abilities named by the cards that move them
 
+a monster fights ->       83 of 83 deciding      engine/brain.py
+  the terms      ->   15,040 comparisons against the disc's own dispatch, 0 apart
+  the gate       ->    0.590 correlation, `_act.par`'s range against the swing
+  the chain      ->    1,419 actions -> 1,109 motions -> 683 event lists
+
 the scripts run  ->    3,011 of 3,011 executing  engine/squirrel.py  0 faults
   the interface  ->      285 bound, 66 doing the work    engine/host.py
   a stage        ->      155 loaded and initialised, 507 of 507 triggers read
@@ -247,7 +261,8 @@ tables](docs/format_quest.md),
 [the combat loop](docs/combat_loop.md), which traces one hit end to end and
 ends in a ledger of what is still missing. What running it produced is in
 [milestone 1](docs/milestone_numbers.md), [milestone
-2](docs/milestone_stage.md) and [the pose](docs/pose.md), which
+2](docs/milestone_stage.md), [milestone 3](docs/milestone_fight.md) and [the
+pose](docs/pose.md), which
 now covers the hit volume as well as the foot. The
 plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
@@ -435,15 +450,24 @@ read.
 
 ## Engine
 
-`engine/` is where the reading stops and the reimplementation starts. Seven
-files, no renderer and no combat: a world that answers where the floor is and
+`engine/` is where the reading stops and the reimplementation starts. Nine
+files and no renderer: a world that answers where the floor is and
 where the fence is, an actor that moves under the game's parameter table, a
 pose layer that puts a skeleton on the ground, a hitbox layer that puts a
 volume on the skeleton, a driver that reports what comes out - and, since
-session 22, a Squirrel 2.2 virtual machine and the 285 host functions the
-game's own scripts call into.
+session 22, a Squirrel 2.2 virtual machine, the 285 host functions the
+game's own scripts call into, a monster's decision tables and the fight they
+turn into.
 
 ```
+python engine/fight.py fight <tree> 010_01_01 AI_Z01_Orc  a monster fights
+python engine/fight.py fights <tree>               every monster, one stage
+python engine/fight.py reach <tree>                the gate against the swing
+python engine/fight.py chain <tree>                action -> motion -> hit
+python engine/brain.py terms <tree>                against the disc's dispatch
+python engine/brain.py agree <tree>                the tables against the .cnut
+python engine/brain.py decide <tree> <monster>     what it decides to do
+
 python engine/host.py stage <tree> 010_01_01 q00101 job.cpk/sw/sw.json
                                                    a stage, script and all
 python engine/host.py demo <tree> [pac]            a cutscene, to its own end

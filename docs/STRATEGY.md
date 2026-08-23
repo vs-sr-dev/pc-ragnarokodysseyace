@@ -119,6 +119,15 @@ since session 18, where *what those functions do* has to be read:
 [`format_api.md`](format_api.md) has them off the call sites. What is left
 inside it is the implementation and the combat loop.
 
+**Session 22 added two items of the same size and the same shape**, both
+from the monster AI: the **seven per-boss escape hatches** (`checkB01Term` and
+its siblings), which nine tables call on 458 instructions and nothing on the
+disc defines, and the **ten unnamed condition terms**, 1,094 instructions,
+which are not in the `.cnut` dispatch because the tables are the newer
+artefact. Both are small functions, both are needed to run a boss exactly, and
+neither is anywhere but inside the binary. See
+[`format_ai.md`](format_ai.md).
+
 **And since session 21 that is a list rather than a category.**
 [`combat_loop.md`](combat_loop.md) traces one hit through the eight files that
 touch it and ends in a ledger of nine gaps. Four are ordinary disc work. The
@@ -175,6 +184,14 @@ volumes wired to the marker table. It was written rather than linked because
 the disc's reader is already in Python and complete, so the interpreter is the
 second half of a file that exists; a C Squirrel would need a build, a binding
 and a byte-swap to read a big-endian stream.
+
+**And session 22 added the seventh and eighth.**
+[`brain.py`](../engine/brain.py) runs a monster's decision - the rule ladder,
+the weighted table and the action it rolls - and
+[`fight.py`](../engine/fight.py) turns that action into a motion, an event
+list and a hit volume placed against a body on the collision mesh. Together
+with `host.py` that is **115 of the 285 host functions doing the work rather
+than recording the call**, and 18,435 of the 25,699 calls the disc makes.
 
 The shape of the rest is settled: a data-driven engine whose
 tables come from `ECH`, whose display text comes from `TXT`, whose actor
@@ -241,15 +258,30 @@ weight tables summing to 10,000 confirmed; a cutscene's length is the `u16` at
 library and the loaded stage, which three name collisions in 155 stages and
 147 in one town's conversations settle from both sides.
 
-### 3. "A monster fights" — what it still needs
+### 3. "A monster fights" — ✅ **reached, session 22**
 
-**As of session 12 the third has a monster that can act**, and as of session
-22 it has somewhere to act. The AI's condition vocabulary, its action tables
-and its parameters are read, an action id resolves to a named motion, and the
-six bosses' decision scripts now *execute* - `prt_select` picks an action out
-of a weight table and returns it. What is missing is the world underneath the
-questions: the 40-odd predicates the terms call (`getHpRate`,
-`getTargetRange`, `isTargetJump` and the rest) are among the 219 functions
-[`host.py`](../engine/host.py) still records rather than answers, and they are
-small functions over state a running stage would have anyway. Plus the motion
-playback that `CNOM` and `.anmcmd` already describe.
+An Orc stands on the spawner `010_01_01` declares for it, a body with the
+player class's own parameters runs at it, and the Orc reads its own decision
+tables, rolls an action out of the group they name, closes when that action's
+own `_act.par` gate says the target is too far, plays the animation the action
+names and **fires the hit records on it into a volume that reaches the
+player**. Over the whole disc, 83 of 83 monsters decide on every one of 40
+random states. The report is [`milestone_fight.md`](milestone_fight.md).
+
+Three things came out of running it that reading could not produce:
+
+- **the disc's own term dispatch is executable**, now that there is a VM, so
+  it can check this project's evaluator rather than only document it: 458
+  `(term, operand)` pairs, 15,040 comparisons, 0 disagreements. Two of the 76
+  terms turn out to be dead as the shared include writes them;
+- **the chance term's two readings are separable by running both sides.** The
+  OrcKing's table picks the same group as its own script 217 times in 300
+  under the include's form and 293 under the hand-written one;
+- **`_act.par`'s range is a distance to the target**, and the hit volumes on
+  the same action's motion say so: correlation **0.590** over 250 actions
+  against a shuffled control of 0.051, with the gate systematically the longer
+  of the two.
+
+What it does not do is damage: [`combat_loop.md`](combat_loop.md)'s ledger
+still owns the expression, so a hit is reported as a connection and not as a
+number, and the player does not fight back.
