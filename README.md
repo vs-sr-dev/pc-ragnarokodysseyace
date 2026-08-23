@@ -87,6 +87,8 @@ Squirrel script  ->    3,011 files, 315k insns tools/psq.py    0 errors
   engine API     ->      285 native functions  named and described
   their arguments->   10,787 message ids, 1,220 motion ids, every cue id
                                                  resolving in its own table
+quest tables     ->      430 quests, 8,024 gens tools/quest.py  0 errors
+  the monsters   ->    2,503 slots, 83 ids naming 83 monster directories
 monster AI       ->      228 files, 6,550 rules tools/ai.py     0 errors
   action tables  ->    3,269 groups, 19,707 weighted actions
   condition terms->       66 of 76 named, 27,862 of 29,100 instructions
@@ -138,7 +140,8 @@ survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 layer](docs/format_psq.md), [the engine's script
 interface](docs/format_api.md), [the monster AI](docs/format_ai.md), [the
 mercenary AI](docs/format_merc.md), [`.PTP`](docs/format_ptp.md),
-[`effect.bin`](docs/format_effect.md),
+[`effect.bin`](docs/format_effect.md), [the quest
+tables](docs/format_quest.md),
 [`.mkc`](docs/format_mkc.md), [the sound banks](docs/format_awb.md),
 [the actor parameters](docs/params.md). What running it produced is in
 [milestone 1](docs/milestone_numbers.md) and [the pose](docs/pose.md). The
@@ -266,6 +269,10 @@ python tools/psq.py api|calls <dir> [glob]   the 285 host functions, with the
                                              constants each argument is handed
 python tools/psq.py sites <dir> <glob>       the call sites themselves
 python tools/psq.py xref <dir>               whether a called name resolves
+
+python tools/quest.py check|list <dir>       the four tables of a quest .pac
+python tools/quest.py dump <dir> <quest>     its stages, monsters and spawners
+python tools/quest.py xref|enemies <dir>     whether the columns name anything
 
 python tools/ai.py check|list <dir>          the monster AI
 python tools/ai.py probs|rules <dir> <name>  the action tables, and the rules

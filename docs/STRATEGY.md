@@ -76,6 +76,7 @@ Phase 3.
 | Format | N | Priority | Notes |
 |---|---:|---|---|
 | `ECH` tables | 4,941 | ✅ **solved** | [`format_ech.md`](format_ech.md) — 58,534 rows, string pools, inferred column types |
+| quest tables | 1,719 | ✅ **read** | [`format_quest.md`](format_quest.md) — the four tables of a quest `.pac`, and which monster comes out of which spawner |
 | `TXT` text | 76 | ✅ **solved** | [`format_rmsg.md`](format_rmsg.md) — 25,288 messages, pairs positionally with the tables |
 | `.json` params | 89 | ✅ **read** | [`params.md`](params.md) — 1,069 records; the stagger model, the difficulty tiers, and one movement model shared by all six classes |
 | `CTEX` texture | 11,536 | ✅ **solved** | [`format_ctex.md`](format_ctex.md) — five pixel formats, mip chains, Morton swizzle |

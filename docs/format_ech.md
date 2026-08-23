@@ -161,3 +161,16 @@ Column 0 is the item id, and the six-figure values in columns 6–7 are ids into
   [`format_effect.md`](format_effect.md). It is also a warning about the
   inference: `ech.py` reads the first four bytes of a motion row as one `u32`
   and they are four separate one-byte fields, two of which are an address.
+
+  **And a field can be narrower than a byte.** `enemy.bin`'s monster slot is
+  `01 hh h0 00`: a 12-bit id between a leading 1 and a trailing 0. The tell is
+  free — the low nibble of the third byte is zero on all 2,503 filled slots —
+  and it is what a byte histogram shows and a lane classifier cannot. Read as
+  a `u32` the column is 82 numbers in the tens of millions; read as twelve bits
+  it is 83 ids that name 83 `monster.cpk` directories exactly, with nothing
+  left over on either side. See [`format_quest.md`](format_quest.md).
+
+  The same file has two lanes at `+0x2c` that are **eight independent bytes**,
+  one per monster slot, holding 99 where the slot is empty. Neither the width
+  nor the sentinel is declared; both fall out of making the field agree with a
+  column it has to agree with.

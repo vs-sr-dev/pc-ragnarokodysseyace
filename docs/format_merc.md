@@ -214,6 +214,13 @@ if (getRange(1) > 5)
 — *"monster kind 28 has started action 108 and I am more than five metres
 away: hold off"* — and action 108 is motion 509 in that monster's own pac.
 
+**And the kind names a directory.** A quest's `enemy.bin` carries monster ids
+of the form `2000 + 10*NN + MM` for `monster.cpk/bNN_MM`, and a cutscene
+script writes `getLatestKilled() == 2000 + 10*(37 - (28 - 1))`, which is 2100,
+which is `b10_00`. So **kind *k* is `b(k - 27)`**: 28 is `b01`, the Orc King,
+whose `.cnut` is the one [`format_psq.md`](format_psq.md) quotes. See
+[`format_quest.md`](format_quest.md).
+
 ## What the tables share
 
 Within a job the male and the female share their tables, and in five jobs of

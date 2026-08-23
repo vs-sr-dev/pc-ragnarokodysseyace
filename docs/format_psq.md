@@ -226,7 +226,11 @@ is an [`ECH`](format_ech.md) table whose string pool pairs `emgen_pos01` with
 `cfStartPieceLock('pl_010_01_02')` names a row of `piecelock.bin` in the same
 directory, whose pool carries the stage name, that `pl_` name, the `lockarea`
 and `lock_line` polylines and the generator group the lock covers - 569 of the
-889 calls name a string in an `ECH` table of their own `.pac`. So the names
+889 calls name a string in an `ECH` table of their own `.pac`. The other 320 are
+explained in [`format_quest.md`](format_quest.md): a stage script ships in
+every quest that visits the stage - `900_01_01.psq` is in 89 quest pacs - so it
+names locks that only some of them declare. **309 of the 320 are a lock another
+quest defines and only 11 are in no table at all.** So the names
 that miss `ATIH` are not unresolved; they resolve one table further out, and
 which table depends on which quest is running.
 
