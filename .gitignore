@@ -54,6 +54,11 @@ tools/iso_index.tsv
 generated/
 *.png
 *.obj
+*.wav
+*.hca
+*.adx
+*.vag
+*.mpg
 
 # build
 build/

@@ -88,6 +88,9 @@ PTCP effects     ->       67 files, 1,108 blocks tools/ptp.py    0 errors
   effects        ->       69 effect.bin tables, indexed 1-based from here
 PAMF movies      ->       46 files, 22.7 minutes tools/pam.py    0 errors
   video          ->    720p29.97 MPEG-2, and no audio track on any of them
+CRI Atom audio   ->      274 banks, 7,756 waves tools/awb.py    0 errors
+  naming         ->    7,756 of 7,756 reached by a cue with a name
+  decoding       ->    7,756 of 7,756 to WAV, and not one file encrypted
 
 a capsule runs   ->      135 stages walked   engine/run.py  127 clean
   one crossing   ->      405 frames over 010_01_01, 13.5 s at a run
@@ -105,16 +108,18 @@ survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 [`ELBN`](docs/format_elbn.md), [`.anmcmd`](docs/format_anmcmd.md), [the script
 layer](docs/format_psq.md), [the monster AI](docs/format_ai.md), [the
 mercenary AI](docs/format_merc.md), [`.PTP`](docs/format_ptp.md),
-[`.mkc`](docs/format_mkc.md), [the actor parameters](docs/params.md). What running it produced is in [milestone
-1](docs/milestone_numbers.md). The plan is in
+[`.mkc`](docs/format_mkc.md), [the sound banks](docs/format_awb.md),
+[the actor parameters](docs/params.md). What running it produced is in
+[milestone 1](docs/milestone_numbers.md). The plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
 
-What is still unread: the `.awb` waveforms, which block nothing; ten of the AI's 76 condition terms, because the shipped
-tables turned out to be newer than the scripts that document them; the `ELBN`
-records, addressable by name but not described field by field; and thirty of
-the fifty-two `.anmcmd` opcodes, though the two commonest are read and they
-are the hitbox.
+What is still unread: no format at all - the disc's last container was opened
+in session 15. What is left is inside them. Ten of the AI's 76 condition
+terms, because the shipped tables turned out to be newer than the scripts
+that document them; the `ELBN` records, addressable by name but not described
+field by field; thirty of the fifty-two `.anmcmd` opcodes, though the two
+commonest are read and they are the hitbox; and ten of `.mkc`'s twenty-one.
 
 Two things listed here for several sessions turned out to be something else,
 which is worth keeping visible. `.map` was down as the world layout and is the
@@ -249,6 +254,10 @@ python tools/mkc.py cues <dir> <bank>        one bank's cue list
 
 python tools/pam.py check|list <dir>         the movies
 python tools/pam.py mpg <dir> <name> <out>   write the MPEG-2 stream out
+
+python tools/awb.py check|list <dir>         the sound banks
+python tools/awb.py cues <dir> <bank>        cue -> waveform, with headers
+python tools/awb.py extract|wav <dir> <out>  every waveform, named by its cue
 
 python tools/params.py census|tiers <dir>     the actor parameters
 python tools/params.py classes <dir>          the six player classes compared

@@ -7,9 +7,11 @@
 
 # Next session — the capsule gets a skeleton
 
-Session 15 read `.mkc` and the movies, and **Phase 2 now has no open rows**:
-every container the disc ships is read. What is left inside them is columns
-and opcodes, not formats. From here the work is building.
+Session 15 read `.mkc`, the movies and the sound banks, and **Phase 2 now has
+no open rows**: every container the disc ships is read, and the chain from a
+frame of an animation to a PCM sample closes on 7,524 of 7,608 references.
+What is left inside the formats is columns and opcodes, not containers. From
+here the work is building.
 
 ### 1. Pose the body.
 
@@ -26,7 +28,10 @@ in the same place at the same time:
   the one that makes a pose checkable rather than merely visible: **`7ffa`
   fires on the frame the foot plants**, so the animation's own footfall can be
   measured against the root motion `cmdl.py gait` derives, over 3,043
-  animations, and the two either agree or the pose is wrong.
+  animations, and the two either agree or the pose is wrong. The same frame
+  now also reaches a WAV, through [`awb.py`](../tools/awb.py), so the first
+  thing that runs and makes a noise is closer than the first thing that runs
+  and has a face.
 
 The first deliverable is small: play one `CNOM` on the walking capsule and
 print, per frame, the height of the planted foot above the collision mesh.
@@ -98,12 +103,11 @@ a camera shake whose roles are unread.
   needs it** — the table that maps `.anmcmd` opcode 10's effect id to a `PTB`
   slot is not on the disc, and 32,600 leaves were searched for it. It is a
   cosmetic lookup, so it still does not justify the phase on its own.
-- **Audio and video** — no longer deferred except for one half. An `.acb` is an
-  `@UTF` table that `cpk.py` opens, and [`.mkc`](format_mkc.md) now addresses
-  those banks by id, so 7,540 of 7,608 cue references resolve to a name. The
-  46 movies are read too, by [`pam.py`](../tools/pam.py). What is left is
-  **decoding the waveforms in the `.awb`** — HCA and ATRAC, well-trodden, and
-  nothing in the project waits on it.
+- **Audio and video** — no longer deferred at all. The 46 movies are read by
+  [`pam.py`](../tools/pam.py) and the 274 sound banks by
+  [`awb.py`](../tools/awb.py): 7,756 waveforms, 12 h 18 m, every one reached
+  by a named cue, and not one of them encrypted. See
+  [`format_awb.md`](format_awb.md).
 
 ## Open, unowned
 
@@ -141,6 +145,10 @@ a camera shake whose roles are unread.
   and no `PTCP` on the disc has that many slots — and the inside of a `PTB`,
   which nothing needs until something renders. See
   [`format_ptp.md`](format_ptp.md).
+- `.acb`: the waveform `ExtensionData`, empty on all 7,756; the command
+  streams past opcode 2000 (volume, pitch, panning, AISAC); which member of a
+  variation set the game picks and with what weights; and the `.acf`'s 16
+  mixer categories and 40 buses. See [`format_awb.md`](format_awb.md).
 - `.mkc`: ten of the twenty-one opcodes, the argument roles of the camera
   shake, what banks 1140 and 1170 name, the emitter namespace, the fourteen
   pacs that index past the end of their own `effect.bin`, and whether `7ff9`
@@ -244,9 +252,39 @@ a camera shake whose roles are unread.
   ffmpeg reads them once told twice — `-f mpeg` because the extension collides
   with Netpbm's, and `-skip_initial_bytes 2048`.
 
+- **The sound banks open, and every sample on the disc has a name.** See
+  [`format_awb.md`](format_awb.md) and `awb.py`. **274 banks, 7,756 waveforms,
+  12 hours 18 minutes, 0 unreadable.**
+  - **the archive was hiding in a column.** `cpk.py` has opened `.acb` since
+    session 9; what nobody had opened is `AwbFile`, which is not a pointer but
+    a whole `AFS2` archive carried inside the `@UTF` row;
+  - **the offset width is declared and both widths occur** — `fas1.acb` uses
+    two bytes and `b09/se.acb` four. Assuming either produces empty entries
+    for half the disc and no error, which is how the first pass lost 1,302
+    waveforms. The identity that catches it is that the last offset is the
+    length of the archive;
+  - **`header size + frames * frame size == the entry length` on all 7,659
+    HCA**, and **`ciph` is 0 on every one of them.** Encryption was the one
+    thing that could have made this unreachable, and it is not used;
+  - **every waveform is reached by a cue.** A cue names a synth or a sequence,
+    a synth names waveforms and other synths, a sequence names tracks whose
+    command stream carries the same reference under **opcode 2000**. Recursing
+    through both, 7,756 of 7,756 waveforms get a name, and 20,955 of the
+    20,964 reference items land inside the table they name;
+  - **the chain closes end to end.** `mht361at_l` frame 4 says `7ff9(250, 14)`,
+    bank 250 is `job.cpk/ht/se.acb`, cue 14 is `DRAW_L`, and `DRAW_L` is
+    waveform 16, 19 frames of 24 kHz mono. Disc-wide **7,524 of the 7,608
+    sound references in the `.mkc` files reach a waveform that exists**;
+  - **7,755 of 7,756 decode through ffmpeg**, which reads HCA and ADX. The
+    7,756th is a lone Sony `VAGp` named `dummy_Enc_24000_`, and `vag_pcm()`
+    decodes it here in forty lines because ffmpeg will not demux a bare one;
+  - three shapes rather than one: 273 banks carry `AFS2`, `bgm.acb` streams
+    its 439 tracks from the 1.2 GB `bgm.awb` beside it, and `en/vprev.acb`
+    carries a `CPK ` with an `ITOC` — which `cpk.py` reads unchanged.
+
 - **Phase 2 is closed.** Every container the disc ships is read. What is left
   is columns and opcodes: the `ELBN` records, the `ECH` column names, thirty
-  `.anmcmd` opcodes, ten of `.mkc`'s, and the `.awb` waveforms.
+  `.anmcmd` opcodes and ten of `.mkc`'s.
 
 ## Session 14 (part two) — 2026-08-23
 

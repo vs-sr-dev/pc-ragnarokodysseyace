@@ -99,9 +99,8 @@ Phase 3.
 
 **Phase 2 has no open rows.** Every format the disc ships is read, and what is
 left inside them is columns and opcodes rather than containers: the `ELBN`
-records field by field, the `ECH` column names, thirty `.anmcmd` opcodes, ten
-of `.mkc`'s, and the `.awb` waveforms. From here the work is building rather
-than reading.
+records field by field, the `ECH` column names, thirty `.anmcmd` opcodes and
+ten of `.mkc`'s. From here the work is building rather than reading.
 
 ## Phase 3 — The EBOOT as oracle
 
