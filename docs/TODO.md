@@ -65,14 +65,13 @@ elbow separates the two readings that a bind pose does not.
 
 ### Then
 
-4. **Name the `ECH` columns.** `piecelock.bin` and `enemy_gen.bin` are now
-   small, well-posed instances with known consumers, and session 18 added a
-   third: **`npc.bin` is the cast list** — `(kind, name, model pac, marker,
-   index, const, radius)` — which is where a character handle comes from.
-   `effect.bin` is the worked example: its columns were named by its consumers,
-   not by the type inference. The `CCLS` surface codes 1 to 13 are the other
-   one, and the pose layer now says where a foot is, so the triangle under it
-   is a lookup away.
+4. **Name the rest of the `ECH` columns.** The quest `.pac`'s four tables are
+   done — [`format_quest.md`](format_quest.md) — and so is `npc.bin`, the cast
+   list. What is left in a quest pac is the reward side:
+   `item_reward{,_multi,_region}.bin`, `weapon_decost.bin`,
+   `destructible.bin`, `mapexception.bin` and the `q<NNNNN>.bin` header. The
+   `CCLS` surface codes 1 to 13 are the other well-posed one, and the pose
+   layer now says where a foot is, so the triangle under it is a lookup away.
 5. **The minimap transform.** 137 `.map` images, each visibly the silhouette
    of its own stage's collision. A small job that gives the UI layer a map.
 6. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
@@ -129,9 +128,18 @@ elbow separates the two readings that a bind pose does not.
   four triangles. See [`format_ccls.md`](format_ccls.md).
 - `ECH`: what the header word at `0x08` is for (zero on all 4,941 files, so the
   disc offers no evidence either way); the one-byte row width; column
-  semantics everywhere except the 69 `effect.bin`, which are now named end to
-  end by their consumers rather than by the type inference. See
-  [`format_effect.md`](format_effect.md).
+  semantics everywhere except the 69 `effect.bin` and the quest `.pac`'s four,
+  which are named end to end by their consumers rather than by the type
+  inference. See [`format_effect.md`](format_effect.md) and
+  [`format_quest.md`](format_quest.md) — the second of which shows a field can
+  be **narrower than a byte**, which nothing in `ech.py` can see.
+- The quest tables' leftovers: the counts and timers of a generator (`+0x14`,
+  `+0x18`, `+0x20`, `+0x24`, `+0x28`, `+0x30` of `enemy_gen.bin`); the third
+  byte of `piecelock`'s `+0x08`, 24 to 26 on 109 rows; `enemy.bin`'s `+0x37`
+  and `+0x57`; and the reward tables a quest pac also ships —
+  `item_reward{,_multi,_region}.bin`, `weapon_decost.bin`, `destructible.bin`,
+  `mapexception.bin` and the `q<NNNNN>.bin` header. See
+  [`format_quest.md`](format_quest.md).
 - `TXT`: what word 2 of a record selects; why attribute id 0 carries both RGBA
   colours and scale factors.
 - `params`: what records 1 and 2 of a player class are — record 1 is plainly a
@@ -298,6 +306,53 @@ elbow separates the two readings that a bind pose does not.
   `cfCmrQuake`'s four and whether it is `.mkc`'s `0802`, `cfTutorialLineup`'s
   nine, `setDemoID`'s second argument, and whether `msg_emotion.bin` is
   `cfAnimeIcon`'s table.
+- **A quest is a spawn system in four tables, and they are read.** See
+  [`format_quest.md`](format_quest.md) and
+  [`tools/quest.py`](../tools/quest.py). 430 quests, 1,708 stage entries,
+  2,503 monster slots, 8,024 generators, 567 arena locks. `piecelist.bin` is
+  the stages the quest visits, `enemy.bin` gives each stage eight monster
+  slots, `enemy_gen.bin` is one row per spawner, and `piecelock.bin` is one
+  row per arena lock.
+- **The monster id is twelve bits, and it names a directory.** A filled
+  `enemy.bin` slot reads `01 hh h0 00`, and **the low nibble of the third byte
+  is zero on all 2,503 filled slots** — which is the whole tell. Read as a
+  12-bit field the ids are `1000 + 10*NN + MM` for `monster.cpk/zNN_MM` and
+  `2000 + …` for `bNN_MM`, and **2,503 of 2,503 slots name a directory that
+  exists: 83 ids against 83 directories, nothing left over either way.**
+  - and it is the AI's numbering. A cutscene writes
+    `getLatestKilled() == 2000 + 10*(37 - (28 - 1))`, which is 2100, which is
+    `b10_00`, so **`getNearestBossKind()`'s kind *k* is `b(k - 27)`** — 28 is
+    the Orc King, whose `.cnut` is the one everybody quotes. The quest tables,
+    the AI and the model directories are one namespace.
+- **The chain from a quest to a monster on the ground is complete**, and every
+  link is counted: a generator names an `emgen_pos` marker of its stage (7,728
+  of 7,735), a lane of that stage's `enemy.bin` row (7,976 of 8,011), and up to
+  two script callbacks — **3,123 of them, and not one misses** a function the
+  same quest's own `.psq` defines. A lock names its `lockarea` and `lock_line`
+  fences (1,736 of 1,739), its `pl_q` hit area (552 of 552) and the generators
+  it covers (3,072 of 3,114).
+- **The 320 `cfStartPieceLock` calls that looked unresolved are explained.**
+  [`format_psq.md`](format_psq.md) had 569 of 889 naming a string in their own
+  `.pac` and left it. **309 of the other 320 name a lock a *different* quest
+  declares and only 11 name nothing at all**, because a stage script ships in
+  every quest that visits the stage — `900_01_01.psq` is in 89 quest pacs — so
+  it is written once and copied, and it asks for locks only some of them have.
+  Same for `cfSetEnableEmGen`: 149 own, 91 another quest's, 0 nowhere.
+- **Two lanes of `enemy.bin` are eight bytes.** `+0x2c` holds one byte per
+  monster slot, 99 where the slot is empty — it agrees with the slots on
+  **11,040 of 11,088** pairs — and where the slot is filled the byte is the
+  **count of that monster in that room**: equal to the number of generators
+  aimed at the slot on 2,275 of 2,503, exactly double on 91, ragged on 137.
+- **What this says about `ECH` for the second session running.** Session 17
+  showed a four-byte lane is often not one field. This one shows a field can be
+  **narrower than a byte**, and that the tell is free: a nibble that is zero
+  everywhere. Both are in [`format_ech.md`](format_ech.md), because it is the
+  method that transfers.
+- **Still open here**: the counts and timers of a generator (`+0x14`, `+0x18`,
+  `+0x20`, `+0x24`, `+0x28`, `+0x30`), the third byte of `piecelock`'s `+0x08`
+  which is 24 to 26 on 109 rows and rises with the quest number but is **not**
+  a BGM cue (0 of 109 match one the quest plays), and the reward tables a quest
+  pac also ships.
 
 ## Session 17 — 2026-08-23
 
