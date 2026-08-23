@@ -31,7 +31,12 @@ body puts its **planted foot three millimetres above the collision mesh**, and
 the pose is checked against the disc rather than against itself: `.mkc`'s
 footfall opcode fires within a frame of the skeleton landing a foot on **four
 firings in five, against one in four** for a frame of the same animation
-picked at random. See [the pose](docs/pose.md).
+picked at random. It also paid twice over. The `.mkc` sound record's last
+unread field, which says where on a body a sound comes from, turns out to be a
+**`CMDL` locator id** — 2,715 of 2,716 resolve, and the numbering then reads
+itself: the head carries the voice, the hands carry the cues that end `_L` and
+`_R`, and on a quadruped the hands are the front feet. See [the
+pose](docs/pose.md).
 
 Underneath that, the container stack is open end to end and the game's
 database, text and actor parameters are readable; the textures, geometry,
@@ -111,6 +116,8 @@ a body has feet  ->    0.003 m from the planted foot to the mesh, walking
                        skeleton landing one, against 25.2% at random
   the gait       ->       23 of 24 player walk and run cycles within 5 mm
                        a frame of walk_sp and run_sp
+  sound emitters ->    2,715 of 2,716 resolving to a CMDL locator id,
+                       and 508 of 514 front/rear step cues agreeing with it
 ```
 
 Formats are documented in [`docs/`](docs): [the disc
@@ -310,6 +317,7 @@ python engine/run.py stride <stage> <json> <tree> <motion>
 python engine/pose.py body <tree> <model>          what touches the ground
 python engine/pose.py track <tree> <motion>        where it is, frame by frame
 python engine/pose.py footfall <tree>              against .mkc's own footfall
+python engine/pose.py emitter <tree>               where a sound comes from
 python engine/pose.py locomotion <tree> <json>     against walk_sp and run_sp
 ```
 

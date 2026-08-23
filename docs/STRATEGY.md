@@ -1,6 +1,6 @@
 # PC-ROA — strategy
 
-*Aligned to the end of session 14 (2026-08-23). Detail and priorities live in
+*Aligned to the end of session 16 (2026-08-23). Detail and priorities live in
 [`TODO.md`](TODO.md); this document is the frame.*
 
 Goal: a **native PC reimplementation** of *Ragnarok Odyssey ACE*, the PS3
@@ -87,8 +87,8 @@ Phase 3.
 | `CMTM` material | 91 | ✅ **solved** | [`format_cnom.md`](format_cnom.md) — `CNOM` with scalars; animates material colour |
 | `.psq` / `.cnut` | 3,011 | ✅ **solved** | [`format_psq.md`](format_psq.md) — **Squirrel 2.2 bytecode**; 11,232 functions decompile with their own names |
 | `.anmcmd` | 2,053 | ✅ **read** | [`format_anmcmd.md`](format_anmcmd.md) — the event lists; the hit record read and bound to the skeleton, 22 of 52 opcodes correlated |
-| `.mkc` | 2,690 | ✅ **solved** | [`format_mkc.md`](format_mkc.md) — the presentation track: 19,724 records, and 7,540 of 7,608 sound references resolve to a named cue |
-| `.CTXT` | 1,151 | ✅ **solved** | plain text: hit capsules and springs, bound to a bone through the model's locator table; see [`format_cmdl.md`](format_cmdl.md) |
+| `.mkc` | 2,690 | ✅ **solved** | [`format_mkc.md`](format_mkc.md) — the presentation track: 19,724 records, every sound reference naming a cue, and its emitter a place on the body |
+| `.CTXT` | 1,151 | ✅ **solved** | plain text: hit capsules and springs, bound to a bone through the model's locator table — which `.mkc` addresses too; see [`format_cmdl.md`](format_cmdl.md) |
 | `.PTP` effects | 70 | ✅ **solved** | [`format_ptp.md`](format_ptp.md) — the container, and the `(category, slot)` pair three consumers address an effect with |
 | AI tables | 228 | ✅ **solved** | [`format_ai.md`](format_ai.md) — `ProbList.dat` and the decision scripts; 66 of 77 terms named off the game's own dispatch |
 | `.par` AI | 438 | ✅ **solved** | [`format_ai.md`](format_ai.md) — four record kinds and two structs, every sentinel exact |
@@ -144,7 +144,9 @@ body has a shape as well as a position: on `010_01_01` the walking capsule's
 planted foot sits three millimetres above the collision mesh. It is checked
 against the disc rather than against itself — `.mkc`'s `7ffa` fires within a
 frame of the skeleton landing a foot on four firings in five, against one in
-four for a frame picked at random. See [`pose.md`](pose.md).
+four for a frame picked at random. It also closed the `.mkc` sound record: its
+last unread field is a `CMDL` locator id, and 2,715 of 2,716 resolve. See
+[`pose.md`](pose.md).
 
 The shape of the rest is settled: a data-driven engine whose
 tables come from `ECH`, whose display text comes from `TXT`, whose actor

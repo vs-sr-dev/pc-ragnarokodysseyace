@@ -5,7 +5,7 @@
 
 ---
 
-# Next session — name the effect table, and say which foot
+# Next session — name the effect table
 
 Session 16 gave the capsule a skeleton and checked it against the disc. The
 whole report is in [`pose.md`](pose.md); the two numbers to carry are that
@@ -15,8 +15,10 @@ that **`.mkc`'s `7ffa` fires within a frame of the skeleton landing a foot on
 [`engine/pose.py`](../engine/pose.py) and it is small: a contact node, the
 height it stands at, and forward kinematics along its chain.
 
-That leaves the two things the last session named, and adds a third that is
-now cheap.
+It also named `7ff9`'s emitter, which turned out to need no pose at all: it
+is a [`CMDL`](format_cmdl.md) locator id, and 2,715 of the 2,716 references
+resolve. What is left is the effect table, one geometry question, and the
+script surface.
 
 ### 1. `effect.bin` — 69 tables and nobody has named a column.
 
@@ -30,22 +32,21 @@ whether one of the two ids is a `(category, slot)` half of the
 — and 14 pacs index past the end of their own table, which is the other half
 of the same question.
 
-### 2. Which foot, and which vector.
+### 2. Which of the hit record's three vectors is which.
 
-Both of these were waiting on forward kinematics and now are not.
+[`.anmcmd`](format_anmcmd.md) carries three signed vec3s per hit and the
+natural readings are an offset, an end point and a direction. The record names
+the bone it hangs off, and [`pose.py`](../engine/pose.py) can put that bone in
+world space on the frame the hit fires. An offset from the bone and a point in
+the actor's own space look nothing alike once both are plotted against the
+body's extent. Open since session 9, and it was waiting on forward kinematics
+that now exist.
 
-- **The emitter namespace.** `7ff9`'s third argument is a place on the body,
-  23 values wide, paired left and right — `STEP` alternates 1700 and 1800.
-  [`pose.py`](../engine/pose.py) knows *which* contact node landed on a given
-  frame. Line the two up over the disc and half the vocabulary is named in one
-  pass, with the rest of it constrained by the `CMDL` node lists.
-- **Which of the hit record's three vectors is which.**
-  [`.anmcmd`](format_anmcmd.md) carries three signed vec3s per hit and the
-  natural readings are an offset, an end point and a direction. The record
-  names the bone it hangs off, and `pose.py` can put that bone in world space
-  on the frame the hit fires. An offset from the bone and a point in the
-  actor's space look nothing alike once both are plotted against the body's
-  own extent. Open since session 9.
+The emitter half of this item is **done**: `7ff9`'s third argument is a `CMDL`
+locator id, 2,715 of 2,716 resolve, and the vocabulary reads itself. See
+[`pose.md`](pose.md) and [`format_mkc.md`](format_mkc.md). The same table is
+the obvious first place to look for anything else the disc addresses by a bare
+number and never defines.
 
 ### 3. The 289 native script functions.
 
@@ -151,11 +152,10 @@ a camera shake whose roles are unread.
   variation set the game picks and with what weights; and the `.acf`'s 16
   mixer categories and 40 buses. See [`format_awb.md`](format_awb.md).
 - `.mkc`: ten of the twenty-one opcodes, the argument roles of the camera
-  shake, the emitter namespace — which now has an instrument pointed at it,
-  see item 2 — `7ffb`, which the footfall measurement does not touch, the
+  shake, `7ffb` — which the footfall measurement does not touch — the
   fourteen pacs that index past the end of their own `effect.bin`, and whether
   `7ff9` and `7ffd` differ at all. See [`format_mkc.md`](format_mkc.md).
-  `7ffa` itself is settled: [`pose.md`](pose.md).
+  `7ffa` and the emitter are both settled: [`pose.md`](pose.md).
 - The AI's own leftovers: ten of the 76 condition terms, which the six
   `.cnut` predate and so cannot name; what the `2xx` action block means, given
   that its ids resolve to the same motions as the `1xx`; the `kind` byte of
@@ -243,6 +243,48 @@ a camera shake whose roles are unread.
   settles, and a sound starting slightly ahead of contact is what an audio
   department does on purpose — nothing here separates *fires early* from *is
   wrong*.
+- **The emitter is a `CMDL` locator id, and that was the whole answer.**
+  `7ff9`'s third argument says where on the body a sound comes from, in 23
+  values nothing on the disc was known to define. `CMDL` section `S4` is a
+  list of `(id, node)` pairs — the numeric attachment points the 1,151
+  `.CTXT` collision and spring files are named after — and **2,715 of the
+  2,716 references resolve** against the locator table of the actor's own
+  model. `python engine/pose.py emitter extract/tree`.
+  - the vocabulary then reads itself: 1300 is the head and carries the voice
+    and the sounds a beak makes, 1100 and 1200 are the hands, 1700 and 1800
+    are the feet — the left and right one whether the model calls it a toe, a
+    foot or a claw — 10600 is the tail, 4000 is a weapon and 6200 is `b19`'s
+    shield. The `10xxx` band binds to nodes named `eff_*`, which are effect
+    sockets with no anatomy to give away;
+  - **on a quadruped the hands are the front feet**, and the cue names say so
+    without being asked. `b18` has `FRONT_STEP` and `REAR_STEP`, `b10` has
+    `GRENDEL_STEP_F_S` and `_B_S`, `b19` has `HORSE_STEP_F` and `_B`, and over
+    the **514 references that carry one the locator is the matching pair 508
+    times**, with the six exceptions all one way;
+  - **the `31xxx` band is not `1xxx` plus 30000 on a second body.** `b19` is a
+    rider on a horse and declares both in one table: 1100/1200/1300 are the
+    rider's — `node_human_l_hand`, `node_human_head` — and 31100, 31200, 31700
+    and 31800 are the horse's;
+  - the one reference that resolves to nothing is `b19501at1` frame 42,
+    `HORSE_STEP_F` from 31300 on an actor that declares 31100, 31200, 31700
+    and 31800 and no 31300;
+  - and the pose agrees a third time: over the 1,737 references whose emitter
+    names a node with a mirror twin, **the named limb fell 0.34 m (feet) or
+    0.50 m (hands) over the three frames into the event and its twin fell
+    0.0002 m**.
+- **That check was a null result first, and the reference was what was
+  wrong.** Measured as *height above where the node stands in the rest pose* —
+  the definition `footfall` uses, which works on every player model — it came
+  back at exactly 50.0%. A monster's rest pose is not a standing one: `b19`'s
+  horse hangs two metres over its own, so height above standing is a height
+  above nothing. Measuring a descent instead cancels the offset and the same
+  data goes to 80.8%. `Body.floor` now says so in as many words.
+- **`S4` is therefore not a sidecar index but the model's public numbering of
+  places on itself**, with two consumers that never meet. Also visible only
+  from that use: an id may bind to more than one node — `b09_00` declares
+  `6100` for its head mesh and again for the damaged one — and the ids belong
+  to the actor rather than the model file, since armour variants share a rig.
+  See [`format_cmdl.md`](format_cmdl.md).
 
 ## Session 15 — 2026-08-23
 
