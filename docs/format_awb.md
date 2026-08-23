@@ -149,11 +149,12 @@ A cue reaching several waveforms is a variation set, and it is common:
       out/ht_se/DRAW_L.wav
 
 From the frame of an animation to a PCM sample, with nothing guessed in
-between. Over the whole disc, **7,524 of the 7,608 sound references in the
-2,690 `.mkc` files reach a waveform that exists**. The 84 that do not are 68
-in banks 1140 and 1170, which name no `.acb` in the tree
-([`format_mkc.md`](format_mkc.md) has the detail), and 16 cue ids that are
-absent from the bank they name.
+between. Over the whole disc, **7,592 of the 7,608 sound references in the
+2,690 `.mkc` files reach a waveform that exists**, and the accounting for the
+other 16 is complete: they name twelve cues — `LOKI_DIE`, `HRSV_V_WAIT`,
+`DOMOVOI_AT4`, four `DOMOVOI_AT3_ROUND_*` and five more — whose synth has an
+empty `ReferenceItems`. The bank declares the name and puts nothing behind
+it, so the game asks and gets silence.
 
 ---
 
@@ -167,8 +168,6 @@ absent from the bank they name.
   a synth index; it is not read.
 - **Which of a variation set the game picks**, and with what weights. The
   `Synth.TrackValues` blob is the obvious place.
-- **Banks 1140 and 1170**, which [`.mkc`](format_mkc.md) names and no `.acb`
-  on the disc answers to.
 - **The `.acf`'s 16 mixer categories and 40 buses** are read as an `@UTF`
   table and not described. Nothing plays yet, so nothing needs them.
 

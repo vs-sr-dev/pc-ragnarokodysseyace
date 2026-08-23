@@ -150,7 +150,7 @@ a camera shake whose roles are unread.
   variation set the game picks and with what weights; and the `.acf`'s 16
   mixer categories and 40 buses. See [`format_awb.md`](format_awb.md).
 - `.mkc`: ten of the twenty-one opcodes, the argument roles of the camera
-  shake, what banks 1140 and 1170 name, the emitter namespace, the fourteen
+  shake, the emitter namespace, the fourteen
   pacs that index past the end of their own `effect.bin`, and whether `7ff9`
   and `7ffd` differ at all. See [`format_mkc.md`](format_mkc.md).
 - The AI's own leftovers: ten of the 76 condition terms, which the six
@@ -281,6 +281,26 @@ a camera shake whose roles are unread.
   - three shapes rather than one: 273 banks carry `AFS2`, `bgm.acb` streams
     its 439 tracks from the 1.2 GB `bgm.awb` beside it, and `en/vprev.acb`
     carries a `CPK ` with an `ITOC` — which `cpk.py` reads unchanged.
+
+- **The last two unresolved banks turn out to be stages**, and with them the
+  cue side of [`.mkc`](format_mkc.md) closes completely. 1140 and 1170 fit no
+  rule the other banks follow; what places them is **where their motion sets
+  live** — `treasure_big` under `stage.cpk/170_12_01/`, `bird_a` and
+  `recycle_box` under `stage.cpk/140_*`. The rule is `1000 + the stage group`,
+  and read that way `treasure_big` fires `BIG_TREASURE`, `bird_a` fires
+  `BIRD_FLUP_1` and `BIRD_SINGING`, `recycle_box` fires
+  `BILLIONAIRE_POT_MOVE`, and the five NPCs that share bank 1140 fire cues
+  named after themselves — `MINA_STEP_1`, `IRIEY_STEP`, `FORTE_LANDING`,
+  `UNDEADKAFLA_DANCE`, and `n03`'s single unique motion playing `HAIRCUT_M`
+  ten times, `HAIRCUT_L` once and `HAIRCUT_S` three times, which is a haircut.
+  The NPCs have no bank of their own because they only ever stand in the town,
+  and the town is stage 140.
+
+  **All 7,608 sound references in the 2,690 `.mkc` now name a cue that
+  exists, and 7,592 of them reach a waveform.** The 16 that do not are
+  complete as an account rather than a gap: they name twelve cues — `LOKI_DIE`,
+  `HRSV_V_WAIT`, `DOMOVOI_AT4` among them — whose synth carries no items at
+  all. The bank declares the name and puts nothing behind it.
 
 - **Phase 2 is closed.** Every container the disc ships is read. What is left
   is columns and opcodes: the `ELBN` records, the `ECH` column names, thirty

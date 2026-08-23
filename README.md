@@ -91,6 +91,7 @@ PAMF movies      ->       46 files, 22.7 minutes tools/pam.py    0 errors
 CRI Atom audio   ->      274 banks, 7,756 waves tools/awb.py    0 errors
   naming         ->    7,756 of 7,756 reached by a cue with a name
   decoding       ->    7,756 of 7,756 to WAV, and not one file encrypted
+  a frame -> a wave->    7,592 of 7,608 .mkc references, the rest empty cues
 
 a capsule runs   ->      135 stages walked   engine/run.py  127 clean
   one crossing   ->      405 frames over 010_01_01, 13.5 s at a run

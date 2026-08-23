@@ -93,6 +93,7 @@ or shaken, `04xx` is state.
 |---|---|
 | `100` | `sound.cpk/common.acb` |
 | `200 + 10k` | `job.cpk/<class>/se.acb`, *k* over `as cl cm hs ht mg nn sw` |
+| `1000 + nnn` | `stage.cpk/<nnn>/sound.acb` |
 | `3000 + 10n` | `monster.cpk/b<nn>/se.acb` |
 | `4000 + 10n` | `monster.cpk/z<nn>/se.acb` |
 
@@ -102,6 +103,21 @@ nothing else, `fht`/`mht` use 250, `b09` uses 3090, `z26` uses 4260. The two
 gaps in the class series — 230 and 270, which would be `cm` and `nn` — are
 never used, and those are the two classes with no directory in `job.cpk`.
 
+The stage row is the one that had to be found rather than guessed, because
+the two banks that use it belong to no stage on the face of it. Bank 1170 is
+used by one motion set, `treasure_big`, which lives under
+`stage.cpk/170_12_01/`; bank 1140 by `bird_a`, `recycle_box` and five NPC
+motion sets, and `bird_a` and `recycle_box` live under `stage.cpk/140_*`. Read
+against `stage.cpk/170/sound.acb`, `treasure_big` fires **`BIG_TREASURE`**.
+Read against `stage.cpk/140/sound.acb`, `bird_a` fires `BIRD_FLUP_1`,
+`BIRD_FLUP_2` and `BIRD_SINGING`; `recycle_box` fires
+`BILLIONAIRE_POT_MOVE`; and the five NPCs fire their own names — `n15` plays
+`MINA_STEP_1`, `n26` plays `IRIEY_STEP`, `n08` plays `FORTE_LANDING`, `n28`
+plays `UNDEADKAFLA_DANCE`, and `n03`'s one unique motion plays `HAIRCUT_M`
+ten times, then `HAIRCUT_L`, then `HAIRCUT_S` three times, which is a
+haircut. The NPCs have no bank of their own because they only ever appear in
+the town, and the town is stage 140.
+
 ### The cue is a `CueId`, not a row number
 
 An `.acb` is an `@UTF` table and [`cpk.py`](../tools/cpk.py) opens it; the cue
@@ -109,8 +125,8 @@ names live in `CueNameTable`, keyed by row, and the number a `.mkc` carries is
 the `CueId` of that row. The distinction matters: **225 of `common.acb`'s 529
 rows carry an id that is not their index**, and the ids run to 3104.
 
-Resolved that way, **6,881 of 6,949 references land on a named cue** — the 68
-that do not are all in the two banks named below under *Still open*.
+Resolved that way, **all 6,949 references land on a named cue**, and so do
+all 659 of the voice references below.
 
 And what comes back is the game in plain words:
 
@@ -278,23 +294,19 @@ Three things that were open before this file was read:
 - **A motion set can be shared.** `z18`, `z19`, `z20` and `z27` all ship the
   *same* `z19.mkc.pac`, and all four fire bank 4190 — one animation set and
   one sound bank across four palette swaps.
-- **The sound layer is addressable end to end.** A motion id now reaches a cue
-  name through `.mkc` → bank id → `.acb`, and 7,540 of 7,608 references
-  (6,881 sound + 659 voice) resolve. Later the same session
+- **The sound layer is addressable end to end.** A motion id reaches a cue
+  name through `.mkc` → bank id → `.acb`, and **all 7,608 references resolve**
+  — 6,949 sound and 659 voice. Later the same session
   [`awb.py`](../tools/awb.py) took it the rest of the way to a sample:
-  **7,524 of the 7,608 reach a waveform that exists**. See
-  [`format_awb.md`](format_awb.md).
+  **7,592 of the 7,608 reach a waveform that exists**, and the 16 that do not
+  name twelve cues the bank declares and leaves empty — `LOKI_DIE`,
+  `HRSV_V_WAIT`, `DOMOVOI_AT4` and nine more, each a synth with no items in
+  it. See [`format_awb.md`](format_awb.md).
 
 ---
 
 ## Still open
 
-- **Banks 1140 and 1170** name no `.acb` in the extracted tree — 66 and 2
-  references, from the NPC motion sets (`n03`, `n08`, `n15`, `n26`, `n28`,
-  `bird_a`, `recycle_box`) and from `treasure_big`. Resolved against
-  `common.acb` they give `BARREL_BOMB`, `BOX_BOMB` and `DAGGER_SWISH_L`, which
-  is plausible for a prop and not for a dance, so the reading is not asserted.
-  They do not follow the `200 + 10k` / `3000 + 10n` rule either.
 - **The emitter namespace.** 23 values, paired left and right, provably a
   place on the body, and not tied to any table on the disc. The `CMDL` node
   lists are the obvious place to look next.

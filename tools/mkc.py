@@ -29,7 +29,7 @@ width - the same opcode takes one argument here and three there. Walking the
 stream by that count lands exactly on the terminator on all 2,690 files, and
 **frames never step backwards**, on any file. The frame is absolute, not a
 delta: read as absolute it stays within the paired `CNOM`'s declared length on
-1,971 of the 1,978 files that have one, read as a delta it overruns on 1,390.
+2,077 of the 2,085 files that have one, read as a delta it overruns on 1,471.
 
 ## Sound
 
@@ -41,8 +41,11 @@ A **bank** is an `.acb`, and the id says which one:
 
     100          sound.cpk/common.acb
     200 + 10*k   job.cpk/<class>/se.acb, k over as cl cm hs ht mg nn sw
+    1000 + nnn   stage.cpk/<nnn>/sound.acb
     3000 + 10*n  monster.cpk/b<nn>/se.acb
     4000 + 10*n  monster.cpk/z<nn>/se.acb
+
+All 6,949 references land on a cue that exists.
 
 A **cue** is a `CueId` from that table's `CueTable` - not a row number: 225 of
 `common.acb`'s 529 rows carry an id that is not their index, and the ids run to
@@ -231,6 +234,8 @@ class Disc:
             return 'sound.cpk/common.acb'
         if 200 < bank <= 280 and bank % 10 == 0:
             return f'job.cpk/{CLASSES[bank // 10 - 21]}/se.acb'
+        if 1000 < bank < 2000 and bank % 10 == 0:
+            return f'stage.cpk/{bank - 1000:03d}/sound.acb'
         if 3000 < bank < 4000 and bank % 10 == 0:
             return f'monster.cpk/b{(bank - 3000) // 10:02d}/se.acb'
         if 4000 < bank < 5000 and bank % 10 == 0:
