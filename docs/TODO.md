@@ -5,26 +5,29 @@
 
 ---
 
-# Next session — `.PTP`, then the native functions
+# Next session — give the capsule its skeleton
 
-Both AI systems are finished. The monsters' is in
-[`format_ai.md`](format_ai.md) — tables, rules, vocabulary, the six `.par`,
-and an action id resolving to a named motion. The mercenaries' is in
-[`format_merc.md`](format_merc.md) — four `ELBN` per class and the script that
-indexes them, with the command runs reading as button presses into the same
-combo tree the player drives. What is left of either is listed in its own
-document rather than here.
+Session 14 closed `.PTP` and then reached milestone 1: a capsule with the
+game's numbers crosses `010_01_01` in 405 frames without leaving the collision
+mesh. See [`milestone_numbers.md`](milestone_numbers.md) and
+[`../engine`](../engine). Phase 2 has no bounded unknowns left — `.mkc` and the
+PAMF video, and neither blocks anything — and Phase 4 has started.
 
-### 1. `.PTP` — the effect ids.
+### 1. Play the motion on the body that is now moving.
 
-Opcode 10's `+0x02` in `.anmcmd` runs 10001 to 39547 and the same values are
-used by unrelated monsters, so it is a **global** effect id, not an index into
-the per-class file. `.PTP` is `PTCP`: a 16-byte header, an 84-entry sparse
-index of `(u32 offset, u16, u16)` at `0x40`, then `PTB` blocks naming their own
-assets in the clear — `ef_I_as_hit_zan001.ctex`, `anm_ef_I_fire_tubu001.txx`.
-70 files. Nothing in the first 64 bytes of a `PTB` looks like the id, so what
-is wanted is a field further in or a separate table; `eff_hitlevel_tbl` in
-`ELBN` is the place to look first.
+`engine/` has a body that runs, turns and stands on the ground. It has no
+pose. [`CNOM`](format_cnom.md) has 3.0M keys bound to skeletons by name,
+[`format_cmdl.md`](format_cmdl.md) already does the forward kinematics
+(`cmdl.py gait`), and [`.anmcmd`](format_anmcmd.md) says what happens on which
+frame. Joining those to `Actor` gives three things at once:
+
+- **locomotion that cannot foot-slide**, because
+  [`units.md`](units.md) showed the cycles were authored against `run_sp`;
+- **which of the hit record's three vectors is which** — open since session 9,
+  and the note there says posing the skeleton and drawing the capsule would
+  settle it in an afternoon;
+- a second, harder use for the thirty uncorrelated `.anmcmd` opcodes, which
+  the positional method has run out of road on.
 
 ### 2. The 289 native script functions.
 
@@ -77,7 +80,10 @@ addressable from the mercenary tables.
 
 - **EBOOT decryption** (Phase 3). Narrower than it was: the quest state machine
   and the boss AI are script, so what is left inside it is the combat loop and
-  the 289 native functions. Still nothing on the current list needs it.
+  the 289 native functions. **Session 14 produced the first item that genuinely
+  needs it** — the table that maps `.anmcmd` opcode 10's effect id to a `PTB`
+  slot is not on the disc, and 32,600 leaves were searched for it. It is a
+  cosmetic lookup, so it still does not justify the phase on its own.
 - **Audio and video** — the `.acb` half is no longer deferred: an `.acb` is an
   `@UTF` table and `cpk.py` opens it, which is how the hit record's sound got
   named. What is still deferred is decoding the waveforms in the `.awb`, and
@@ -108,23 +114,36 @@ addressable from the mercenary tables.
   for "Fever" found nothing. Also the four unexplained elements of the `ab_*`
   status vectors.
 - `.anmcmd`: thirty of the fifty-two opcodes; which of the hit record's three
-  vectors is which; the unit of `+0x35`; why 554 of the 2,053 name no motion.
-  See [`format_anmcmd.md`](format_anmcmd.md).
+  vectors is which; the unit of `+0x35`; why 554 of the 2,053 name no motion;
+  and opcode 10's effect id, which session 14 showed resolves nowhere on the
+  disc. See [`format_anmcmd.md`](format_anmcmd.md).
 - `.psq`: `_OP_COMPARITH`'s packed `_arg1`, exercised three times on the whole
   disc and read out of the interpreter rather than confirmed; and the `.ppcut`
   macro names, which the preprocessor consumed. See
   [`format_psq.md`](format_psq.md).
-- `.PTP` (70) and `.mkc` (2,690) — the second of these sit beside the `CNOM`
-  files and may be what the unmatched `.anmcmd` lists key through.
+- `.PTP`: what category 2 addresses — `eff_hitlevel_tbl` reaches ids up to 252
+  and no `PTCP` on the disc has that many slots — and the inside of a `PTB`,
+  which nothing needs until something renders. See
+  [`format_ptp.md`](format_ptp.md).
+- `.mkc` (2,690). They sit beside the `CNOM` files and may be what the
+  unmatched `.anmcmd` lists key through. Ten minutes of looking says they are
+  small, even-length and terminated: **all 2,690 end on `0xffff`**, 256 of them
+  are nothing but that terminator, sizes run from 2 bytes to a few hundred, and
+  581 open `00 00 04 00 00 02 00 00`. A `u16` stream with a sentinel, in other
+  words, and the obvious next step is to read one against the `CNOM` it is
+  named after.
 - The AI's own leftovers: ten of the 76 condition terms, which the six
   `.cnut` predate and so cannot name; what the `2xx` action block means, given
   that its ids resolve to the same motions as the `1xx`; the `kind` byte of
   `<name>.par` and the 1000-band ids in `_coop.par`; the five `ProbList` files
   whose group ids repeat rather than ascend; and the eight `EventTable.dat`
   and `MotStream.dat`. See [`format_ai.md`](format_ai.md).
-- The stage layout's own leftovers: the polyline's third word, 0 to 5; whether
-  a fence is a closed loop; the 45 markers named `HTA*`; and what places the
-  object a `obj*` marker marks.
+- The stage layout's own leftovers: the polyline's third word, 0 to 5; the 45
+  markers named `HTA*`; and what places the object a `obj*` marker marks — the
+  last of which is now half answered, since `obj` markers turn out to sit on
+  the collision mesh to a centimetre. **Whether a fence is a closed loop is
+  settled**: 105 of 145 stages close, 20 branch, see
+  [`milestone_numbers.md`](milestone_numbers.md).
 - The mercenary AI's leftovers: the command ids other than 0, 14 and 15; the
   flag word at `+0x08`; the seven words of a `target_NN`; command 16, used
   twice; and the message ids in the two roster tables. See
@@ -135,6 +154,122 @@ addressable from the mercenary tables.
 ---
 
 # Log
+
+## Session 14 (part two) — 2026-08-23
+
+- **Milestone 1 reached: "the numbers are real".** See
+  [`milestone_numbers.md`](milestone_numbers.md) and the new
+  [`engine/`](../engine) — `world.py`, `actor.py`, `run.py`, the first code in
+  this repository that is not a reader. A capsule with `acc = 0.035`,
+  `run_sp = 0.17`, `rot_y_acc = 8`, `rot_y_spd = 32` and `col_r = 0.5` crosses
+  `010_01_01` from `appear01` to `jump_010_01_02` in **405 frames — 13.5
+  seconds — with 0 of 405 frames off the collision mesh.** Findings worth
+  carrying:
+  - **the heading convention is settled by the level, not by a field.** The
+    spawn marker's Y rotation points at the stage's only exit to within 12.8
+    degrees, so a heading of zero faces `+Z`. Under the other convention the
+    player spawns facing the wall behind them. Nothing on the disc declares
+    this and no amount of further reading would have;
+  - **`hta.bin` and `<stage>.col` agree to a centimetre**, and nobody had put
+    them in the same coordinate frame because until something has to stand up
+    there is no reason to. Over 155 stages: `obj` markers 772, median 1.0 cm,
+    none off the mesh; `appear` 660, median 1.8 cm, one off the mesh.
+    `emgen_pos` is the loose one at 57 cm, which is a fact about what a
+    generator is rather than a failure;
+  - **a `borderline` is a closed loop**, open since session 8. On `010_01_01`
+    `chara_line01` ends where `chara_line02` begins and vice versa — two
+    polylines, one loop. Disc-wide, **105 of 145 stages have every fence
+    endpoint shared by exactly two polyline ends**; 20 branch, which is a
+    fence with an island in it;
+  - **`rot_y_acc` rescues a number `units.md` had worried about.** That
+    document estimated a 180-degree turn at 0.19 s from `rot_y_spd` alone and
+    said it was below the threshold at which a turn reads as a turn. Integrate
+    the acceleration properly and it is 0.32 s. A table cannot show that; a
+    loop can;
+  - **`col_r = 0.5` is what makes the corridor passable.** The first attempt
+    stopped the body dead at the fence and it stuck in the first concave
+    corner. Pushing the capsule centre out to exactly `col_r` from the fence
+    yields sliding for free, and the same body then runs the whole 65 metres
+    of wall without catching once. The parameter earned its place by being
+    needed;
+  - **and then every other stage.** `run.py sweep` spawns the same capsule on
+    every stage that has a spawn, an exit and a fence: **135 stages walked,
+    127 of them with the body on legal ground for every frame**, 126 reaching
+    the exit while steering straight at it. Of the 62 that are a real crossing
+    the median takes **18.8 seconds** and the body averages **5.05 m/s against
+    5.10 flat out** — which says the fence contact and the acceleration ramp
+    cost almost nothing, and that a field in this game is about twenty seconds
+    wide. The eight that leave the mesh walk into a hole in it, because a
+    straight line at the exit does not know the world has pits;
+  - **the check caught the engine lying, which is the point of having one.**
+    The first version reported 135 of 135 clean — because when there was no
+    ground within reach it snapped to whatever ground it could find. Printing
+    *the largest vertical move in any single frame* exposed a 4-metre teleport
+    immediately. Made to fall properly instead, the honest figure is 127, and
+    the largest vertical move became **8.000 m on `150_04_02` — which is
+    `fall_spd_max` exactly**;
+  - **`fall_spd_max` is settled, and it took falling out of the world.**
+    [`units.md`](units.md) had it open as "a clamp that never fires or it is
+    not a speed". It is a speed: a body that walks off the mesh accelerates at
+    `fall_gravity_y` for `8 / 0.035 = 229` frames and then stops. Seven and a
+    half seconds of unobstructed fall — unreachable in play, which is what a
+    guard is;
+  - the seam between read and chosen is marked in the code rather than
+    smoothed over: deceleration, turn braking, the stick and the response to a
+    wall are the engine's four choices, and every value they use is the
+    disc's.
+
+## Session 14 (part one) — 2026-08-23
+
+- **`.PTP` opens, and the effect turns out to have a two-part address.** See
+  [`format_ptp.md`](format_ptp.md) and `ptp.py`. **70 files, three of them zero
+  bytes; 67 read, 1,108 `PTB` blocks, 2,002 resources, 4,451 resource
+  references, 0 unreadable**, sixteen identities closing on every file.
+  Findings worth carrying:
+  - **the header holds five tables, not one.** Six sessions of notes had this
+    down as "a 16-byte header and an 84-entry sparse index at `0x40`". It is a
+    block directory, a resource directory, a size array for each, and a `u16`
+    reference list, and each ends exactly where the next begins — four
+    equations that fix all five and leave nothing unaccounted for;
+  - **the sizes are little-endian** in an otherwise big-endian file, which is
+    why they read as nonsense for as long as they were read the other way. The
+    check that says the reading is right is that a size of zero and an offset
+    of zero always occur together, and that the blocks tile the file;
+  - **the container and the block agree on the count.** A `PTB` names its
+    textures in the clear and the container indexes the same textures through
+    the reference list, and **1,041 of 1,041 non-final blocks name exactly as
+    many distinct files as they reference.** Two tools, the effect authoring
+    tool and the packer, never disagreeing;
+  - **the disc declares the addressing in a class definition.** A stage script
+    carries `class EffData { _hta_name; _eff_cate; _eff_id; ... }` and calls
+    `effStart(_eff_cate, _eff_id)`. So an effect is a **pair**, and `_eff_id`
+    is the slot number. `EffData('ef_fire01', 1, 8, ...)` on stage `050`
+    resolves to slot 8 of that stage's own bank, which is one of the only two
+    blocks in it naming `anm_ef_M_vlcn001.txx` — a volcano, at a marker called
+    `ef_fire01`. **Fourth instance of the same lesson**, after `ELBN`'s
+    parameter names, `.psq`'s stream tag and the AI's term dispatch: the
+    answer was written out, in a file already being read;
+  - **category 0 is `misc.PTP` and category 1 is the actor's own file**, and
+    the proof is arithmetic rather than plausible: `eff_vari_tbl` in eighteen
+    monsters' `objbin.bin` is a list of these pairs, and **all 104 pairs in all
+    18 files land on a slot that exists** under that reading. `ptp.py refs`
+    prints it. Category 2, which only the six classes' `eff_hitlevel_tbl` uses,
+    reaches ids of 252 and stays open;
+  - **an inference from session 9 was wrong, and the data said so all along.**
+    Opcode 10's effect id was called *global* because unrelated monsters share
+    values. They share them because **the number is derived from the motion**:
+    of 385 distinct (animation, effect id) pairs, 66 are exactly `10000 + the
+    motion id` and 67 more are `(1000 + the motion id) * 10 + a variant`.
+    Monsters share motion numbering, so they collide without sharing an effect.
+    The correction is in [`format_anmcmd.md`](format_anmcmd.md);
+  - **and that number resolves nowhere on the disc.** All 32,600 leaves were
+    scanned for the 187 ids in use, as aligned big-endian `u32` and `u16`;
+    nothing but float noise. It is not in the `.PTP` in any width or byte
+    order either. So the bridge is a static table in the SELF — the first thing
+    on the list that actually needs Phase 3, and a cosmetic one.
+- Opened `.mkc` far enough to see it is a short `u16` stream with a sentinel —
+  **all 2,690 end on `0xffff`** and 256 are nothing but that — and wrote the
+  shape down under "Open, unowned". Not read.
 
 ## Session 13 — 2026-08-22
 

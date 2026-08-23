@@ -61,7 +61,23 @@ monster AI       ->      228 files, 6,550 rules tools/ai.py     0 errors
 mercenary AI     ->       12 classes, 48 tables tools/merc.py   0 errors
   probability    ->      454 tables, all summing to exactly 10000
   command lists  ->      350 lists, 1,549 button presses
+PTCP effects     ->       67 files, 1,108 blocks tools/ptp.py    0 errors
+  resources      ->    2,002 assets, 4,451 references, named in the clear
+  addressing     ->      104 of 104 (category, slot) pairs resolving
+
+a capsule runs  ->      135 stages walked  engine/run.py   127 clean
+  one stage      ->      405 frames across 010_01_01, 13.5 s at a run
+  speed          ->     5.05 m/s achieved against 5.10 flat out
+  markers        ->    1,432 obj and appear standing on the mesh to 1 cm
+  fences         ->      105 of 145 stages closing into a loop
 ```
+
+The first milestone — **"the numbers are real"** — is reached: a capsule with
+the game's own acceleration, run speed, turn rate and radius crosses the first
+field of the game in 13.5 seconds without leaving the collision mesh, and
+walks **135 stages**, 127 of them without ever leaving legal ground. See
+[`docs/milestone_numbers.md`](docs/milestone_numbers.md) and
+[`engine/`](engine), which is the first code here that is not a reader.
 
 Formats are documented in [`docs/`](docs): [the disc
 survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
@@ -71,7 +87,7 @@ survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 [the units](docs/units.md),
 [`ELBN`](docs/format_elbn.md), [`.anmcmd`](docs/format_anmcmd.md), [the script
 layer](docs/format_psq.md), [the monster AI](docs/format_ai.md), [the
-mercenary AI](docs/format_merc.md), [the actor
+mercenary AI](docs/format_merc.md), [`.PTP`](docs/format_ptp.md), [the actor
 parameters](docs/params.md). The plan is in
 [`docs/STRATEGY.md`](docs/STRATEGY.md); what is next is in
 [`docs/TODO.md`](docs/TODO.md).
@@ -193,6 +209,16 @@ python tools/merc.py check|list <dir>        the mercenary AI
 python tools/merc.py dump <dir> <cls>        one class, prt to command step
 python tools/merc.py commands|targets <dir>  the command and target tables
 python tools/merc.py combos <dir>            the runs, as button presses
+
+python tools/ptp.py check|survey <dir>       the particle effect banks
+python tools/ptp.py list <dir> <name>        one bank, slot by slot
+python tools/ptp.py slot <dir> <name> <n>    one block, hex and assets
+python tools/ptp.py refs <dir>               where the (category, slot) pairs go
+
+python engine/run.py numbers <class json>    what the parameters produce
+python engine/run.py walk <stage dir> <json> cross a stage with them
+python engine/run.py trace <stage> <json> <png>   draw the crossing
+python engine/run.py check <stage.cpk dir>   markers against mesh, fences
 
 python tools/params.py census|tiers <dir>     the actor parameters
 python tools/params.py classes <dir>          the six player classes compared

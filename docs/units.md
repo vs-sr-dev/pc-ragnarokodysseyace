@@ -132,7 +132,11 @@ a game jump either way and settles nothing, which is why it is a parenthesis.)
 
 Two smaller pointers, worth no more than a mention: `rot_y_spd = 32` degrees
 per frame turns a character 180 degrees in 0.19 s at 30 fps and 0.09 s at 60,
-and 0.09 s is below the threshold at which a turn reads as a turn;
+and 0.09 s is below the threshold at which a turn reads as a turn. (That 0.19
+is a lower bound and session 14 improved on it: `rot_y_acc = 8` has to spin the
+turn up and brake it down, which makes the real figure **0.32 s at 30 fps** and
+0.16 s at 60. The argument gets stronger, not weaker — see
+[`milestone_numbers.md`](milestone_numbers.md).)
 `camera_aerial_finish_keep_frame` holds the camera on a finisher for 15 to 30
 frames, which is half a second to a second at 30 fps and a quarter-second blink
 at 60.
@@ -159,8 +163,16 @@ substantially different to make it 1/60.
 - A *declared* frame rate or delta time, if one exists. The EBOOT is where it
   would be, and it is the only remaining place worth looking.
 - Whether the render rate is 30 or 60. Nothing on the disc bears on this.
-- `fall_spd_max = 8` units per frame is 240 m/s at 30 fps, so it is a clamp
-  that never fires or it is not a speed. Nothing distinguishes the two.
+- ~~`fall_spd_max = 8` units per frame is 240 m/s at 30 fps, so it is a clamp
+  that never fires or it is not a speed.~~ **Settled in session 14**, by
+  letting a body fall out of the world. `engine/run.py sweep` reports the
+  largest vertical move any capsule made in any single frame, and on
+  `150_04_02` it is **8.000 m — the clamp exactly**. A body that walks off the
+  mesh accelerates at `fall_gravity_y` for `8 / 0.035 = 229` frames, seven and
+  a half seconds, and then stops accelerating. So it *is* a speed, and it is
+  the terminal velocity of something that has left the level: unreachable in
+  play, which is what a guard is. See
+  [`milestone_numbers.md`](milestone_numbers.md).
 - `ab_tire_stamina_recovery_f = 0.1` — a `_f` field with a fractional value, so
   a rate per frame rather than a count of them. Five other `_f` fields on the
   disc are fractional the same way and none has been read.

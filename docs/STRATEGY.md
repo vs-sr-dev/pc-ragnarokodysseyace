@@ -1,6 +1,6 @@
 # PC-ROA — strategy
 
-*Aligned to the end of session 12 (2026-08-22). Detail and priorities live in
+*Aligned to the end of session 14 (2026-08-23). Detail and priorities live in
 [`TODO.md`](TODO.md); this document is the frame.*
 
 Goal: a **native PC reimplementation** of *Ragnarok Odyssey ACE*, the PS3
@@ -89,7 +89,7 @@ Phase 3.
 | `.anmcmd` | 2,053 | ✅ **read** | [`format_anmcmd.md`](format_anmcmd.md) — the event lists; the hit record read and bound to the skeleton, 22 of 52 opcodes correlated |
 | `.mkc` | 2,690 | medium | |
 | `.CTXT` | 1,151 | ✅ **solved** | plain text: hit capsules and springs, bound to a bone through the model's locator table; see [`format_cmdl.md`](format_cmdl.md) |
-| `.PTP` effects | 70 | medium | `PTCP` + `PTB`; the `.anmcmd` effect ids point somewhere here |
+| `.PTP` effects | 70 | ✅ **solved** | [`format_ptp.md`](format_ptp.md) — the container, and the `(category, slot)` pair three consumers address an effect with |
 | AI tables | 228 | ✅ **solved** | [`format_ai.md`](format_ai.md) — `ProbList.dat` and the decision scripts; 66 of 77 terms named off the game's own dispatch |
 | `.par` AI | 438 | ✅ **solved** | [`format_ai.md`](format_ai.md) — four record kinds and two structs, every sentinel exact |
 | mercenary AI | 48 | ✅ **solved** | [`format_merc.md`](format_merc.md) — four `ELBN` per class and the script that indexes them; the command runs are button presses |
@@ -126,7 +126,14 @@ declaration.
 
 ## Phase 4 — Host
 
-Nothing built yet, but the shape is now settled: a data-driven engine whose
+**Begun in session 14.** [`engine/`](../engine) is the first code here that is
+not a reader: a world that answers *where is the floor* and *where is the
+fence*, and an actor that moves under the parameter table. It is three files
+and it has no renderer, no VM and no combat — but it runs, and reaching
+milestone 1 with it is written up in
+[`milestone_numbers.md`](milestone_numbers.md).
+
+The shape of the rest is settled: a data-driven engine whose
 tables come from `ECH`, whose display text comes from `TXT`, whose actor
 parameters come from the JSON, and which **hosts a Squirrel VM** and exposes
 289 named functions to it. All four are readable today. Squirrel is small,
@@ -142,30 +149,47 @@ Not reached.
 
 ## Milestones
 
-None reached yet, but the first one — **"the numbers are real"** — now has its
-numbers. Moving a capsule with the game's own acceleration, run speed and turn
-rate needs `acc = 0.035`, `run_sp = 0.17`, `rot_y_acc = 8`, `rot_y_spd = 32`,
-and those are the same for every class; the stagger and hit-stop models are
-readable too. What is still missing is a stage to move around in, which is why
-`CMDL`, `.map` and `CCLS` moved up the list.
+### 1. "The numbers are real" — ✅ **reached, session 14**
 
-That milestone needs no rendering of the game's art and no EBOOT, and it is the
-first honest test of whether the reimplementation thesis holds here the way it
-held on the sister project.
+A capsule with the game's own `acc = 0.035`, `run_sp = 0.17`, `rot_y_acc = 8`,
+`rot_y_spd = 32` and `col_r = 0.5` crosses `010_01_01` from the player spawn to
+the exit in **405 frames — 13.5 seconds — with 0 frames off the collision
+mesh**, sliding along the fence for half of them. The same capsule then walks
+**135 stages**, 127 of them with the body on legal ground for every frame, at
+**5.05 m/s against 5.10 flat out**. The full report is
+[`milestone_numbers.md`](milestone_numbers.md); the code is
+[`engine/`](../engine).
 
-**As of session 8 it has its stage too.** `010_01_01` reads end to end: a
-ground mesh, 346 collision triangles, a fence to stop at, four spawn points in
-formation at one end and a doorway at the other, and twenty-odd places
-monsters come from in between. Everything the milestone needs is now readable
-except the loop that runs it.
+It took six sessions to attempt because everything it needed had been ready
+since session 8 and nothing forced the issue. Three things came out of it that
+no amount of further reading would have produced:
 
-**As of session 10 it has the stage's script.** The same stage's `.psq`
+- the spawn marker faces its own exit, which **settles the heading
+  convention** the disc never declares;
+- `hta.bin` and `<stage>.col` agree: `obj` and `appear` markers stand on the
+  collision mesh to **a centimetre**, over 1,432 markers and 155 stages, and
+  exactly one of them has no ground under it;
+- **a `borderline` is a closed loop** — 105 of 145 stages have every fence
+  endpoint shared by exactly two polyline ends — which had been an open
+  question since session 8;
+- **`fall_spd_max` is a speed after all**, and it is the terminal velocity of
+  something that has fallen out of the level. [`units.md`](units.md) could not
+  tell whether the clamp ever fires; letting a body walk off the mesh made it
+  fire, at 8.000 m in a frame, exactly.
+
+The stage this ran on has been readable since session 8: a ground mesh, 346
+collision triangles, a fence, four spawn points in formation at one end and a
+doorway at the other, and twenty-odd places monsters come from in between.
+
+### 2 and 3, and what they still need
+
+**As of session 10 the second has the stage's script.** The same stage's `.psq`
 decompiles, its triggers name functions that are in it, and the calls those
 functions make name the markers the stage already declared. The second
 milestone — *"a stage runs"* — needs a Squirrel VM, the 289 native functions
 stubbed, and nothing else that is not already read.
 
-**As of session 12 it has a monster that can act.** The AI's condition
+**As of session 12 the third has a monster that can act.** The AI's condition
 vocabulary, its action tables and its parameters are read, and an action id
 resolves to a named motion, so the loop *decide → pick → play* is describable
 end to end from the disc. The third milestone — *"a monster fights"* — now

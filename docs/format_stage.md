@@ -245,13 +245,21 @@ camera and sound.
 
 - The polyline's third word, 0 to 5. `chara_line01` on `010_01_01` is 0 and
   `chara_line02` is 1, both parts of the same fence, so it is not a kind.
-- Whether a fence is a closed loop or an open chain, and which end joins which.
-  The last point of `chara_line01` is the first point of `chara_line02` on that
-  stage, which suggests the chain is meant to be walked in order.
+- ~~Whether a fence is a closed loop or an open chain.~~ **Settled in session
+  14**, by making a body live inside one. The last point of `chara_line01` on
+  `010_01_01` is the first of `chara_line02` and the last of `chara_line02` is
+  the first of `chara_line01` — two polylines, one loop — and disc-wide **105
+  of 145 stages have every `chara_line` endpoint shared by exactly two
+  polyline ends**. 20 branch, which is a fence with an island in it, and 20
+  leave an end loose. `python engine/run.py check extract/tree/stage.cpk`
+  prints it; see [`milestone_numbers.md`](milestone_numbers.md).
 - What the 45 markers literally named `HTA*` are for.
 - The `obj*` markers place objects, but nothing here says *which* object. The
   `objbin.bin` and `stobjbin.bin` [`ELBN`](format_elbn.md) files beside them
-  are the obvious place to look, and they have not been read.
+  are the obvious place to look, and they have not been read. What session 14
+  did establish is that they are *placements* and not hints: all 772 of them
+  have ground underneath and the median sits **1 cm** above the collision
+  mesh.
 - `stageparam.bin` is read as a container but its `stage_param` record is not
   named field by field. See [`ELBN`](format_elbn.md).
 - The minimap's transform. The `.map` silhouette is visibly the same shape as
