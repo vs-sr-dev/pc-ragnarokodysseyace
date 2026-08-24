@@ -84,6 +84,8 @@ Usage:
   python reward.py drops   <dir> <quest>  its reward tables, item by item
   python reward.py items   <dir>          the reward item ids, by table
   python reward.py props   <dir> [quest]  the breakable scenery, with its drops
+  python reward.py draw    <dir> <quest> [class] [seed]   one pay-out, drawn
+  python reward.py sources <dir>          the encyclopedia against the tables
 """
 
 from __future__ import annotations
@@ -103,6 +105,9 @@ MESSAGES = 'menu.cpk/msg_field.en.pac/msg_quest.bin'
 ITEM_DB = 'item.cpk/it_db.pac'
 ITEM_NAMES = 'item.cpk/it_db.en.pac'
 DROP_TABLES = 'item.cpk/it_drop.pac/it_drop_table.pac'
+DICTIONARY = 'dictionary.cpk/dc_db.pac/dc_db_monster.bin'
+DICTIONARY_TEXT = 'dictionary.cpk/dc_db.en.pac/dc_db_text_monster.rmsg'
+ITEM_TEXT = 'item.cpk/it_db.en.pac'
 NONE32 = 0xFFFFFFFF
 NONE16 = 0xFFFF
 
@@ -276,6 +281,273 @@ def reward_rows(path: pathlib.Path, wide: bool = True):
             yield head, row, ent
 
 
+# --------------------------------------------------------------------------
+# the grid: a reward table read down its columns rather than across its rows
+
+
+def selector(e: Entry, wide: bool = True) -> tuple:
+    """What splits a column into draws that are independent of each other.
+
+    In `item_reward.bin` it is the kind byte, with **kind 4 split further by
+    the class it names**: six class-restricted weapons stacked in one column
+    are six certainties, not one distribution that sums to six. In a region
+    table byte 7 is the broken part instead, and that is the whole selector.
+    """
+    if not wide:
+        return (e.kind,)
+    return (e.kind, e.arg) if e.kind == 4 else (e.kind, 0)
+
+
+class Block:
+    """One block of a reward table, as a grid instead of as a list of rows.
+
+    The head is written once at the top and inherited down it. What is under
+    it is ten **columns** of sixteen bytes, and the column is the unit: the
+    entries down one are alternatives with one distribution between them, and
+    a row is one alternative of each. See `format_reward.md`.
+    """
+
+    __slots__ = ('head', 'columns', 'rows')
+
+    def __init__(self, head):
+        self.head = head
+        self.rows = 0
+        self.columns: dict = {}
+
+    @property
+    def progress(self) -> int:
+        return self.head[0]
+
+    @property
+    def monster(self):
+        """The region table's block head names one; `item_reward.bin`'s does
+        not."""
+        return monster_of(self.head[1]) if len(self.head) > 1 else None
+
+    def add(self, col: int, e: Entry, wide: bool) -> None:
+        self.columns.setdefault((col,) + selector(e, wide), []).append(e)
+
+    def total(self, key) -> int:
+        return sum(e.rate for e in self.columns[key])
+
+
+def blocks(path: pathlib.Path, wide: bool = True):
+    """A reward table as `Block`s.
+
+    The entry is sixteen bytes wide and eight in a region table, and there
+    are always ten of them, so the head is whatever the row has left over -
+    four bytes in a quest's `item_reward.bin` and eight in the endless
+    dungeon's, which is the same record with a wider head.
+    """
+    t = Ech(path.read_bytes(), path.name)
+    step = 16 if wide else 8
+    first = t.row_size - 10 * step
+    if first < 4:
+        raise ValueError('%s: %d bytes a row is not ten entries of %d'
+                         % (path.name, t.row_size, step))
+    words = first // 4
+    head = (0,) * max(words, 1)
+    cur = None
+    for i in range(t.rows):
+        row = t.row(i)
+        got = struct.unpack_from('>%dI' % words, row, 0)
+        # `item_reward.bin` writes one number at the top of a block;
+        # `item_reward_region.bin` writes the progress once at the top of the
+        # file and the monster and the region at the top of each block.
+        if (got[1] if words > 1 else got[0]):
+            if cur is not None:
+                yield cur
+            head = (got[0] or head[0],) + got[1:] if words > 1 else got
+            cur = Block(head)
+        elif words > 1 and got[0]:
+            head = (got[0],) + head[1:]
+        if cur is None:
+            cur = Block(head)
+        cur.rows += 1
+        for c in range(10):
+            e = Entry(row, first + step * c, wide)
+            if e:
+                cur.add(c, e, wide)
+    if cur is not None:
+        yield cur
+
+
+def at_progress(bs: list, progress: int):
+    """The block the player is in: the last one at or below where they are.
+
+    The head is a story-progress threshold in the same number space
+    `cfGetMainCounter` returns, so this is a lookup and not a policy - except
+    for a player standing below every threshold, who gets the first block
+    because a quest that pays nothing at all is not a reading anyone would
+    write.
+    """
+    got = None
+    for b in bs:
+        if b.progress <= progress:
+            got = b
+    return got or (bs[0] if bs else None)
+
+
+def draw(block: Block, rng, keep=None) -> list:
+    """One pay-out of a block: **at most one item out of each column**.
+
+    A column's entries are alternatives in row order and their chances are
+    one distribution over ten thousand - 4,022 of 4,022 columns of
+    `item_reward.bin` sum to at most 10,000 and 561 to exactly it - so the
+    roll lands in one entry's window or in none of them, and the leftover is
+    the chance that the column pays nothing.
+
+    `keep(kind, arg)` says which of a column's draws this pay-out takes: the
+    kind byte selects a variant of the same column, and what its values 0, 2
+    and 3 mean is not read. Returns `(key, entry)` pairs in column order.
+    """
+    out = []
+    for key, ents in block.columns.items():
+        kind = key[1]
+        arg = key[2] if len(key) > 2 else 0
+        if keep is not None and not keep(kind, arg):
+            continue
+        roll = rng.randrange(10000)
+        at = 0
+        for e in ents:
+            at += e.rate
+            if roll < at:
+                out.append((key, e))
+                break
+    return out
+
+
+# --------------------------------------------------------------------------
+# the encyclopedia, which says in English where a thing comes from
+
+
+def named_monsters(root) -> dict:
+    """`monster.cpk` directory -> the name the encyclopedia gives it.
+
+    `dc_db_monster.bin`'s second word is the same `01 hh h0 00` twelve-bit
+    monster id `enemy.bin` and `chapter.bin` write, and
+    `dc_db_text_monster.rmsg` holds twice as many messages as the table has
+    rows: the names first and the descriptions after, in the same order.
+    """
+    blob = _leaf(root, DICTIONARY)
+    txt = _leaf(root, DICTIONARY_TEXT)
+    if blob is None or txt is None:
+        return {}
+    t = Ech(blob, DICTIONARY)
+    names = [m[1] for m in rmsg.Rmsg(txt, DICTIONARY_TEXT).messages]
+    out = {}
+    for i in range(t.rows):
+        mid = monster_of(struct.unpack_from('>I', t.row(i), 4)[0])
+        if mid is not None and i < len(names):
+            out.setdefault(monster_dir(mid), names[i].strip())
+    return out
+
+
+def sources(root) -> dict:
+    """item id -> (the tag, the names under it), off `it_db_text_*.rmsg`.
+
+    An item's encyclopedia entry ends in a tagged block - `{{Dropped by}}`
+    and a monster, `{{Acquired from}}` and a place. The text files pair
+    positionally with the `it_db_*.bin` they describe, which is how a row
+    gets its name at all, so the tag lands on an item id.
+    """
+    base = pathlib.Path(root) / ITEM_DB
+    txt = pathlib.Path(root) / ITEM_TEXT
+    out = {}
+    for kind in BANDS:
+        tab, doc = base / ('it_db_%s.bin' % kind), txt / (
+            'it_db_text_%s.rmsg' % kind)
+        if not (tab.is_file() and doc.is_file()):
+            continue
+        ids = Ech(tab.read_bytes(), tab.name).lane(0)
+        ts = [m[1] for m in rmsg.Rmsg(doc.read_bytes(), doc.name).messages]
+        if len(ids) != len(ts):
+            continue                    # `card`: 1,471 rows and 677 texts
+        for i, item in enumerate(ids):
+            head, _, tail = ts[i].partition('{{')
+            tag, _, body = tail.partition('}}')
+            if not tag:
+                continue
+            who = [ln.strip() for ln in body.strip().split('\n')
+                   if ln.strip()]
+            out[item] = (tag, who)
+    return out
+
+
+class Drops:
+    """`it_drop_db_<id>.bin` - what a monster drops, and what is in a crate.
+
+    579 tables, and every one is the same grid `item_reward.bin` is: a `u32`
+    id and then **eight columns** of `(kind, item, chance)`, with the rows
+    under a column its alternatives. Two things are written once and
+    inherited down a column, the way a block head is inherited down a block:
+
+    - **the kind**, on 4,369 of 4,369 columns, and no column repeats it
+      lower down;
+    - **the gate.** A column whose top entry names no item is a two-step
+      draw: that entry's chance is whether the column pays at all, and the
+      entries under it are what comes out. **On all 1,930 gated columns the
+      entries under the gate sum to exactly 10,000** - a closed
+      distribution - and on all 2,439 ungated ones the whole column sums to
+      at most 10,000.
+
+    Kinds 1, 3 and 5 are the ones that gate, and they are the columns that
+    pay a weapon or a card; 0, 2, 4 and 8 never gate and pay a material or a
+    bottle. **26,237 of the 26,251 item ids name an `it_db` row and the
+    fourteen that do not are the ten quest items** 100001..100010, which
+    `it_db_name_quest.rmsg` holds and the catalog collects.
+    """
+
+    __slots__ = ('id', 'columns')
+
+    def __init__(self, path: pathlib.Path):
+        t = Ech(path.read_bytes(), path.name)
+        self.id = struct.unpack_from('>I', t.row(0), 0)[0]
+        self.columns = []
+        for c in range(8):
+            col = []
+            for i in range(t.rows):
+                kind, item, rate = struct.unpack_from(
+                    '>3I', t.row(i), 4 + 12 * c)
+                if item == NONE32 and rate in (0, NONE32):
+                    continue
+                col.append((None if kind == NONE32 else kind, item, rate))
+            if not col:
+                continue
+            gate = col[0][2] if col[0][1] == NONE32 else None
+            self.columns.append({
+                'kind': col[0][0], 'gate': gate,
+                'entries': [(i, r) for _, i, r in
+                            (col[1:] if gate is not None else col)]})
+
+    def items(self) -> set:
+        return {i for c in self.columns for i, _ in c['entries']}
+
+    def draw(self, rng) -> list:
+        """One drop: at most one item out of each column."""
+        out = []
+        for c in self.columns:
+            if c['gate'] is not None and rng.randrange(10000) >= c['gate']:
+                continue
+            roll, at = rng.randrange(10000), 0
+            for item, rate in c['entries']:
+                at += rate
+                if roll < at:
+                    out.append((c['kind'], item))
+                    break
+        return out
+
+
+def drop_table(root, table: int):
+    p = pathlib.Path(root) / DROP_TABLES / ('it_drop_db_%d.bin' % table)
+    return Drops(p) if p.is_file() else None
+
+
+def drop_items(root, table: int) -> set:
+    d = drop_table(root, table)
+    return d.items() if d is not None else set()
+
+
 def props(path: pathlib.Path):
     """`destructible.bin` - the breakable scenery. The stage is written once
     at the head of a block and inherited down it, the way `enemy_gen.bin`
@@ -337,6 +609,55 @@ def cmd_check(root) -> int:
     for leaf in REWARDS:
         print('  %-24s %6d entries, %6d name an it_db row'
               % (leaf, n[leaf], n[leaf + ':resolved']))
+
+    # The column is the draw - in all three of the tables that are written
+    # this way. See `format_reward.md`.
+    print()
+    g = collections.Counter()
+    for name, _, files in quests(root):
+        for leaf in REWARDS:
+            if leaf not in files:
+                continue
+            for b in blocks(files[leaf], leaf != 'item_reward_region.bin'):
+                for key in b.columns:
+                    g[leaf] += 1
+                    g[leaf + ':<='] += b.total(key) <= 10000
+                    g[leaf + ':=='] += b.total(key) == 10000
+    for leaf in REWARDS:
+        print('  %-22s %4d columns, %5d under 10,000, %4d on it'
+              % (leaf, g[leaf], g[leaf + ':<='], g[leaf + ':==']))
+
+    d = collections.Counter()
+    for p in sorted((pathlib.Path(root) / DROP_TABLES).glob(
+            'it_drop_db_*.bin')):
+        t = Drops(p)
+        d['tables'] += 1
+        d['named after themselves'] += t.id == int(p.stem.split('_')[-1])
+        for c in t.columns:
+            d['columns'] += 1
+            d['a kind at the head'] += c['kind'] is not None
+            tot = sum(r for _, r in c['entries'])
+            if c['gate'] is None:
+                d['plain'] += 1
+                d['plain <= 10,000'] += tot <= 10000
+            else:
+                d['gated'] += 1
+                d['gated == 10,000'] += tot == 10000
+            for item, _ in c['entries']:
+                d['entries'] += 1
+                d['resolved'] += item in it
+    print()
+    print('  %-24s %5d tables, %5d named after their own file'
+          % ('it_drop_db_<id>.bin', d['tables'],
+             d['named after themselves']))
+    print('  %-24s %5d columns, %5d carry a kind at the head'
+          % ('', d['columns'], d['a kind at the head']))
+    print('  %-24s %5d gated, %5d of them sum to exactly 10,000'
+          % ('', d['gated'], d['gated == 10,000']))
+    print('  %-24s %5d plain, %5d of them to at most 10,000'
+          % ('', d['plain'], d['plain <= 10,000']))
+    print('  %-24s %5d entries, %5d name an it_db row'
+          % ('', d['entries'], d['resolved']))
     return 0
 
 
@@ -647,6 +968,155 @@ def cmd_items(root) -> int:
     return 0
 
 
+def cmd_draw(root, want, cls='7', seed='1') -> int:
+    """One pay-out of one quest, drawn against the chances."""
+    import random                                              # noqa: PLC0415
+    rng = random.Random(int(seed))
+    who = int(cls)
+    it = items(root)
+    card = next((c for c in catalog(root) if c.quest == want), None)
+    files = next((f for n, _, f in quests(root, want) if n == want), None)
+    if files is None:
+        raise SystemExit('no quest %s under %s' % (want, root))
+    progress = card.progress if card and card.progress else 11000
+    print('  %s at progress %d, as the %s'
+          % (want, progress, CLASSES.get(who, who)))
+    if card:
+        print('  %d zeny' % card.zeny)
+    for leaf in ('item_reward.bin', 'item_reward_multi.bin'):
+        p = files.get(leaf)
+        if p is None:
+            continue
+        bs = list(blocks(p, True))
+        b = at_progress(bs, progress)
+        if b is None:
+            continue
+        print('  %-24s block %d of %d, from %d, %d columns'
+              % (leaf, bs.index(b) + 1, len(bs), b.progress, len(b.columns)))
+        got = draw(b, rng, lambda k, a: k == 0 or (k == 4 and a == who))
+        for key, e in got:
+            print('      column %-2d %s' % (key[0], e.text(it)))
+        if not got:
+            print('      nothing came out')
+    p = files.get('item_reward_region.bin')
+    if p is None:
+        return 0
+    for b in blocks(p, False):
+        if b.monster is None or b.head[2] % 2:
+            continue                    # the odd member of the pair is multi
+        parts = sorted({k[1] for k in b.columns})
+        print('  a broken part of %s: %d of them'
+              % (monster_dir(b.monster), len(parts)))
+        for part in parts:
+            got = draw(b, rng, lambda k, a, want=part: k == want)
+            for key, e in got:
+                print('      part %-2d column %-2d %s' % (part, key[0],
+                                                          e.text(it)))
+    return 0
+
+
+def cmd_sources(root) -> int:
+    """The encyclopedia against the tables: does the thing it names give it?"""
+    src = sources(root)
+    named = named_monsters(root)
+    by_name = collections.defaultdict(set)
+    for d, n in named.items():
+        by_name[n].add(d)
+    import quest as qtables                                    # noqa: PLC0415
+    kinds = qtables.monsters(root)
+    paid, crate, fielded = set(), set(), collections.defaultdict(set)
+    region = collections.defaultdict(set)
+    for name, pac, files in quests(root):
+        q = qtables.Quest(name, {t: (pac / t).read_bytes()
+                                 for t in qtables.TABLES
+                                 if (pac / t).is_file()})
+        here = set()
+        for _, ids in q.slots().items():
+            here |= {kinds[m] for m in ids if m in kinds}
+        mine = set()
+        for leaf in ('item_reward.bin', 'item_reward_multi.bin'):
+            if leaf in files:
+                for b in blocks(files[leaf], True):
+                    for ents in b.columns.values():
+                        mine |= {e.item for e in ents}
+        paid |= mine
+        for item in mine:
+            fielded[item] |= here
+        if 'item_reward_region.bin' in files:
+            for b in blocks(files['item_reward_region.bin'], False):
+                if b.monster is None:
+                    continue
+                for ents in b.columns.values():
+                    region[monster_dir(b.monster)] |= {e.item for e in ents}
+        if 'destructible.bin' in files:
+            for d in props(files['destructible.bin']):
+                if d['drop'] != NONE32:
+                    crate |= drop_items(root, d['drop'])
+    own = {}
+    for d in (pathlib.Path(root) / 'monster.cpk').iterdir():
+        js = d / (d.name + '.json')
+        if not js.is_file():
+            continue
+        import json                                            # noqa: PLC0415
+        o = json.loads(js.read_text(encoding='utf-8', errors='replace'))
+        got = set()
+        for v in o.values():
+            if not isinstance(v, dict):
+                continue
+            for key in ('it_drop', 'it_drop_break'):
+                val = v.get(key)
+                for tid in (val if isinstance(val, list)
+                            else [] if val is None else [val]):
+                    got |= drop_items(root, int(tid))
+        own[d.name] = got
+    n = collections.Counter()
+    for item, (tag, who) in src.items():
+        for w in who:
+            n[tag] += 1
+            if tag == 'Acquired from' and w == 'Quest Reward':
+                n['quest'] += 1
+                n['quest:ok'] += item in paid
+            elif tag == 'Acquired from' and 'ox' in w:
+                n['crate'] += 1
+                n['crate:ok'] += item in crate
+            elif tag == 'Dropped by' and w in by_name:
+                ds = by_name[w]
+                n['monster'] += 1
+                n['monster:quest'] += bool(ds & fielded.get(item, set()))
+                n['monster:region'] += any(item in region.get(x, ())
+                                           for x in ds)
+                n['monster:own'] += any(item in own.get(x, ()) for x in ds)
+                n['monster:ok'] += (bool(ds & fielded.get(item, set()))
+                                    or any(item in region.get(x, ())
+                                           for x in ds)
+                                    or any(item in own.get(x, ())
+                                           for x in ds))
+            else:
+                n['unjoined'] += 1
+    print('%d items carry a tagged source, over %d it_db tables'
+          % (len(src), len(BANDS)))
+    print('  %d monsters are named by dc_db_monster.bin' % len(named))
+    for k in ('Dropped by', 'Acquired from', 'Traded at'):
+        if n[k]:
+            print('  %-16s %4d' % (k, n[k]))
+    print()
+    print('  %-42s %5d of %5d' % ('"Quest Reward" -> an item_reward entry',
+                                  n['quest:ok'], n['quest']))
+    print('  %-42s %5d of %5d' % ('"boxes, barrels" -> a crate drop table',
+                                  n['crate:ok'], n['crate']))
+    print('  %-42s %5d of %5d' % ('a named monster gives it, some way',
+                                  n['monster:ok'], n['monster']))
+    print('       %-39s %5d' % ('a quest that fields it pays it',
+                                n['monster:quest']))
+    print('       %-39s %5d' % ('its own region reward pays it',
+                                n['monster:region']))
+    print('       %-39s %5d' % ('its own it_drop_db table has it',
+                                n['monster:own']))
+    print('  %d tagged with a name no join reaches' % n['unjoined'])
+    return 0
+
+
+
 def main() -> int:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     a = sys.argv[1:]
@@ -668,6 +1138,10 @@ def main() -> int:
         return cmd_items(rest[0])
     if cmd == 'props':
         return cmd_props(rest[0], rest[1] if rest[1:] else '')
+    if cmd == 'draw':
+        return cmd_draw(rest[0], *rest[1:])
+    if cmd == 'sources':
+        return cmd_sources(rest[0])
     print('unknown command: ' + cmd)
     return 1
 

@@ -1,7 +1,10 @@
 # The quest catalog, and what a finished quest pays
 
-**Status: read.** 431 quests named, 553 objectives, 38,025 reward entries,
-3,771 breakable crates. Reader: [`../tools/reward.py`](../tools/reward.py).
+**Status: read, and drawn.** 431 quests named, 553 objectives, 38,025 reward
+entries, 3,771 breakable crates, 579 drop tables. Reader:
+[`../tools/reward.py`](../tools/reward.py); the pay-out itself is
+[`../engine/purse.py`](../engine/purse.py) and
+[`milestone_reward.md`](milestone_reward.md).
 [`format_quest.md`](format_quest.md) reads the four tables that put the
 monsters in the room; this reads the nine that say what the room is *for*.
 
@@ -11,6 +14,8 @@ monsters in the room; this reads the nine that say what the room is *for*.
     python tools/reward.py card    extract/tree q01015
     python tools/reward.py drops   extract/tree q00106
     python tools/reward.py props   extract/tree q00106
+    python tools/reward.py draw    extract/tree q00102
+    python tools/reward.py sources extract/tree
 
 A quest `.pac` ships up to nine more [`ECH`](format_ech.md) tables beside the
 four, and `quest.cpk/common.pac` ships a tenth that covers all of them:
@@ -255,13 +260,24 @@ word, and only the chance differs** — on 12,153 of them. Its non-empty row
 count matches on 231 of the 233 quests. The multiplayer chance is the
 **better** one: it rises on 10,730 of the 12,153 and falls on 1,404.
 
-`item_reward_region.bin` does the same trick inside one file. Its block head
-is `(progress, monster, region)` and **the region id is even for one table and
-odd for the other**: 396 blocks, **198 even and 198 odd, and every even block
-has an odd partner**, with 1,706 of the 1,710 aligned entries identical bar
-the chance. Which of the pair is the multiplayer one is read off the same
-direction the two files show — the odd member's chance rises on 488 of the
-693 that differ.
+`item_reward_region.bin` looked like it did the same trick inside one file.
+Its block head is `(progress, monster, region)`, the region id is even on 198
+blocks and odd on 198, **every even block has an odd partner**, 1,706 of the
+1,710 aligned entries are identical bar the chance, and the odd member's
+chance rises on 488 of the 693 that differ. That reads as solo and
+multiplayer, and it is not.
+
+**The region id is the monster's difficulty tier.** Session 28: the values on
+the disc are 0/1, 10/11, 20/21, 30/31, 40/41, 50/51, 60/61, 70/71, 200/201,
+210/211, 220/221, 230/231 and 250/251, and **194 of 194 monster blocks name
+tiers that monster's own JSON declares** — the record keys
+[`params.md`](params.md) reads, where "for every even key `n` with a partner
+`n+1`, the two are the same monster at a higher `region_lv`", with `hp`
+exactly ×1.5 on 138 of 168 pairs. So the pairing is not solo against
+multiplayer at all: it is the monster at two difficulties, and the harder one
+paying better is what a difficulty is for. The endless dungeon writes the
+same field the same way — `yggdrasill_reward_item_region.bin`'s blocks are
+keyed 100, 101, 110, 111, which are tier keys too.
 
 ### The region reward is the broken part, and `ELBN` says which
 
@@ -281,7 +297,8 @@ that list's order. `b01_00` breaks head and body and drops `Broken Horn` and
 
 And the chances behave like a distribution: grouping a block's entries by
 part, **1,106 of the 1,110 groups sum to at most 10,000 and 568 of them to
-exactly 10,000**.
+exactly 10,000** — and by `(column, part)`, which is the grouping the section
+below shows is the right one, **1,122 of 1,122 and 572**.
 
 This is the quest's half of a mechanic `format_elbn.md` had the other half of.
 `it_drop_break` is the monster's own break drop, indexed by the same list;
@@ -298,6 +315,168 @@ files the second block is exactly that quest's own progress value. Read as a
 threshold — the game takes the last block at or below where the player is —
 which is what makes a quest's drops change as the story advances. The disc has
 no second reader to confirm it.
+
+### The column is the draw, and a row is one of its alternatives
+
+`item_reward.bin` had one thing left in it that nothing explained: **what
+makes a row a row.** A block carries three rows or forty-eight of them and the
+count tracks neither the quest's stages, nor its monsters, nor its generators.
+It tracks nothing because a row is not a unit. **The unit is the column.**
+
+Ten slots of sixteen bytes are ten *columns*, and the entries down one column
+are **alternatives with a single distribution between them**. Group a block's
+entries by `(column, kind)` — splitting kind 4 further by the class it names,
+since six class-restricted weapons in one column are six certainties and not
+one impossible sum — and
+
+```
+python tools/reward.py check extract/tree
+
+  item_reward.bin        4022 columns,  4022 under 10,000,  561 on it
+  item_reward_multi.bin  4022 columns,  4018 under 10,000,  566 on it
+  item_reward_region.bin 1122 columns,  1122 under 10,000,  572 on it
+```
+
+**4,022 of 4,022, with no exception at all**, and 561 of them are a closed
+distribution that leaves no room for nothing to come out. The control is the
+same test run on the grouping this document used to have: by kind alone, only
+**244 of 644** groups fit under 10,000. And the region table, which was
+already grouped by its byte 7, improves on its own number: by part alone
+1,106 of 1,110 fit, by `(column, part)` **1,122 of 1,122**.
+
+The four that overflow are all in `item_reward_multi.bin`, and they overflow
+in the direction the multiplayer table always moves — its chances are the
+*better* ones, raised entry by entry without anyone re-adding the column.
+
+So a pay-out is **one roll per column**: the entries in row order, the roll
+somewhere in ten thousand, and the part of the column that is left over is
+the chance it pays nothing. What a row is, then, is one alternative of each
+column — which is why the same monster's material appears at three different
+counts down one column, and why the six rows at the bottom of `q00102`'s
+block hold the six classes' starting weapons at ten per cent each:
+
+```
+column 0            column 1              ...   column 9
+Antidote  x3 100%   MoiMoi's Tail  x3 40%   ...   Thorn Katar          10%
+        -           MoiMoi's Claw  x1 20%   ...   Othel War Mace       10%
+        -           MoiMoi's Tail  x4  6%   ...   Yr War Hammer        10%
+        -           MoiMoi's Claw  x2  4%   ...   Othel Hunter Bow     10%
+        -           MoiMoi's Tail  x5 20%   ...   Eoh Long Staff       10%
+        -           MoiMoi's Claw  x3 10%   ...   Yr Two-handed Sword  10%
+```
+
+That last column is the shape a **weapon column** usually has: of the 564
+columns that hold nothing but weapons and are not kind 4, **397 hold all six
+classes equally often** — one weapon each, at one chance each. The disc
+already says the six numbers are the classes, in `it_db_weapon.bin` column 5
+and in kind 4's word; here it says it a third time, by building a column out
+of exactly six of them.
+
+### A kind is a variant of the same column, and three of them are unread
+
+Kinds 0, 2 and 3 are not different items. **They are the same column written
+again**: kind 2's items are a subset of kind 0's on 484 of 491 columns and
+kind 3's on 1,026 of 1,036 — 1,510 of 1,527 between them — and where the same
+item appears in two kinds the count is the same or larger (kind 3: 1,746 the
+same, 1,269 larger, 20 smaller) and the chance is smaller (median **0.40** of
+kind 0's for kind 2, **0.60** for kind 3).
+
+So the same drop, rarer, in a bigger stack, under a condition. What the
+condition is the disc does not say: kind 2 carries a round number 0 to 300 in
+tens, kind 3 carries nothing, and no second consumer names either. Every quest
+with a reward table has kind 0 except eight that have only kind 4, so
+[`../engine/purse.py`](../engine/purse.py) draws kind 0 and says so.
+
+## `it_drop_db_<id>.bin` is the same grid, eight columns wide
+
+579 tables, named only as a join target until now: `destructible.bin` `+0x28`
+points at one and so does a monster's own JSON, in a field called `it_drop`.
+They are built the way a reward block is.
+
+```
++0x00  u32    the table's own id - 579 of 579 match their file name
++0x04  ×8     eight columns of (u32 kind, u32 item, u32 chance)
+```
+
+Two things are written once and inherited down a column, exactly the way a
+block head is inherited down a block:
+
+- **the kind.** 4,369 of 4,369 columns carry one in their top entry and **not
+  one column repeats it lower down**, which is what says the lane is a column
+  header and not a per-entry field;
+- **the gate.** A column whose top entry names *no item* is a two-step draw:
+  that entry's chance is whether the column pays at all, and the entries under
+  it are what comes out if it does. **On all 1,930 gated columns the entries
+  under the gate sum to exactly 10,000** — a closed distribution, which is
+  what a second step has to be — and on all 2,439 ungated ones the whole
+  column sums to at most 10,000, 345 of them to exactly it.
+
+Only kinds 1, 3 and 5 ever gate, and they are the columns that pay a weapon or
+a card; 0, 2, 4 and 8 never gate and pay a material or a bottle. Three of the
+Orc's own eight columns:
+
+```
+it_drop_db_100.bin, the Orc's own, three of its eight columns
+  column 0  kind 0           five instants, Orc Claw 25%,
+                             Broken Helmet 5%                 41.30%
+  column 3  kind 1  gate 5%  the six classes' weapons at 15%
+                             each and a Fake at 10%          100.00%
+  column 6  kind 3  gate 2%  Orc Card 50 / 25 / 15 / 10      100.00%
+```
+
+**26,237 of the 26,251 item ids name an `it_db` row, and the fourteen that do
+not are the ten quest items** 100001..100010 — the ones
+`it_db_name_quest.rmsg` holds and `chapter.bin` collects. Nothing in the file
+is unaccounted for.
+
+## The encyclopedia says where a thing comes from, in English
+
+The game ships its own answer to the question these tables are being read to
+answer, and it is written in words. Every item's encyclopedia text ends in a
+tagged block:
+
+```
+An Orc's sharp claw.
+
+{{Dropped by}}
+Orc
+```
+
+**411 of the 411 materials carry one** — 307 `Dropped by`, 103 `Acquired
+from`, one `Traded at` — and the text files pair positionally with the
+`it_db_*.bin` they describe, so the tag lands on an item id. What it names is
+a monster, and the monster has a name because
+`dictionary.cpk/dc_db.pac/dc_db_monster.bin`'s **second word is the same
+`01 hh h0 00` twelve-bit monster id** `enemy.bin` and `chapter.bin` write: 87
+rows, **82 `monster.cpk` directories named**, against a text file holding
+exactly twice as many messages as the table has rows — the names first, the
+descriptions after.
+
+That makes the encyclopedia a **third source**, written by the authors for the
+player, against which the reward tables can be checked without touching them:
+
+```
+python tools/reward.py sources extract/tree
+
+  "Quest Reward" -> an item_reward entry        47 of    47
+  "boxes, barrels" -> a crate drop table        37 of    54
+  a named monster gives it, some way           292 of   298
+       a quest that fields it pays it            255
+       its own region reward pays it             113
+       its own it_drop_db table has it           279
+```
+
+**47 of 47 and 292 of 298.** The six that miss are a name loose enough to be a
+family rather than a monster — the text says `Domovoi` and the table means
+`z11_02`, the Desert Domovoi. The seventeen crate materials that miss are all
+in `it_drop_db_9500..9505`, six tables **no quest's `destructible.bin` names**
+and only `yggdrasill_quest_exit.bin` and `yggdrasill_quest_floor_group.bin` do:
+the endless dungeon has its own scenery, and its own copies of these three
+reward tables besides.
+
+Sixty-one tags name something no join reaches, and they read as what they are:
+`???` on eight, `All Monsters` on seven, `Mercenary Book` and `Book Rewards`
+on six, and the three giant chiefs on eighteen.
 
 ## `destructible.bin` is the breakable scenery, and it answers a stage question
 
@@ -359,13 +538,15 @@ too. Measured, not named.
 - **`chapter.bin`'s three bytes at `+0x15`**, a triple like `(1, 0, 6)` or
   `(12, 0, 18)` with 45 distinct values, and `+0x03` and `+0x0f`, both 0, 1
   or 2.
-- **What kinds 0, 2 and 3 of a reward entry separate**, and what kind 2's
-  round number is a percentage of. Kind 4 is settled.
-- **What an `item_reward.bin` row is.** The entries inside one are candidates
-  with independent chances; what makes a row a row is not visible — its count
-  tracks neither the quest's stages, nor its monsters, nor its generators.
-- **The region group id**, 0..7 and 20..25 once the solo/multi digit is
-  removed, which is not the part and does not track the quest's rank.
+- **What picks between kinds 0, 2 and 3**, and what kind 2's round number is
+  a percentage of. What the three *are* is settled: three versions of one
+  column, rarer and in bigger stacks. Kind 4 is settled too. **What an
+  `item_reward.bin` row is** is no longer open — a row is one alternative of
+  each column, and the column is the draw.
+- **The kinds of an `it_drop_db` column**: 0, 2, 4 and 8 pay a material and
+  never gate; 1, 3 and 5 pay a weapon or a card and always do. The monster
+  JSON's `prob_silver` and `prob_gold` sit beside `it_drop` and are the
+  obvious candidate for what a gated column is, and nothing measures it.
 - **The 44 prerequisite flags and the 25 script flags that name no catalog
   row** — the flag space is wider than the 431 quests.
 - **`weapon_decost.bin`'s four numbers**, and `destructible.bin`'s numeric
