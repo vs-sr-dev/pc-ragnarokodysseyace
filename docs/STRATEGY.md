@@ -251,8 +251,9 @@ A capsule with the game's own `acc = 0.035`, `run_sp = 0.17`, `rot_y_acc = 8`,
 `rot_y_spd = 32` and `col_r = 0.5` crosses `010_01_01` from the player spawn to
 the exit in **405 frames — 13.5 seconds — with 0 frames off the collision
 mesh**, sliding along the fence for half of them. The same capsule then walks
-**135 stages**, 127 of them with the body on legal ground for every frame, at
-**5.05 m/s against 5.10 flat out**. The full report is
+**135 stages**, all 135 of them with the body on legal ground for every frame
+since session 29 put it on the ground to start with, at **5.05 m/s against
+5.10 flat out**. The full report is
 [`milestone_numbers.md`](milestone_numbers.md); the code is
 [`engine/`](../engine).
 
@@ -264,14 +265,20 @@ no amount of further reading would have produced:
   convention** the disc never declares;
 - `hta.bin` and `<stage>.col` agree: `obj` and `appear` markers stand on the
   collision mesh to **a centimetre**, over 1,432 markers and 155 stages, and
-  exactly one of them has no ground under it;
+  exactly one of them has no ground under it — though session 29 found that
+  the median hides a tail with a sign in it: **36 `appear` and 183 `emgen_pos`
+  markers sit more than `col_r` under their own floor**, and a body put down
+  on one of those falls out of the world. See
+  [`milestone_walk.md`](milestone_walk.md);
 - **a `borderline` is a closed loop** — 105 of 145 stages have every fence
   endpoint shared by exactly two polyline ends — which had been an open
   question since session 8;
 - **`fall_spd_max` is a speed after all**, and it is the terminal velocity of
   something that has fallen out of the level. [`units.md`](units.md) could not
   tell whether the clamp ever fires; letting a body walk off the mesh made it
-  fire, at 8.000 m in a frame, exactly.
+  fire, at 8.000 m in a frame, exactly. (Session 29: the body was falling out
+  from under its own floor rather than off the edge of one. Same conclusion,
+  different fall.)
 
 The stage this ran on has been readable since session 8: a ground mesh, 346
 collision triangles, a fence, four spawn points in formation at one end and a
@@ -351,6 +358,34 @@ Three things came out of it that reading could not produce:
   doing as well — and the hunter, which fires nothing off a weapon bone at
   all, is matched instead by `ht_arrow_tbl`, whose commonest flight covers
   21.3 m against a `cmb_hmg_search_radius` of 20.
+
+### 8. "The body gets there" — ✅ **reached, session 29**
+
+The walk is the one half of this project that is nobody's reading and it had
+been the weak half since session 24. It now has an instrument — `run.py nav`,
+which walks `appear01` to every destination a quest can be sent to on all 155
+stages — and a picture, `draw.py route`. The report is
+[`milestone_walk.md`](milestone_walk.md).
+
+Three things came out of it, and the first is a correction:
+
+- **the marker table disagrees with the mesh, and the sign is the story.**
+  `check` had measured the distance from a marker to its ground for six
+  sessions and called a one-centimetre median agreement. **36 `appear` and
+  183 `emgen_pos` markers sit more than `col_r` below their own floor**, by
+  fifteen metres on `100_03_02`, and a body placed on one of those has
+  nothing under it and falls for the whole run. That, and not a hole in the
+  mesh, is what the eight stages `sweep` reported off the collision mesh
+  were;
+- **a stair is not welded.** [`format_ccls.md`](format_ccls.md)'s weld holds
+  for the surface of one floor and not between two: **2,093 of the 22,020
+  single-use walkable edges have another within `col_r` that shares no
+  vertex**, which is a seam and not an outline, and `070_01_02`'s staircase
+  is nine separate components of a graph built on the weld alone;
+- **the class table has a ground probe in it** that nothing had read.
+  `ry_r_walk`, `ry_r_run`, `ry_r_fast` and `ry_r_fall` — 0.15, 0.30, 0.35,
+  0.35 — are the only per-gait length the player has, on all six classes and
+  no monster, and they are the radius `actor.py` looks for ground within.
 
 ### 7. "A quest pays" — ✅ **reached, session 28**
 

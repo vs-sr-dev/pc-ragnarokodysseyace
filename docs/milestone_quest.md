@@ -204,7 +204,16 @@ walks into a corner and stops is a bad walker, not a wrong reading. 125 runs
 end with *the body stopped walking*, which is the run giving a stage up after
 half a minute of going nowhere.
 
-**247 quests finished**, but the split matters: 300 of the 431 arm no arena at
+> **Session 29 took that half on**, and most of it turned out not to be
+> steering at all: on nine stages the body was placed *under* its own floor by
+> a marker table nobody had checked the sign of, and fell out of the world
+> before it took a step. The numbers on this page are the session-24 ones and
+> are left as they were; [`milestone_walk.md`](milestone_walk.md) carries what
+> they became.
+
+
+
+**247 quests finished** (session 29: see above), but the split matters: 300 of the 431 arm no arena at
 all — 146 of them visit a single stage, which is a conversation at the bar
 rather than a hunt — and of the 131 that do put a lock in front of the player,
 **25 come out the other end**. The gap between 210 arenas closed and 25 quests

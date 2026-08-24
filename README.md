@@ -10,7 +10,33 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-28 (2026-08-24). **A quest pays out, and the column is the draw.**
+Sessions 1-29 (2026-08-24). **The body gets there, and it had been standing
+under the floor.** The walk was the one half of this project that is nobody's
+reading and everybody's problem, and 125 of the 431 quest runs ended with
+*the body stopped walking*. Most of it was not steering. `hta.bin` gives every
+marker a position and the check that compares it against the collision mesh
+had measured the *distance* for six sessions and never the **sign**: **36 of
+the 660 `appear` markers and 183 of the 2,113 `emgen_pos` sit more than
+`col_r` below their own floor**, by fifteen metres on one stage, and a body
+put down there has nothing under it, falls, is put back where it fell from,
+and falls again for the whole run. Two more things came out of chasing it —
+**a stair is not welded**, so 2,093 of the 22,020 single-use edges of the
+collision mesh are a *seam* between two slabs and not the outline of the
+level, and the class table has a **ground probe** nobody had read, `ry_r_walk`
+0.15 / `ry_r_run` 0.30 / `ry_r_fast` 0.35 / `ry_r_fall` 0.35, the only
+per-gait length the player has. That is
+[milestone 8](docs/milestone_walk.md), *"the body gets there"* — with an
+instrument, `run.py nav`, and a picture, `draw.py route`. Over all 431 quests:
+**284 finish against 247**, **322 of 344 arenas close on the script's own kill
+count against 210 of 272**, kills go 1,534 to **3,017** and the pay-out
+568,871 to **689,375 zeny**. *The body stopped walking* is down to **66**, and
+eleven stages account for all of them.
+
+It also **corrected two published numbers**: the walking sweep goes from *127
+of 135* stages crossed on legal ground to **135 of 135**, and the eight it
+called a hole in the mesh were the eight whose spawn is under their own floor.
+
+**Before that, a quest pays out, and the column is the draw.**
 A quest finishes and hands over what it owes: zeny, and a draw against the
 odds its own tables carry. The reading that made it possible had been sitting
 in `item_reward.bin` all along and looked like a leftover - a block holds
@@ -400,7 +426,8 @@ ends in a ledger of what is still missing. What running it produced is in
 2](docs/milestone_stage.md), [milestone 3](docs/milestone_fight.md),
 [milestone 4](docs/milestone_player.md), [milestone
 5](docs/milestone_quest.md), [milestone 6](docs/milestone_draw.md),
-[milestone 7](docs/milestone_reward.md) and [the
+[milestone 7](docs/milestone_reward.md), [milestone
+8](docs/milestone_walk.md) and [the
 pose](docs/pose.md), which
 now covers the hit volume as well as the foot. The
 plan is in

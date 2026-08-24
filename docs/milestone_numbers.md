@@ -87,23 +87,31 @@ and counts:
 
 ```
 135 stages walked, 28 skipped for want of a spawn, an exit or a fence
-  never left the collision mesh: 127 of 135
+  never left the collision mesh: 135 of 135
   reached the exit steering straight at it: 126 of 135
   of those, 62 are a real crossing (spawn at least 20 m from the exit):
     time     median  18.8 s, 3.3 s to 49.4 s
     speed    median  5.05 m/s over the ground, against 5.10 m/s flat out
     detour   median  1.00 times the straight line
     longest  020_01_02 at 49.4 s over 93 m
-  largest vertical move in one frame, anywhere: 8.000 m on 150_04_02
-  8 stages have frames with no ground underneath
+  largest vertical move in one frame, anywhere: 0.109 m on 170_11_01
 ```
 
-**127 of 135 stages crossed with the body on legal ground for every frame.**
-The eight that are not are stages where a straight line at the exit walks over
-a hole in the mesh and the body falls through it, and the nine that do not
-arrive are stages with an L-bend a naive steer cannot see round. Both are
-facts about the steering rule, which has no idea the world has pits or
-corners in it, and neither is a fact about the world.
+**135 of 135 stages crossed with the body on legal ground for every frame**,
+and the nine that do not arrive are stages with an L-bend a naive steer cannot
+see round — a fact about the steering rule, which has no idea the world has
+corners in it, and not a fact about the world.
+
+> **Corrected in session 29.** What this section printed until then was *127
+> of 135*, with *"8 stages have frames with no ground underneath — a straight
+> line at the exit crosses a hole in the mesh"*. There is no hole. All eight
+> were stages whose `appear01` marker sits more than `col_r` **below** its own
+> floor, so the body was placed under the ground and fell out of the world on
+> frame one; `hta.bin` disagrees with `<stage>.col` by up to fifteen metres on
+> 36 `appear` and 183 `emgen_pos` markers, and `check` had only ever measured
+> the distance and not its sign. A body is now put on the ground under its
+> marker — `world.stand` — and nothing on the disc falls. See
+> [`milestone_walk.md`](milestone_walk.md).
 
 The speed line is the one to read twice. **5.05 m/s achieved against 5.10 m/s
 flat out** means the capsule is at full speed for essentially the whole
@@ -118,10 +126,17 @@ be.
 frame is 240 m/s at 30 fps, so it is a clamp that never fires or it is not a
 speed."*
 
-The sweep prints the largest vertical move any body made in any single frame,
-and on `150_04_02` it is **8.000 m — the clamp, exactly.** A body that walks
-off the edge of the mesh accelerates at `fall_gravity_y` for `8 / 0.035 = 229`
-frames, seven and a half seconds, and then stops accelerating.
+The sweep printed the largest vertical move any body made in any single frame,
+and on `150_04_02` it was **8.000 m — the clamp, exactly.** A body that leaves
+the mesh accelerates at `fall_gravity_y` for `8 / 0.035 = 229` frames, seven
+and a half seconds, and then stops accelerating.
+
+> Session 29 found what that body was falling *from*, and it was not the edge
+> of the level: `150_04_02` spawns five metres under its own floor. It was
+> still a body outside the level, which is what the clamp is for, so the
+> reading below stands unchanged — but the demonstration no longer reproduces
+> from `sweep`, because with the spawn on the ground nothing on the disc falls
+> any more.
 
 That is not "it is not a speed": it is a speed, and it is the terminal
 velocity of something that has fallen out of the world. Which is exactly what

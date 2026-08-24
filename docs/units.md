@@ -201,7 +201,11 @@ substantially different to make it 1/60.
   a half seconds, and then stops accelerating. So it *is* a speed, and it is
   the terminal velocity of something that has left the level: unreachable in
   play, which is what a guard is. See
-  [`milestone_numbers.md`](milestone_numbers.md).
+  [`milestone_numbers.md`](milestone_numbers.md). **Session 29 found what that
+  body fell from** — not the edge of the mesh but out from under its own
+  floor, `150_04_02` spawning five metres below it — which leaves the reading
+  as it is and takes the demonstration away: with a body placed on the ground
+  under its marker, nothing on the disc falls.
 - `ab_tire_stamina_recovery_f = 0.1` — a `_f` field with a fractional value, so
   a rate per frame rather than a count of them. Five other `_f` fields on the
   disc are fractional the same way and none has been read.
