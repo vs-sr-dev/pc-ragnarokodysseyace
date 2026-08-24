@@ -461,8 +461,16 @@ def pars(root) -> dict:
     return out
 
 
-def motions(root) -> dict:
-    """class prefix -> {motion id: the name the .CNOM gives itself}."""
+def motions(root, _seen={}) -> dict:
+    """class prefix -> {motion id: the name the .CNOM gives itself}.
+
+    Cached by tree. It walks every `CNOM` on the disc and it is a pure
+    function of `root`, so building it once a run rather than once a monster
+    is a third of the time off a quest that fields six kinds.
+    """
+    if str(root) in _seen:
+        return _seen[str(root)]
+    key = str(root)
     out: dict = collections.defaultdict(dict)
     root = pathlib.Path(root)
     if any(p.is_file() for p in root.glob('*.cpk')):
@@ -484,6 +492,7 @@ def motions(root) -> dict:
                 keys.add(d.group(1))
         for k in keys:
             out[k].setdefault(int(m.group(2)), m.group(3))
+    _seen[key] = out
     return out
 
 

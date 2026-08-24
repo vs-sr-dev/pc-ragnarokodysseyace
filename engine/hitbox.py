@@ -128,12 +128,20 @@ PLACE = {'turned': apply, 'carried': carry}
 # --------------------------------------------------------------------------
 # an actor, its skeleton, its parameters and one of its animations
 
-def cnom_index(root) -> dict[str, pathlib.Path]:
-    """Every `CNOM` on the disc by stem, walked once instead of per lookup."""
-    out: dict[str, pathlib.Path] = {}
-    for q in sorted(pathlib.Path(root).rglob('*.CNOM')):
-        out.setdefault(q.stem, q)
-    return out
+def cnom_index(root, _seen={}) -> dict[str, pathlib.Path]:
+    """Every `CNOM` on the disc by stem, walked once instead of per lookup.
+
+    Once per *tree*, not once per caller: the walk is 32,600 leaves and a
+    quest that fields six kinds of monster asked for it six times. It is a
+    pure function of `root` and the tree does not change under a run.
+    """
+    key = str(root)
+    if key not in _seen:
+        out: dict[str, pathlib.Path] = {}
+        for q in sorted(pathlib.Path(root).rglob('*.CNOM')):
+            out.setdefault(q.stem, q)
+        _seen[key] = out
+    return _seen[key]
 
 
 def motion_for(name: str, root, index=None) -> pathlib.Path | None:
