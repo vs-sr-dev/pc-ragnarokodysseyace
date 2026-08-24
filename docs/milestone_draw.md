@@ -92,6 +92,14 @@ half a metre over the floor, has a silhouette much larger than the walkable
 region, because a player can see ground they cannot stand on. The minimap
 follows the collision mesh, not the art.
 
+*Session 27:* the first three columns are unchanged to the digit under the
+new shading — 0.805, 0.797, 0.964, differing by a median of 0.0050 and a
+worst of 0.0300 — because none of them depends on colour. The last one moves
+to **0.226**, and for a stated reason: the mask is built from the depth
+buffer, and blended and additive geometry no longer writes depth, so what it
+now measures is the silhouette of a stage's *opaque* geometry rather than of
+everything in its model.
+
 ## Everything on the disc draws
 
 ```
@@ -133,7 +141,16 @@ passes every arithmetic check, and draws nothing. 1,125 of 1,127 do not.
   facing the way [`milestone_numbers.md`](milestone_numbers.md)'s capsule
   faces on frame 0.
 
-## What this is not
+## Superseded in session 27
+
+The three things below were true when this was written and are not true now.
+The shading, the blending and the draw order all came off the disc in the
+next session: `stageparam.bin`'s own named light rig, the `CMDL` vertex
+colour lane, and the blend mode in byte 0 of a material's `+0x04`. See
+[`lighting.md`](lighting.md). What survives of the list is the two-sidedness,
+which is still a policy.
+
+## What this is not — as of session 26
 
 Three things, stated because a picture invites the assumption:
 
@@ -153,13 +170,15 @@ None of the three reads anything off the disc, and all three are policies of
 
 ## What it opens
 
-- **The material's three RGBA words at `+0x08`**, and the normal lane, which
-  together are the difference between flat-shaded and lit.
+- ~~**The material's three RGBA words at `+0x08`**, and the normal lane.~~
+  **Done in session 27**, along with a third lane nobody had asked for — the
+  baked vertex colour — and the stage's own light rig. See
+  [`lighting.md`](lighting.md).
 - **`PTP` and `effect.bin`**, which have been read for four sessions and have
   had no consumer that could show them: [`format_ptp.md`](format_ptp.md)'s
   `(category, slot)` pair now has somewhere to go.
-- **The `CTEX` alpha modes.** A material name carries `_alp_` or `_non_`, and
-  that is the whole of what this file knows about blending.
+- ~~**The `CTEX` alpha modes.**~~ **Done in session 27**: the mode is in the
+  material record and not in its name, and the name covers 15 of 5,425.
 - **A second camera.** `.mkc` carries a camera track and `cfSetCameraType`
   has five modes nobody has separated; a renderer is what makes them
   testable.

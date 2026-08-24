@@ -1,6 +1,6 @@
 # PC-ROA — strategy
 
-*Aligned to the end of session 22 (2026-08-23). Detail and priorities live in
+*Aligned to the end of session 27 (2026-08-24). Detail and priorities live in
 [`TODO.md`](TODO.md); this document is the frame.*
 
 Goal: a **native PC reimplementation** of *Ragnarok Odyssey ACE*, the PS3
@@ -202,6 +202,16 @@ did what running something here usually does - **it found a bug in a reader
 that six sessions of arithmetic checks had not**. See
 [`milestone_draw.md`](milestone_draw.md).
 
+**Session 27 took its lighting off the disc**, which is the first time this
+project has replaced a policy of its own with a declaration of the game's.
+`stageparam.bin` turns out to hold a **named lighting rig** - an ambient and
+two directionals per category, `ch_dir_1` and its family - and `CMDL`'s
+long-open four-byte vertex attribute turns out to be the **baked light** that
+the same rig implies by giving the stage no directional at all. Two files
+written by different tools, agreeing on a division of labour neither states:
+a stage is lit once into its vertices, an actor is lit as it moves. See
+[`lighting.md`](lighting.md).
+
 The shape of the rest is settled: a data-driven engine whose
 tables come from `ECH`, whose display text comes from `TXT`, whose actor
 parameters come from the JSON, and which hosts that VM. All four sources are
@@ -216,11 +226,13 @@ nobody has written a line of** - a renderer, an audio runtime, input, and the
 menus and save data - plus the decision of what language the shipping engine
 is in, since `engine/` is Python and Python is a research instrument.
 
-Session 26 started the first of the four. That is deliberate: of the four it
-is the one whose inputs are all read to completion (`CMDL`, `CTEX`, `CNOM`,
-`CMTM`, `PTP`), the one that makes every other subsystem debuggable, and the
-one that turns a number in a table into something a person can be wrong
-about in public.
+Session 26 started the first of the four and session 27 lit it. That is
+deliberate: of the four it is the one whose inputs are all read to completion
+(`CMDL`, `CTEX`, `CNOM`, `CMTM`, `PTP`), the one that makes every other
+subsystem debuggable, and the one that turns a number in a table into
+something a person can be wrong about in public. It has already paid twice:
+a rigid mesh's space in session 26, and a `CMDL` field open since session 5
+in session 27.
 
 ---
 
@@ -333,7 +345,7 @@ Three things came out of it that reading could not produce:
   all, is matched instead by `ht_arrow_tbl`, whose commonest flight covers
   21.3 m against a `cmb_hmg_search_radius` of 20.
 
-### 6. "It is drawn" — ✅ **reached, session 26**
+### 6. "It is drawn" — ✅ **reached, session 26**, lit from the disc in 27
 
 A `CMDL` comes out of the engine as a picture: `b17_00` with its gold and
 teal plumage and six eyes down the wings, the player body posed by
@@ -356,6 +368,22 @@ Two things came out of it that reading could not produce:
   says so.** `stage.py minimap` fits each `.map` over its collision mesh with
   its own scanline fill; putting the same triangles under the same fitted
   transform through `draw.py`'s camera returns the same overlap score.
+
+**Session 27 replaced the shading with the game's own** and three things came
+out of that which reading alone had not produced:
+
+- **the stage has no directional light on any of the 154 stages**, and that
+  absence is the lighting model. The geometry agrees from the other side:
+  every mesh outside `stage.cpk` carries a normal lane and 94 % of
+  `stage.cpk` carries a baked vertex colour instead;
+- **`CMDL`'s four-byte attribute at layout byte 2, open since session 5, is
+  that bake** - and what proves it is a control rather than a guess: the
+  luminance steps 20.61 across a triangle edge against 38.88 between two
+  random vertices of the same mesh, on 228 of 232 models;
+- **the dark disc over `010_01_01` was never geometry in the wrong place.**
+  It is the stage's own lens flare, drawn as an opaque black card because the
+  renderer had one blend mode, and the mode is byte 0 of the material's
+  `+0x04` where the material name, the byte and the texture all agree.
 
 ### 5. "A quest finishes itself" — ✅ **reached, session 24**
 

@@ -7,65 +7,91 @@
 
 # Next session
 
-Session 26 reached **milestone 6**: the engine draws a frame. The report is
-[`milestone_draw.md`](milestone_draw.md), beside the five before it. What to
+Session 27 lit the frame **out of the disc**. The report is
+[`lighting.md`](lighting.md), beside the six milestone documents. What to
 carry:
 
-- **`engine/draw.py` is a software rasteriser**, 500 lines, no GPU and no
-  dependency. `model`, `scene`, `top`, `stage`, `check`, `minimap` and
-  `convention`. A `CMDL` comes out as a picture: Loki with his plumage, the
-  warrior posed by `msw213run`, and `q00101`'s opening field seen from the
-  spawn marker;
-- **a rigid `CMDL` mesh's vertices are in its node's own space**, and
-  `skin_matrices` was multiplying them by an `Rx(90)` that belongs to the
-  inverse bind pose. Two measurements, two orders of magnitude: a rigid mesh's
-  centroid lands **0.055 m** from the node its own draw call names against
-  2.2 m either other way, and a stage's visible ground agrees with its
-  collision mesh to **0.034 m** against 0.345 m. Fixed in `cmdl.py`. Nothing
-  had caught it because both models that proved the format are *skinned*;
-- **the camera is right and a seven-session-old rasteriser says so.**
-  `draw.py minimap` puts `stage.py`'s own collision triangles under
-  `stage.py`'s own fitted transform through this camera and this inner loop:
-  median IoU **0.797** against the published **0.805**, per-stage difference a
-  median of 0.005 and never above 0.030, masks agreeing at 0.964;
-- **the minimap follows the collision mesh and not the art** — the stage
-  model seen from a floor camera scores 0.169, because a player can see
-  ground they cannot stand on.
+- **the stage declares its own lights and names them.** `stageparam.bin`'s
+  `stage_param` is a lighting rig: an ambient and up to two directionals per
+  *category*, and the categories are `ch` a character, `mc` the main
+  character, `bm` a background model, `np` an NPC, `st` the stage. Over 154
+  stages the name prefix and the category byte agree on **1,491 of 1,497
+  lights**, and the six that do not are five second ambients and one slip;
+- **the stage has no directional light at all, on any of the 154**, and that
+  absence *is* the lighting model. The geometry says the same thing from the
+  other side: **every mesh outside `stage.cpk` carries a normal lane and 94 %
+  of `stage.cpk` carries a baked vertex colour instead.** A stage is lit once
+  into its vertices, an actor is lit as it moves;
+- **`CMDL`'s four-byte attribute at layout byte 2 is that bake**, which closes
+  an open item that had been open since session 5. Bit 2 of the vertex type
+  and the layout byte agree on 15,833 of 15,833; the fourth byte is `0xff` on
+  5,076,882 of 5,412,488 vertices; and it is *smooth in space* against a
+  control - the mean luminance step across a triangle edge is **20.61**
+  against **38.88** between two random vertices of the same mesh, and the
+  edge is the smaller on **228 of 232 models**;
+- **`0x80` is unity in every colour lane, not `0xff`.** The rig is normalised:
+  ambient plus key lands at a median of 1.06 over 442 (category, stage) pairs
+  and the stage's ambient at 0.90, so a `0x808080` diffuse over a `0x808080`
+  bake has to come out at one and not at a quarter;
+- **the blend mode is byte 0 of the material's `+0x04`** - 1 opaque, 0 alpha,
+  2 additive - and three sources agree on it: the byte, the material name
+  (`_non_` 1,114 of 1,120, `_alp_` 15 of 15, `_add_` 7 of 7) and the texture
+  (38 % of an additive material's texels are black and opaque, against 6 %
+  and 8 %);
+- **a normal is carried by the inverse transpose**, which `cmdl.py` had never
+  had to do, and the posed geometry says so with the obvious mistake as the
+  control: posed by their own `CNOM`, a triangle's three vertex normals sit a
+  median of **14.89 deg** from the way the posed triangle faces against
+  **71.73 deg** left in the rest pose;
+- **the dark disc over `010_01_01` was a lens flare.** Not a heap of tree
+  trunks and not near the origin: `renz_frea_01..03`, drawn as opaque black
+  because there was one blend mode. `renz` is レンズ.
 
-### 1. Light it, out of the disc rather than out of `draw.py`.
+The renderer regression is clean: **1,127 of 1,127 models still draw**, 2
+blank, 9,095 of 9,304 draw calls still find their texture, and the two
+rasterisers still agree to the digit - median 0.797 against `stage.py`'s
+0.805, differing by 0.0050 and never by more than 0.0300.
 
-The shading is this file's own: a face normal, one directional light, ambient,
-flat. Two things on the disc would replace it and both are one lane each —
-the **normal lane** a mesh already declares (`layout[1]`, present exactly when
-the position sits twelve bytes past it) and the **three RGBA words at material
-`+0x08`**, which [`format_cmdl.md`](format_cmdl.md) lists as open and which
-`808080ff` / `000000ff` dominate. A normal has to be skinned by the inverse
-transpose, which is the one piece of matrix work `cmdl.py` does not do yet.
-This is the cheapest item and it is the difference between a diagram and a
-render.
+And there is one number that says the picture is not finished. `st_amb_1` is
+white at 0.9 on **all 154 stages**, so all the variation between one stage's
+brightness and another's is in the bake - and rendered, **29 of 124 stages
+come out below a mean luminance of 15**. Something is carrying part of those
+pictures that this renderer does not draw, and the candidate is the one thing
+in `stage_param` still unused: the fog. See item 3 below.
 
-### 2. Give the arena its pay-out.
+### 1. Give the arena its pay-out.
 
-Unchanged from last session and still the best-posed engine item.
-[`mission.py`](../engine/mission.py) closes 210 of 229 arenas and hands back
-nothing; [`format_reward.md`](format_reward.md) now has the tables. When a
-lock ends, walk `item_reward.bin`'s block and draw against the chances; when a
-part breaks, draw `item_reward_region.bin`'s slot for it. It is the first
-thing here that exercises a chance table rather than a lookup, and it gives
-the 431 quests a sharper measurement than "the arena closed": *what came out*.
+Unchanged for three sessions and now the best-posed engine item by some
+distance. [`mission.py`](../engine/mission.py) closes 210 of 229 arenas and
+hands back nothing; [`format_reward.md`](format_reward.md) has the tables.
+When a lock ends, walk `item_reward.bin`'s block and draw against the
+chances; when a part breaks, draw `item_reward_region.bin`'s slot for it. It
+is the first thing here that exercises a chance table rather than a lookup,
+and it gives the 431 quests a sharper measurement than "the arena closed":
+*what came out*.
 
-### 3. Three things the first frame left visibly wrong.
+### 2. The effects now have a consumer that can show them.
 
-A picture is a bug report, which is most of why it was worth taking:
+`.PTP` and `effect.bin` have been read for five sessions with nothing able to
+draw them. This is the session to try: the renderer has additive blending and
+a draw order, which is exactly what an effect needs, and
+[`format_ptp.md`](format_ptp.md)'s `(category, slot)` pair, the 69
+`effect.bin` tables and `.mkc`'s emitter - a locator on the body - all have
+somewhere to go. It also has a reading item attached: **which `.anmcmd` opcode
+spawns one**, which is item 7 below.
 
-- **`010_01_01` still has a heap of tree trunks near the origin.** The nine
-  `small_tree_*` nodes came right when the convention did; whatever is left is
-  a different node and has not been identified. Draw it and find out;
-- **alpha is a test and not a blend**, so grass and tree cards are cut-outs
-  with hard edges. A material name carries `_alp_` or `_non_` and that is the
-  whole of what `draw.py` knows about it;
-- **there is no draw order.** The list is walked as it comes, which is right
-  for opaque geometry with a z-buffer and wrong for anything transparent.
+### 3. Two lanes the renderer still ignores, both declared.
+
+- **vertex alpha.** The bake's fourth byte is not always `0xff` - 6 % of
+  vertices carry something else, and `010_01_01`'s `mizuumi_kiwa` uses it on
+  127 of its 237 vertices, which is a lake edge fading out. The rasteriser
+  interpolates three channels and would have to interpolate four;
+- **fog.** Every stage declares one to three fog records and none is drawn.
+  The colour and the near/far are legible; the density word is not a float on
+  every stage, so the mode byte selects something and nobody knows what.
+  **This is the likelier of the two to change a picture**: the 29 stages that
+  render nearly black are the dark ones, and `170_01_01` declares two fogs of
+  a warm brown at full strength, which in a cave is not haze but light.
 
 ### 4. The walk is still the weak half.
 
@@ -74,46 +100,50 @@ body stopped walking*. That is this repository's steering and not a reading,
 and it is what stands between 210 arenas closed and the 25 of 131
 arena-bearing quests that finish end to end. The navigation mesh from session
 24 (`world.py graph`, `path`, `nearest_triangle`) is the instrument and
-nothing has been tuned against it. **And now it can be drawn** — a path over a
+nothing has been tuned against it. **And it can be drawn** - a path over a
 top-down render is a picture that says where the steering gives up.
 
-### 5. The effects have a consumer at last.
-
-`.PTP` and `effect.bin` have been read for four sessions with nothing able to
-show them. [`format_ptp.md`](format_ptp.md)'s `(category, slot)` pair, the 69
-`effect.bin` tables and `.mkc`'s emitter — a locator on the body — now have
-somewhere to go. Not a reading item: a *drawing* one.
-
-### 6. The three entries beside `s_combo_graph`.
+### 5. The three entries beside `s_combo_graph`.
 
 Unchanged and still the cheapest well-posed reading item. `s_combo_finish_inf`
 (132 bytes on the warrior), `s_just_combo_inf` (8) and `s_combo_motA` (64) sit
 in the same `objbin.bin` and none is read. A finisher is a node with no
 outgoing edge, and a just window is a byte pair on an edge.
 
-### 7. A generator's counts and timers, now that one runs.
+### 6. A generator's counts and timers, now that one runs.
 
 `enemy_gen.bin` `+0x14`, `+0x18`, `+0x20`, `+0x24`, `+0x28` and `+0x30`.
 `+0x28`'s `k` is 0, 5, 10, 15, 30, 60 or 90 — halves and multiples of a second
 at 30 fps — and a respawn delay is testable the moment a monster can die.
 
+### 7. The `.anmcmd` opcodes.
+
+Thirty of fifty-two, with two consumers that want particular ones: which
+opcode spawns a projectile and which `ht_arrow_tbl` row it names, and what
+turns a weapon trail on. Item 2 above wants the first of those.
+
 ### Then
 
-8. **The `.anmcmd` opcodes**, thirty of fifty-two, with two consumers that
-   want particular ones: which opcode spawns a projectile and which
-   `ht_arrow_tbl` row it names, and what turns a weapon trail on.
+8. **The rest of the material record.** `+0x10` is a specular colour, named by
+   the company it keeps - the 34 materials that are not black there are
+   weapons, a shield, armour, a monster's plates and four birds. What is not
+   read: byte 1 of `+0x04` (`0x80` on all but 17), `+0x14`, `+0x18`, `+0x1c`
+   (`0x0a`/`0x05`/`0x00` in the top byte, which would fit a specular power)
+   and `+0x2c`. See [`format_cmdl.md`](format_cmdl.md).
 9. **The player's base defence and hit points**,
    [`combat_loop.md`](combat_loop.md) ledger item 2 — the level-up tables
    `it_db_myorder*.bin` are the next place to look.
 10. **`se_hitlevel_tbl`'s third word**, 0 to 8 per class and not
     `it_db_weapon.bin` column 5.
-11. **The last two `ELBN` populations**: `stageparam.bin` past its lights,
-    `mot_param.bin` past its motion id.
+11. **`stageparam.bin` past its lights**: `shadow_param`, and the two unnamed
+    blocks `stage_param` points at from `+0x20` and `+0x24` — `(80, 0.7, 1.7,
+    2)` and `(1, 0.6, 0.98)` on `010_01_01`. And `mot_param.bin` past its
+    motion id.
 12. **Where the minimap's scale is declared.** The band is 1.31 to 1.33 px/m
-    and it is not in `stageparam.bin`.
+    and it is not in `stageparam.bin` — which is now read field by field, so
+    that is settled rather than assumed.
 13. **The `CCLS` surface codes 1 to 13.** The navigation mesh walks a body
     over hundreds of them in a row, which is a second way in.
-
 ---
 
 ## Deferred, with reasons
@@ -139,11 +169,14 @@ at 30 fps — and a respawn delay is testable the moment a monster can die.
 
 - `CTEX`: the `0x28` stamp and bit 0 of `0x1D`. Both are described in
   [`format_ctex.md`](format_ctex.md); neither affects the decode.
-- `CMDL`: the four-byte attribute at layout byte 2; the middle byte of the
-  mesh descriptor's first word; `S8` and the 16-byte digests at the head of
-  `S9`; the eight stage grounds whose texture index runs one past their name
-  list; and the 25 models whose node table disagrees with their own inverse
-  bind matrices. All in [`format_cmdl.md`](format_cmdl.md).
+- `CMDL`: the middle byte of the mesh descriptor's first word; `S8` and the
+  16-byte digests at the head of `S9`; the eight stage grounds whose texture
+  index runs one past their name list; the 25 models whose node table
+  disagrees with their own inverse bind matrices; and the material record
+  past its four colours and its blend byte — see item 8 above. **The
+  four-byte attribute at layout byte 2 is settled**: it is a baked RGBA
+  vertex colour, and [`lighting.md`](lighting.md) is what it is for. All in
+  [`format_cmdl.md`](format_cmdl.md).
 - `CNOM`: the `u8` at `+0x04` of a channel; the constant `1000.0` at `0x4C`;
   the `u16 1` at `0x12`; and **which rig the 72 `fgn`/`mgn` animations were
   exported from**, since they key `node_hip` absolutely and carry no `xrot`
@@ -291,8 +324,9 @@ at 30 fps — and a respawn delay is testable the moment a monster can die.
   read as a defence and not proved; `region_data_brk`'s two `u16[4]` arrays,
   whose ids come from a family keyed on the part and resolve against nothing
   on the disc; `s_region_group_data`'s three angles and its eight empty index
-  slots; and `stageparam.bin` past the lights and `mot_param.bin` past the
-  motion id. `trace_par.bin` is read, and what it leaves is **which of a
+  slots; `stageparam.bin` past `stage_param` — whose lights are now read
+  field by field, see [`lighting.md`](lighting.md) — and `mot_param.bin` past
+  the motion id. `trace_par.bin` is read, and what it leaves is **which of a
   weapon's three `par_tbl` records is used when**, the two counts at `+0x19`
   and `+0x1a`, and `bowstring_data`'s first 48 bytes, identical on all 25 bows
   and so carrying no evidence. `statusData` is read as records and **its ids

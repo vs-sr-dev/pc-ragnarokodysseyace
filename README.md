@@ -10,13 +10,31 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-26 (2026-08-24). **It is drawn.** A `CMDL` comes out of the
-engine as a picture - Loki with his gold and teal plumage and six eyes down
-the wings, the warrior posed by `msw213run` at frame 12 in a running stride,
-and `q00101`'s opening field seen from the spawn marker the quest starts on.
-No GPU, no dependency and no external viewer:
-[`engine/draw.py`](engine/draw.py) is a software rasteriser and a camera in
-500 lines. That is [milestone 6](docs/milestone_draw.md), *"it is drawn"*.
+Sessions 1-27 (2026-08-24). **It is drawn, and the light is the game's.** A
+`CMDL` comes out of the engine as a picture - Loki with his gold and teal
+plumage and six eyes down the wings, the warrior posed by `msw213run` at
+frame 12 in a running stride, and `q00101`'s opening field seen from the
+spawn marker the quest starts on. No GPU, no dependency and no external
+viewer: [`engine/draw.py`](engine/draw.py) is a software rasteriser and a
+camera. That is [milestone 6](docs/milestone_draw.md), *"it is drawn"*.
+
+**The shading is not the renderer's own.** Every stage on the disc declares a
+lighting rig and names every light in it - `ch_dir_1` a warm key over a
+character, `ch_dir_2` a cool fill from below, `st_amb_1` the stage's own
+ambient - and over 154 stages the name prefix and the category byte beside it
+agree on **1,491 of 1,497 lights**. What the rig does *not* have is the find:
+**no stage gets a directional light at all**, because a stage carries its
+lighting baked into its vertices, in the `CMDL` field that had been open
+since session 5. The geometry agrees from the other side - every mesh outside
+`stage.cpk` carries a normal lane, and 94 % of `stage.cpk` carries a baked
+colour instead. See [the lighting](docs/lighting.md).
+
+It also settled a `CMDL` field that had been listed as open for twenty-two
+sessions, and it settled it with a control rather than with a guess: the
+four-byte vertex attribute is that bake because **it is smooth in space** —
+the luminance steps 20.61 across a triangle edge against 38.88 between two
+vertices of the same mesh drawn at random, and the edge is the smaller of the
+two on 228 of the 232 models whose lane varies at all.
 
 It did what running something here usually does. The first stage drawn came
 out with **nine trees piled on the world origin**, and the cause had been in
@@ -329,7 +347,8 @@ a hit has a place->   1,435 hit offsets placed on the frame they fire
 Formats are documented in [`docs/`](docs): [the disc
 survey](docs/RECON.md), [`ECH`](docs/format_ech.md),
 [`TXT`](docs/format_rmsg.md), [`CTEX`](docs/format_ctex.md),
-[`CMDL`](docs/format_cmdl.md), [`CNOM` and `CMTM`](docs/format_cnom.md),
+[`CMDL`](docs/format_cmdl.md), [the lighting](docs/lighting.md),
+[`CNOM` and `CMTM`](docs/format_cnom.md),
 [`CCLS`](docs/format_ccls.md), [the stage layout](docs/format_stage.md),
 [the units](docs/units.md),
 [`ELBN`](docs/format_elbn.md), [`.anmcmd`](docs/format_anmcmd.md), [the script
@@ -430,6 +449,9 @@ python tools/cmdl.py info|nodes|meshes <dir> <name>
 python tools/cmdl.py draws <dir> <name>      the node/material/mesh draw list
 python tools/cmdl.py skin <dir> <name>       the bone palettes and the weights
 python tools/cmdl.py locators <dir> <name>   the attachment points
+python tools/cmdl.py lanes <dir>             the normal lane and the bake
+python tools/cmdl.py shading <dir>           a skinned normal against the
+                                             posed geometry
 python tools/cmdl.py gait <dir> <name> <motion>
                                              the planted foot's speed
 python tools/cmdl.py obj <dir> <name> <out> [motion frame]
@@ -462,6 +484,7 @@ python tools/elbn.py records <dir> <name>    one name, profiled over the disc
 python tools/elbn.py capsules|regions <dir> <actor>  the body and its parts
 python tools/elbn.py trace <dir> [actor]     the weapon trail
 python tools/elbn.py combo <dir> [class]     the player's combo graph
+python tools/elbn.py lights <dir> [stage]    the stage's own lighting rig
 
 python tools/anmcmd.py check|survey <dir>    the animation commands
 python tools/anmcmd.py census <dir>          every opcode, with its size
@@ -575,6 +598,8 @@ python engine/draw.py model <tree> msw2.CMDL run.png msw213run 12
 python engine/draw.py scene <tree> q00101 arena.png  the arena, from the spawn
 python engine/draw.py top   <tree> 010_01_01 top.png a stage from above
 python engine/draw.py check <tree>                 every model, does it draw?
+python engine/draw.py light <tree>                 the lanes, the blend modes,
+                                                   and the frame lit twice
 python engine/draw.py minimap <tree>               this rasteriser against
                                                    stage.py's
 python engine/draw.py convention <tree>            which space a rigid mesh

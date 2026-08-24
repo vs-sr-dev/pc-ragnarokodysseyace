@@ -10,10 +10,12 @@ software rasteriser in the same spirit as `stage.py`'s minimap fitter, which
 has been rasterising triangles here since session 19.
 
     python engine/draw.py model   <dir> <model> <out.png> [motion] [frame]
+                                  [size] [stage, for its lights]
     python engine/draw.py stage   <dir> <stage> <out.png> [width]
     python engine/draw.py scene   <dir> <quest> <out.png> [size] [body]
     python engine/draw.py top     <dir> <stage> <out.png> [size]
     python engine/draw.py check   <dir> [glob]
+    python engine/draw.py light   <dir> [glob]
     python engine/draw.py minimap <dir> [glob]
     python engine/draw.py convention <dir> [glob] [samples]
 
@@ -34,7 +36,7 @@ Nothing here is a new reading. What is new is that the numbers have to be
 bind matrix, a wrong UV lane or a wrong texture index all produce a picture
 that is visibly wrong rather than a count that is quietly plausible.
 
-## What it found
+## What it found, session 26
 
 The first stage drawn came out with **nine trees piled on the world origin**,
 which is the failure [`format_cmdl.md`](format_cmdl.md) had warned about since
@@ -51,23 +53,46 @@ proved the format are skinned.
     world . bind^-1              2.240 m                     0.042 m
     world . (Rx90 . bind)^-1     2.138 m                     0.345 m
 
-## Three conventions this file picks, and says so
+## The light is the disc's
+
+Session 26 lit this with a face normal, one directional light and an ambient
+of 0.55, and said in this docstring that all three were policies of this file.
+They are not policies any more. See [`lighting.md`](../docs/lighting.md):
+
+    the rig       stageparam.bin's stage_param - an ambient and up to two
+                  directionals, per category, named ch_dir_1 and its family
+    the normal    the mesh's own lane, skinned by the inverse transpose and
+                  interpolated across the face
+    the bake      the mesh's own vertex colour lane, which on a stage *is* the
+                  lighting: 94 % of stage.cpk carries one and the disc gives
+                  the stage no directional light at all
+    the material  the diffuse at +0x08, over 128 rather than over 255
+    the blend     byte 0 of +0x04: 1 opaque, 0 alpha, 2 additive
+
+## Three conventions this file still picks, and says so
 
 - **Triangles are drawn two-sided.** The disc's winding is consistent within a
   mesh but nothing on it declares which way is out, so back-face culling would
   be a guess; instead every triangle is drawn and its shading normal is
-  flipped towards the eye. The z-buffer sorts out the rest.
-- **Shading is flat.** `cmdl.posed()` returns skinned positions and the disc's
-  normals are a separate lane that would have to be skinned with the inverse
-  transpose; a face normal computed in world space needs neither and is honest
-  about what it is. One directional light plus ambient, no specular, no
-  shadow.
-- **Alpha is a test, not a blend.** A texel under `ALPHA_TEST` is not drawn,
-  on the materials whose name carries `_alp_`. That is the whole of what this
-  file knows about transparency, and it is why grass reads as a cut-out.
+  flipped towards the eye.
+- **The draw order is per call.** Opaque first, in the file's own order under
+  the z-buffer; then everything that blends, furthest first, keyed on its
+  draw call's bounding-sphere centre rather than on each triangle. That is
+  the cheap half of the right answer.
+- **An opaque material whose texture has holes in it takes an alpha test.**
+  The material says opaque and the texture says otherwise; the texture wins,
+  because a cut-out card drawn without a test is a black rectangle. The old
+  rule read `_alp_` out of the material *name*, which covers 15 of the 5,425
+  materials on the disc.
 
-All three are policies of this file, like `mission.py`'s `blows`. None reads
-anything off the disc.
+## What it found, session 27
+
+The dark disc hanging over `010_01_01` since the first stage render is not
+geometry in the wrong place. It is `renz_frea_01`, `_02` and `_03` - the
+stage's own **lens flare**, three cards of a dozen vertices, drawn as opaque
+black because this file had one blend mode and their textures are black with
+a bright core and an alpha of 255 everywhere. Under the additive mode their
+own material declares, the black disc is a sun.
 
 ## The measurement that can fail
 
@@ -89,6 +114,7 @@ on.
 from __future__ import annotations
 
 import fnmatch
+import functools
 import math
 import pathlib
 import sys
@@ -99,16 +125,20 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent
                        / 'tools'))
 
 import ctex                                                    # noqa: E402
+import elbn                                                    # noqa: E402
 import stage as stagemod                                       # noqa: E402
+from cmdl import IDENTITY as IDENTITY4                          # noqa: E402
 from cmdl import RX90, Cmdl, apply, invert, mul                # noqa: E402
 from cnom import Cnom                                          # noqa: E402
 
 BACKGROUND = (18, 20, 26)
-LIGHT = (-0.35, 0.72, -0.60)             # normalised below; over the shoulder
-AMBIENT = 0.55
+LIGHT = (-0.35, 0.72, -0.60)             # the fallback key, used only when no
+AMBIENT = 0.55                           # stage has been named
 NEAR = 0.05
 MODES = ('local', 'plain', 'turned')
 ALPHA_TEST = 96                          # a texel below this is not drawn
+UNITY = 128.0                            # what a colour lane calls 1.0; see
+                                         # *Where unity is* in the header
 CLEARANCE = 0.5                          # how far above the floor to hang the
                                          # overhead camera, in metres
 
@@ -220,15 +250,131 @@ def _norm(v):
 
 
 # --------------------------------------------------------------------------
+# the lights, which are the stage's own
+
+class Rig:
+    """A stage's lighting rig, out of its own `stageparam.bin`.
+
+    `elbn.light_rig` reads `stage_param`; this turns it into something a
+    shader can ask a question of. A category is the *kind of thing being lit*
+    and the disc names them: `ch` a character, `mc` the main character, `bm` a
+    background model, `np` an NPC, `st` the stage itself.
+    """
+
+    def __init__(self, rig: dict | None = None):
+        self.amb: dict[str, tuple] = {}
+        self.dirs: dict[str, list] = {}
+        self.fog = (rig or {}).get('fog', [])
+        for L in (rig or {}).get('amb', []):
+            self.amb[L['category']] = _scaled(L)
+        for L in (rig or {}).get('dir', []):
+            self.dirs.setdefault(L['category'], []).append(
+                (_norm(L['direction']), _scaled(L)))
+
+    @classmethod
+    def of_stage(cls, root, stage: str) -> 'Rig':
+        """The rig of the stage whose `param.pac` names it."""
+        got = _rigs(str(root)).get(stage)
+        return cls(got) if got else cls.fallback()
+
+    @classmethod
+    def fallback(cls) -> 'Rig':
+        """No stage named, so this file's own light - which is the one the
+        first frame was lit by, kept so a model can still be drawn on its
+        own."""
+        r = cls()
+        for c in ('ch', 'mc', 'bm', 'st', 'np', 'pv'):
+            r.amb[c] = (AMBIENT, AMBIENT, AMBIENT)
+            if c != 'st':
+                r.dirs[c] = [(_norm(LIGHT), (1.0 - AMBIENT,) * 3)]
+        return r
+
+    def knows(self, cat: str) -> bool:
+        return cat in self.amb or cat in self.dirs
+
+    def ambient(self, cat: str) -> tuple:
+        if not self.knows(cat):
+            cat = 'ch'
+        return self.amb.get(cat) or (1.0, 1.0, 1.0)
+
+    def directional(self, cat: str) -> list:
+        """Empty is an answer and not a miss: `st` has an ambient and no
+        directional on all 154 stages, which is how the disc says a stage is
+        lit by its own vertices. Only a category the rig has never heard of
+        falls back to `ch`."""
+        if not self.knows(cat):
+            cat = 'ch'
+        return self.dirs.get(cat, [])
+
+    def light(self, cat: str, n=None) -> tuple:
+        """How much light reaches a surface with that normal, per channel.
+
+        `n` of None is a surface with no normal to offer - a stage mesh whose
+        light is already baked into its vertices - and it takes the ambient
+        alone, which is exactly what the disc gives the `st` category: an
+        ambient and no directional at all.
+        """
+        out = list(self.ambient(cat))
+        if n is not None:
+            for d, c in self.directional(cat):
+                k = d[0] * n[0] + d[1] * n[1] + d[2] * n[2]
+                if k > 0.0:
+                    out[0] += c[0] * k
+                    out[1] += c[1] * k
+                    out[2] += c[2] * k
+        return (out[0], out[1], out[2])
+
+
+@functools.lru_cache(maxsize=4)
+def _rigs(root: str) -> dict:
+    """Every stage's `stage_param`, read once. The walk that finds them is a
+    walk of the whole asset tree, and `minimap` asks 135 times."""
+    out = {}
+    for path, blob in elbn.collect(root, 'stageparam.bin'):
+        if path.rsplit('/', 1)[-1] != 'stageparam.bin':
+            continue
+        parts = path.split('/')
+        name = parts[-3] if len(parts) >= 3 else path
+        try:
+            rig = elbn.light_rig(elbn.Elbn(blob, path))
+        except Exception:                                      # noqa: BLE001
+            continue
+        if rig:
+            out[name] = rig
+    return out
+
+
+def _scaled(L: dict) -> tuple:
+    """A light record's colour times its intensity, in 0..1 floats."""
+    return tuple(L['colour'][k] / 255.0 * L['intensity'] for k in range(3))
+
+
+# --------------------------------------------------------------------------
 # textures
 
 class Texture:
-    """A decoded `CTEX`, sampled nearest and wrapped."""
+    """A decoded `CTEX`, sampled nearest and wrapped.
 
-    __slots__ = ('w', 'h', 'px', 'name')
+    It also answers whether it has holes in it, which is what decides the
+    alpha test. That used to be read off the material *name* - `_alp_` - and
+    that rule turns out to cover **15 of the 5,425 materials on the disc**,
+    so it was very nearly a no-op: 4,178 materials carry no blend token at
+    all. The texture knows, and asking it is neither a guess nor a name.
+    """
+
+    __slots__ = ('w', 'h', 'px', 'name', 'holes', 'soft')
 
     def __init__(self, name: str, w: int, h: int, rgba: bytes):
         self.name, self.w, self.h, self.px = name, w, h, rgba
+        a = rgba[3::4]
+        n = len(a) or 1
+        self.holes = sum(1 for v in a if v <= 8) / n
+        self.soft = sum(1 for v in a if 8 < v < 247) / n
+
+    @property
+    def cutout(self) -> bool:
+        """Enough of it is fully transparent to be a cut-out card."""
+        return self.holes > 0.005
 
 
 class Library:
@@ -280,24 +426,34 @@ def _clip_near(poly, near: float):
             t = (-near - az) / (bz - az)
             out.append(tuple(
                 tuple(p + t * (q - p) for p, q in zip(a[k], b[k]))
-                for k in range(2)))
+                for k in range(len(a))))
     return out
 
 
-def triangle(frame: Frame, cam: Camera, tri, tex, shade: float,
-             blend: bool) -> int:
-    """One view-space triangle, `[(xyz, uv), ...]`. Returns pixels written."""
+OPAQUE, BLEND, ADD = 1, 0, 2             # material +0x04, byte 0
+BLEND_NAME = {OPAQUE: 'opaque', BLEND: 'alpha', ADD: 'additive'}
+
+
+def triangle(frame: Frame, cam: Camera, tri, tex, blend: int,
+             cutout: bool = False) -> int:
+    """One view-space triangle, `[(xyz, uv, rgb), ...]`.
+
+    The third lane is the light that reached that vertex, and it is
+    interpolated across the face like the other two - which is the whole of
+    what turns a flat-shaded diagram into a shaded render. Returns pixels
+    written.
+    """
     poly = _clip_near(tri, 0.0 if cam.ortho else NEAR)
     if len(poly) < 3:
         return 0
     written = 0
     for k in range(1, len(poly) - 1):
-        written += _fan(frame, cam, poly[0], poly[k], poly[k + 1], tex,
-                        shade, blend)
+        written += _fan(frame, cam, poly[0], poly[k], poly[k + 1], tex, blend,
+                        cutout)
     return written
 
 
-def _fan(frame, cam, a, b, c, tex, shade, blend) -> int:
+def _fan(frame, cam, a, b, c, tex, blend, cutout) -> int:
     ax, ay, az, aw = cam.project(a[0])
     bx, by, bz, bw = cam.project(b[0])
     cx, cy, cz, cw = cam.project(c[0])
@@ -317,6 +473,9 @@ def _fan(frame, cam, a, b, c, tex, shade, blend) -> int:
     au, av = au * aw, av * aw
     bu, bv = bu * bw, bv * bw
     cu, cv = cu * cw, cv * cw
+    ar, ag, ab = a[2]
+    br, bg, bb = b[2]
+    cr, cg, cb = c[2]
     col, depth = frame.col, frame.depth
     tw = th = 0
     if tex is not None:
@@ -340,19 +499,40 @@ def _fan(frame, cam, a, b, c, tex, shade, blend) -> int:
             if z <= depth[i]:
                 continue
             r = g = bl = 200
+            a_ = 255
             if tw:
                 iw = l0 * aw + l1 * bw + l2 * cw
                 u = (l0 * au + l1 * bu + l2 * cu) / iw
                 v = (l0 * av + l1 * bv + l2 * cv) / iw
                 o = 4 * ((int(v * th) % th) * tw + (int(u * tw) % tw))
-                if blend and px[o + 3] < ALPHA_TEST:
+                a_ = px[o + 3]
+                if cutout and a_ < ALPHA_TEST:
                     continue
                 r, g, bl = px[o], px[o + 1], px[o + 2]
-            depth[i] = z
             o = 4 * i
-            col[o] = int(r * shade)
-            col[o + 1] = int(g * shade)
-            col[o + 2] = int(bl * shade)
+            sr = l0 * ar + l1 * br + l2 * cr
+            sg = l0 * ag + l1 * bg + l2 * cg
+            sb = l0 * ab + l1 * bb + l2 * cb
+            r, g, bl = r * sr, g * sg, bl * sb
+            if blend == OPAQUE:
+                depth[i] = z
+            elif blend == ADD:
+                # a black texel adds nothing, which is what the flare cards,
+                # the fires and the lit windows are drawn on
+                r += col[o]
+                g += col[o + 1]
+                bl += col[o + 2]
+            else:
+                if a_ < 8:
+                    continue
+                k_ = a_ / 255.0
+                j_ = 1.0 - k_
+                r = r * k_ + col[o] * j_
+                g = g * k_ + col[o + 1] * j_
+                bl = bl * k_ + col[o + 2] * j_
+            col[o] = 255 if r > 255.0 else int(r)
+            col[o + 1] = 255 if g > 255.0 else int(g)
+            col[o + 2] = 255 if bl > 255.0 else int(bl)
             written += 1
     return written
 
@@ -385,53 +565,136 @@ def matrices(model: Cmdl, me: int, node: int, world, bind,
 
 
 def render(frame: Frame, cam: Camera, model: Cmdl, lib: Library,
-           pose=None, place=None, light=LIGHT,
-           mode: str = 'local') -> dict:
-    """Every drawable call of one model, into the frame. `place` is a world
-    matrix applied on top of the model's own nodes."""
+           pose=None, place=None, rig: Rig | None = None,
+           category: str = 'ch', mode: str = 'local') -> dict:
+    """Every drawable call of one model, into the frame.
+
+    `place` is a world matrix applied on top of the model's own nodes; `rig`
+    is the stage's own lighting rig and `category` which of its light sets
+    this model belongs to.
+
+    The shading is the disc's, not this file's, and it is three lanes read out
+    of two files:
+
+        light   `stageparam.bin`'s `stage_param` - an ambient and up to two
+                directionals for this category
+        normal  the mesh's own normal lane, skinned by the inverse transpose;
+                where a mesh has none, the face normal, as before
+        colour  the mesh's own vertex colour lane, which on a stage *is* the
+                lighting - baked, and 94 % of stage meshes carry it
+        material the diffuse RGBA at material `+0x08`
+
+    Which half applies is the *category's* business and the disc settles it
+    by omission: over 154 stages there is **no `st_dir` light anywhere**, only
+    `st_amb_1`, while `ch`, `mc`, `bm` and `np` each get a key and a fill. So
+    the stage takes an ambient and nothing else - its light is already in its
+    vertices - and an actor takes the rig. `rig.directional()` coming back
+    empty is what says so, and no rule here has to name the stage.
+    """
     texs = model.names(7)
-    mats = model.names(6)
     world = model.world(pose)
     if place is not None:
         world = [mul(place, m) for m in world]
     bind = model.bind()
-    ld = _norm(light)
-    ld = _norm(apply(cam.m, (ld[0] + cam.eye[0], ld[1] + cam.eye[1],
-                             ld[2] + cam.eye[2])))
+    rig = rig or Rig.fallback()
+    ex, ey, ez = cam.eye
     st = {'calls': 0, 'triangles': 0, 'pixels': 0, 'textured': 0,
-          'untextured': 0}
-    for n, mat, me in model.draws():
+          'untextured': 0, 'normals': 0, 'baked': 0, 'faces': 0,
+          'opaque': 0, 'alpha': 0, 'additive': 0}
+    # **The draw order**, which the list itself does not carry. Opaque
+    # geometry goes down first in the order the file gives, because the
+    # z-buffer sorts it; everything that blends goes down after it, furthest
+    # first, because nothing else can. The key is the draw call's own
+    # centroid in eye space and not the triangle's, which is the cheap half
+    # of the right answer and is stated as such.
+    order = []
+    for k, (n, mat, me) in enumerate(model.draws()):
+        rec = model.material(mat) if mat < model.materials else None
+        blend = rec['blend'] if rec else OPAQUE
+        if blend == OPAQUE:
+            key = (0, k)
+        else:
+            sp = model.mesh(me).sphere
+            q = apply(mul(cam.m, world[n] if n < len(world) else IDENTITY4),
+                      sp[:3])
+            key = (1, q[2])              # eye z counts down away from the eye
+        order.append((key, n, me, rec))
+    order.sort(key=lambda r: r[0])
+    for _, n, me, rec in order:
         m = model.mesh(me)
         if not m.drawable:
             continue
         st['calls'] += 1
-        pos = model.posed(m, matrices(model, me, n, world, bind, mode))
+        mats_ = matrices(model, me, n, world, bind, mode)
+        pos = model.posed(m, mats_)
+        nrm = model.posed_normals(m, mats_)
+        vcol = model.colours(m)
         uv = model.uvs(m) or [(0.0, 0.0)] * len(pos)
-        t = model.material(mat)['texture'] if mat < model.materials else -1
+        t = rec['texture'] if rec else -1
         name = texs[t] if 0 <= t < len(texs) else ''
         tex = lib.get(name) if name else None
         st['textured' if tex else 'untextured'] += 1
-        blend = '_alp_' in (mats[mat] if mat < len(mats) else '')
-        eye = [cam.view(p) for p in pos]
+        blend = rec['blend'] if rec else OPAQUE
+        st[BLEND_NAME.get(blend, 'opaque')] += 1
+        cutout = blend == OPAQUE and tex is not None and tex.cutout
+        dif = _channels(rec['colours'][0]) if rec else (1.0, 1.0, 1.0)
+        cat = category
+        amb = rig.ambient(cat)
+        if not rig.directional(cat):
+            nrm = None                   # nothing to point at a light with
+        st['normals' if nrm is not None else
+           'baked' if vcol is not None else 'faces'] += 1
+        # the light that reaches each vertex, once per vertex and not once
+        # per pixel: everything below is a lookup
+        shade = None
+        if nrm is not None:
+            shade = []
+            for i, v in enumerate(nrm):
+                # the file does not say which side is out, so the normal is
+                # turned towards the eye, exactly as the face normal was
+                p = pos[i]
+                if (v[0] * (ex - p[0]) + v[1] * (ey - p[1])
+                        + v[2] * (ez - p[2])) < 0.0:
+                    v = (-v[0], -v[1], -v[2])
+                shade.append(rig.light(cat, v))
+        base = [dif] * len(pos)
+        if vcol is not None:
+            base = [(dif[0] * c[0] / UNITY, dif[1] * c[1] / UNITY,
+                     dif[2] * c[2] / UNITY) for c in vcol]
+        if shade is not None:
+            lit = [(base[i][0] * shade[i][0], base[i][1] * shade[i][1],
+                    base[i][2] * shade[i][2]) for i in range(len(pos))]
+        else:
+            lit = [(base[i][0] * amb[0], base[i][1] * amb[1],
+                    base[i][2] * amb[2]) for i in range(len(pos))]
+        eye = [cam.view(q) for q in pos]
+        flat = nrm is None and vcol is None
         for ia, ib, ic in model.triangles(m):
             if max(ia, ib, ic) >= len(eye):
                 continue
             va, vb, vc = eye[ia], eye[ib], eye[ic]
-            nx, ny, nz = _cross(_sub(vb, va), _sub(vc, va))
-            k = math.sqrt(nx * nx + ny * ny + nz * nz)
-            if k < 1e-12:
-                continue
-            # the normal is turned towards the eye, because the file does not
-            # say which side is out
-            if nz < 0.0:
-                nx, ny, nz = -nx, -ny, -nz
-            wn = (nx / k, ny / k, nz / k)
-            lit = AMBIENT + (1.0 - AMBIENT) * max(0.0, _dot(ld, wn))
+            ca, cb, cc = lit[ia], lit[ib], lit[ic]
+            if flat:
+                a, b, c = pos[ia], pos[ib], pos[ic]
+                fn = _norm(_cross(_sub(b, a), _sub(c, a)))
+                if _dot(fn, _sub((ex, ey, ez), a)) < 0.0:
+                    fn = (-fn[0], -fn[1], -fn[2])
+                g = rig.light(cat, fn)
+                ca = cb = cc = (dif[0] * g[0], dif[1] * g[1], dif[2] * g[2])
             st['triangles'] += 1
             st['pixels'] += triangle(
-                frame, cam, ((va, uv[ia]), (vb, uv[ib]), (vc, uv[ic])),
-                tex, min(1.0, lit), blend)
+                frame, cam, ((va, uv[ia], ca), (vb, uv[ib], cb),
+                             (vc, uv[ic], cc)), tex, blend, cutout)
     return st
+
+
+def _channels(word: int) -> tuple:
+    """A material colour word as three multipliers.
+
+    `0x80` and not `0xff` is unity - see *Where unity is* in the header.
+    """
+    return ((word >> 24) / UNITY, ((word >> 16) & 255) / UNITY,
+            ((word >> 8) & 255) / UNITY)
 
 
 def bounds(model: Cmdl, pose=None, mode: str = 'local'):
@@ -459,6 +722,21 @@ def bounds(model: Cmdl, pose=None, mode: str = 'local'):
 
 # --------------------------------------------------------------------------
 # finding things on disc
+
+def _category(path) -> str:
+    """Which of the rig's light sets a model belongs to, off its container.
+
+    The disc names the sets and the containers line up with them one for one:
+    `character.cpk` is the main character, `monster.cpk` a character,
+    `npc.cpk` an NPC, `stage.cpk` the stage.
+    """
+    parts = pathlib.Path(path).as_posix()
+    for k, cat in (('character.cpk', 'mc'), ('job.cpk', 'mc'),
+                   ('npc.cpk', 'np'), ('stage.cpk', 'st')):
+        if k in parts:
+            return cat
+    return 'ch'
+
 
 def _model(root, name) -> tuple[pathlib.Path, Cmdl]:
     root = pathlib.Path(root)
@@ -509,7 +787,8 @@ def _motion(root, name) -> Cnom:
 # --------------------------------------------------------------------------
 # the commands
 
-def cmd_model(root, name, out, motion='', frame='0', size='640') -> int:
+def cmd_model(root, name, out, motion='', frame='0', size='640',
+              stage='010_01_01') -> int:
     path, m = _model(root, name)
     pose = None
     if motion:
@@ -522,7 +801,8 @@ def cmd_model(root, name, out, motion='', frame='0', size='640') -> int:
     f = Frame(w, w * 3 // 4)
     cam = Camera.framing(f.w, f.h, centre, radius)
     lib = Library(path.parent)
-    st = render(f, cam, m, lib, pose)
+    st = render(f, cam, m, lib, pose, rig=Rig.of_stage(root, stage),
+                category=_category(path))
     f.png(out)
     print(f'{m.label}  {f.w}x{f.h}  {st["calls"]} calls, '
           f'{st["triangles"]:,} triangles, {st["pixels"]:,} pixels, '
@@ -540,7 +820,8 @@ def cmd_stage(root, stage, out, size='800') -> int:
     f = Frame(w, w * 9 // 16)
     cam = Camera.framing(f.w, f.h, centre, radius, azimuth=30.0, pitch=26.0,
                          fov=50.0)
-    st = render(f, cam, m, Library(path.parent))
+    st = render(f, cam, m, Library(path.parent),
+                rig=Rig.of_stage(root, stage), category='st')
     f.png(out)
     print(f'{m.label}  {f.w}x{f.h}  {st["triangles"]:,} triangles, '
           f'{st["pixels"]:,} pixels  ->  {out}')
@@ -563,7 +844,8 @@ def cmd_top(root, stage, out, size='512') -> int:
     sc = n / span * 0.98
     cam = Camera.overhead(n, n, sc, n * 0.5 - sc * centre[0],
                           n * 0.5 - sc * centre[2], top=ceil)
-    st = render(f, cam, m, Library(path.parent))
+    st = render(f, cam, m, Library(path.parent),
+                rig=Rig.of_stage(root, stage), category='st')
     f.png(out)
     print(f'{m.label}  {n}x{n} looking down, {span:.1f} m across, '
           f'{st["pixels"]:,} pixels  ->  {out}')
@@ -629,7 +911,9 @@ def cmd_scene(root, quest, out, size='900', who='msw2') -> int:
     at = (eye[0] - 14.0 * math.sin(math.radians(yaw)), eye[1] + 1.2,
           eye[2] - 14.0 * math.cos(math.radians(yaw)))
     cam = Camera(f.w, f.h, (eye[0], eye[1] + 3.6, eye[2]), at, fov=52.0)
-    total = render(f, cam, ground, Library(gpath.parent))['pixels']
+    rig = Rig.of_stage(root, first)
+    total = render(f, cam, ground, Library(gpath.parent), rig=rig,
+                   category='st')['pixels']
     drawn = 0
     body = None
     try:
@@ -637,7 +921,8 @@ def cmd_scene(root, quest, out, size='900', who='msw2') -> int:
     except SystemExit:
         pass
     if body is not None:
-        total += render(f, cam, body, Library(bpath.parent),
+        total += render(f, cam, body, Library(bpath.parent), rig=rig,
+                        category='mc',
                         place=_place(spawn.position, yaw))['pixels']
         drawn += 1
     for name, mk in uniq:
@@ -645,7 +930,8 @@ def cmd_scene(root, quest, out, size='900', who='msw2') -> int:
             mpath, mon = _model(root, f'{name}.CMDL')
         except SystemExit:
             continue
-        total += render(f, cam, mon, Library(mpath.parent),
+        total += render(f, cam, mon, Library(mpath.parent), rig=rig,
+                        category='ch',
                         place=_place(mk.position, mk.rotation[1]))['pixels']
         drawn += 1
     f.png(out)
@@ -690,6 +976,103 @@ def cmd_check(root, want='*') -> int:
     print(f'{calls:,} draw calls, {tex_ok:,} found their texture beside the '
           f'model, {tex_miss:,} did not')
     print(f'{notex} models drew with no texture at all')
+    return 0
+
+
+def cmd_light(root, want='*') -> int:
+    """What lights what, and what changed when the disc started saying so.
+
+    Three counts and one comparison:
+
+    - **the lanes**, per container. Every mesh outside `stage.cpk` carries a
+      normal and almost none of `stage.cpk` does, while 94 % of `stage.cpk`
+      carries a vertex colour and almost none of the rest does. That split is
+      the lighting model, and `stageparam.bin` states the same thing from the
+      other side by giving `st` an ambient and no directional;
+    - **the blend modes**, off material `+0x04` byte 0;
+    - **the frame**, rendered twice - once under this file's own light, which
+      is what session 26 drew, and once under the stage's own rig.
+    """
+    import statistics                                          # noqa: PLC0415
+
+    root = pathlib.Path(root)
+    lanes = {}
+    blends = {}
+    for p in sorted(root.rglob('*.CMDL')):
+        top = p.relative_to(root).parts[0]
+        try:
+            m = Cmdl(p.read_bytes(), p.name)
+        except Exception:                                      # noqa: BLE001
+            continue
+        a = lanes.setdefault(top, [0, 0, 0])
+        for i in range(m.meshes):
+            me = m.mesh(i)
+            if not me.drawable:
+                continue
+            a[0] += 1
+            a[1] += me.normal_offset is not None
+            a[2] += me.colour_offset is not None
+        b = blends.setdefault(top, {})
+        for i in range(m.materials):
+            k = m.material(i)['blend']
+            b[k] = b.get(k, 0) + 1
+    print(f'{"container":<16s} {"meshes":>7s} {"normal":>8s} {"baked":>8s}'
+          f'   materials  ' + '  '.join(f'{v:>8s}' for v in
+                                        ('opaque', 'alpha', 'additive')))
+    for k in sorted(lanes, key=lambda k: -lanes[k][0]):
+        n, nn, nc = lanes[k]
+        b = blends.get(k, {})
+        tot = sum(b.values()) or 1
+        print(f'{k:<16s} {n:7d} {nn / n:8.3f} {nc / n:8.3f}   {tot:9d}  '
+              + '  '.join(f'{b.get(v, 0) / tot:8.3f}'
+                          for v in (OPAQUE, BLEND, ADD)))
+
+    print()
+    print(f'{"stage":<12s} {"this file":>10s} {"the disc":>9s} {"moved":>7s}'
+          f'  {"lit":>5s} {"baked":>6s} {"flat":>5s}')
+    rows = []
+    for name, mp, col in stagemod._stages_with_maps(root):
+        if not fnmatch.fnmatch(name, want):
+            continue
+        try:
+            path, m = _stage_ground(root, name)
+        except SystemExit:
+            continue
+        lib = Library(path.parent)
+        lo, hi = bounds(m)
+        centre = ((lo[0] + hi[0]) / 2, lo[1] + (hi[1] - lo[1]) * 0.25,
+                  (lo[2] + hi[2]) / 2)
+        radius = max(hi[k] - lo[k] for k in (0, 2)) / 2
+        out = []
+        for r in (Rig.fallback(), Rig.of_stage(root, name)):
+            f = Frame(240, 135)
+            cam = Camera.framing(240, 135, centre, radius, azimuth=30.0,
+                                 pitch=26.0, fov=50.0)
+            st = render(f, cam, m, lib, rig=r, category='st')
+            out.append((f, st))
+        (fa, _), (fb, stb) = out
+        lit = [i for i in range(fb.w * fb.h) if fb.depth[i] > -1e29]
+        if not lit:
+            continue
+        lum = statistics.fmean(
+            fb.col[4 * i] * 0.299 + fb.col[4 * i + 1] * 0.587
+            + fb.col[4 * i + 2] * 0.114 for i in lit)
+        old = statistics.fmean(
+            fa.col[4 * i] * 0.299 + fa.col[4 * i + 1] * 0.587
+            + fa.col[4 * i + 2] * 0.114 for i in lit)
+        moved = sum(1 for i in lit
+                    if max(abs(fa.col[4 * i + k] - fb.col[4 * i + k])
+                           for k in range(3)) > 8) / len(lit)
+        rows.append((name, old, lum, moved, stb))
+        print(f'{name:<12s} {old:10.1f} {lum:9.1f} {moved:7.3f}  '
+              f'{stb["normals"]:5d} {stb["baked"]:6d} {stb["faces"]:5d}')
+    if not rows:
+        return 1
+    print()
+    print(f'{len(rows)} stages, mean pixel luminance {statistics.fmean(r[1] for r in rows):.1f} '
+          f'under this file own light and '
+          f'{statistics.fmean(r[2] for r in rows):.1f} under the disc rig; '
+          f'{statistics.fmean(r[3] for r in rows):.3f} of the lit pixels moved')
     return 0
 
 
@@ -786,10 +1169,12 @@ def paint(frame: Frame, cam: Camera, tris, shade: float = 1.0) -> int:
     model, no texture and no material. This is what puts the rasteriser on
     trial by itself."""
     n = 0
+    flat = (shade, shade, shade)
     for a, b, c in tris:
         va, vb, vc = cam.view(a), cam.view(b), cam.view(c)
-        n += triangle(frame, cam, ((va, (0.0, 0.0)), (vb, (0.0, 0.0)),
-                                   (vc, (0.0, 0.0))), None, shade, False)
+        n += triangle(frame, cam, ((va, (0.0, 0.0), flat),
+                                   (vb, (0.0, 0.0), flat),
+                                   (vc, (0.0, 0.0), flat)), None, OPAQUE)
     return n
 
 
@@ -838,7 +1223,8 @@ def cmd_minimap(root, want='*') -> int:
             path, m = _stage_ground(root, name)
             g = Frame(w, h)
             gcam = Camera.overhead(w, h, s, ox, oy, top=top)
-            render(g, gcam, m, Library(path.parent))
+            render(g, gcam, m, Library(path.parent),
+                   rig=Rig.of_stage(root, name), category='st')
             iou_model = stagemod.overlap(mask, g.mask())
         except SystemExit:
             pass
@@ -881,6 +1267,8 @@ def main() -> int:
         return cmd_check(*rest)
     if cmd == 'minimap':
         return cmd_minimap(*rest)
+    if cmd == 'light':
+        return cmd_light(*rest)
     if cmd == 'convention':
         return cmd_convention(*rest)
     print('unknown command: ' + cmd)
