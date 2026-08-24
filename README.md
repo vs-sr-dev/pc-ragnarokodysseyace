@@ -10,7 +10,35 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-27 (2026-08-24). **It is drawn, and the light is the game's.** A
+Sessions 1-28 (2026-08-24). **A quest pays out, and the column is the draw.**
+A quest finishes and hands over what it owes: zeny, and a draw against the
+odds its own tables carry. The reading that made it possible had been sitting
+in `item_reward.bin` all along and looked like a leftover - a block holds
+three rows or forty-eight and the count tracks nothing. It tracks nothing
+because **a row is not a unit**. Ten slots of sixteen bytes are ten
+*columns*, and the entries down one column are alternatives with a single
+distribution between them: **4,022 of 4,022 columns sum to at most 10,000**,
+against 244 of 644 for the grouping this repository had before. Two more
+files fall to the same shape - `it_drop_db_<id>.bin`, 579 tables that were
+only ever a join target, where **all 1,930 gated columns sum to exactly
+10,000**, and the endless dungeon's own copy of the record. That is
+[milestone 7](docs/milestone_reward.md), *"a quest pays"* -
+[`engine/purse.py`](engine/purse.py). Driving all 431 quests again, **179 of
+them paid 568,871 zeny and 2,762 items of 279 kinds**, and the five numbers
+milestone 5 published - 252 stage lists walked, 229 arenas started, 210
+closed by the script, 1,534 kills - came back unchanged.
+
+**And the game checks the answer in English.** Every material's encyclopedia
+entry ends in `{{Dropped by}}` and a monster or `{{Acquired from}}` and a
+place, on **411 of 411**; `dc_db_monster.bin`'s second word is the same
+twelve-bit monster id the quest tables use, which gives 82 monsters a name.
+Run the tags against the tables and **47 of 47** materials the game calls a
+quest reward are in an `item_reward.bin`, and **292 of 298** materials it
+says a monster drops are given by that monster. It also corrected something:
+a region reward's block id is not a solo/multiplayer bit but **the monster's
+difficulty tier**, in the numbering its own JSON keys use, on 194 of 194.
+
+**Before that, it is drawn, and the light is the game's.** A
 `CMDL` comes out of the engine as a picture - Loki with his gold and teal
 plumage and six eyes down the wings, the warrior posed by `msw213run` at
 frame 12 in a running stride, and `q00101`'s opening field seen from the
@@ -272,7 +300,14 @@ quest catalog    ->      431 quests named       tools/reward.py 0 errors
   the join       ->      431 chapter rows naming 431 pacs, and nothing else
   the objectives ->      553 of 553 naming a monster directory
   what it pays   ->   38,018 of 38,025 reward ids naming an it_db row
+  the draw       ->    4,022 of 4,022 reward columns summing under 10,000
   the scenery    ->    3,770 of 3,771 crates on a marker of their own stage
+drop tables      ->      579 it_drop_db       tools/reward.py 0 errors
+  the grid       ->    4,369 of 4,369 columns carrying a kind at the head
+  the gate       ->    1,930 of 1,930 gated columns summing to exactly 10,000
+  the items      ->   26,237 of 26,251 ids naming an it_db row
+the encyclopedia ->      411 of 411 materials with a tagged source
+  the check      ->       47 of 47 quest rewards, 292 of 298 monster drops
 monster AI       ->      228 files, 6,550 rules tools/ai.py     0 errors
   action tables  ->    3,269 groups, 19,707 weighted actions
   condition terms->       66 of 76 named, 27,862 of 29,100 instructions
@@ -364,7 +399,8 @@ ends in a ledger of what is still missing. What running it produced is in
 [milestone 1](docs/milestone_numbers.md), [milestone
 2](docs/milestone_stage.md), [milestone 3](docs/milestone_fight.md),
 [milestone 4](docs/milestone_player.md), [milestone
-5](docs/milestone_quest.md) and [the
+5](docs/milestone_quest.md), [milestone 6](docs/milestone_draw.md),
+[milestone 7](docs/milestone_reward.md) and [the
 pose](docs/pose.md), which
 now covers the hit volume as well as the foot. The
 plan is in

@@ -1,6 +1,6 @@
 # PC-ROA — strategy
 
-*Aligned to the end of session 27 (2026-08-24). Detail and priorities live in
+*Aligned to the end of session 28 (2026-08-24). Detail and priorities live in
 [`TODO.md`](TODO.md); this document is the frame.*
 
 Goal: a **native PC reimplementation** of *Ragnarok Odyssey ACE*, the PS3
@@ -77,7 +77,8 @@ Phase 3.
 |---|---:|---|---|
 | `ECH` tables | 4,941 | ✅ **solved** | [`format_ech.md`](format_ech.md) — 58,534 rows, string pools, inferred column types |
 | quest tables | 1,719 | ✅ **read** | [`format_quest.md`](format_quest.md) — the four tables of a quest `.pac`, and which monster comes out of which spawner |
-| quest catalog & rewards | 1,597 | ✅ **read** | [`format_reward.md`](format_reward.md) — `chapter.bin` names all 431 quests, and eight more tables say what one pays |
+| quest catalog & rewards | 1,597 | ✅ **read** | [`format_reward.md`](format_reward.md) — `chapter.bin` names all 431 quests, eight more say what one pays, and the column is the draw |
+| drop tables | 579 | ✅ **read** | [`format_reward.md`](format_reward.md) — `it_drop_db_<id>.bin`, the same grid: 4,369 of 4,369 columns, 1,930 of 1,930 gates |
 | `TXT` text | 76 | ✅ **solved** | [`format_rmsg.md`](format_rmsg.md) — 25,288 messages, pairs positionally with the tables |
 | `.json` params | 89 | ✅ **read** | [`params.md`](params.md) — 1,069 records; the stagger model, the difficulty tiers, and one movement model shared by all six classes |
 | `CTEX` texture | 11,536 | ✅ **solved** | [`format_ctex.md`](format_ctex.md) — five pixel formats, mip chains, Morton swizzle |
@@ -212,6 +213,12 @@ written by different tools, agreeing on a division of labour neither states:
 a stage is lit once into its vertices, an actor is lit as it moves. See
 [`lighting.md`](lighting.md).
 
+**Session 28 gave the quest loop its far end.** A quest finished and handed
+back nothing, and what it should hand back was drawn against the odds its own
+tables carry - once the tables were read down instead of across. `purse.py`
+is the tenth engine module and the smallest: the reading is the work.
+See [`milestone_reward.md`](milestone_reward.md).
+
 The shape of the rest is settled: a data-driven engine whose
 tables come from `ECH`, whose display text comes from `TXT`, whose actor
 parameters come from the JSON, and which hosts that VM. All four sources are
@@ -344,6 +351,28 @@ Three things came out of it that reading could not produce:
   doing as well — and the hunter, which fires nothing off a weapon bone at
   all, is matched instead by `ht_arrow_tbl`, whose commonest flight covers
   21.3 m against a `cmb_hmg_search_radius` of 20.
+
+### 7. "A quest pays" — ✅ **reached, session 28**
+
+A quest finishes and hands over zeny and a draw against its own tables, and a
+part broken off a monster pays what the quest says that part pays. The report
+is [`milestone_reward.md`](milestone_reward.md).
+
+Three things came out of it that reading alone had not produced:
+
+- **the column is the draw.** `item_reward.bin`'s row count had tracked
+  nothing because a row is not a unit: ten slots are ten columns, the entries
+  down one are alternatives, and **4,022 of 4,022 columns sum to at most
+  10,000** against 244 of 644 for the grouping this project had before. The
+  same shape reads `it_drop_db_<id>.bin` - 579 tables that were only a join
+  target - and the endless dungeon's own copy;
+- **the region reward's block id is the monster's difficulty tier**, not the
+  solo/multiplayer bit this project had written down. 194 of 194 monster
+  blocks name tiers the monster's own JSON declares, in the numbering
+  [`params.md`](params.md) read a session earlier;
+- **the game's encyclopedia is a third source and it agrees.** 411 of 411
+  materials carry a `{{Dropped by}}` or `{{Acquired from}}` tag; 47 of 47
+  quest rewards and 292 of 298 monster drops land where the tables put them.
 
 ### 6. "It is drawn" — ✅ **reached, session 26**, lit from the disc in 27
 

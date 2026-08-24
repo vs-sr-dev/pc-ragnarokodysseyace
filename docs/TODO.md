@@ -7,120 +7,115 @@
 
 # Next session
 
-Session 27 lit the frame **out of the disc**. The report is
-[`lighting.md`](lighting.md), beside the six milestone documents. What to
-carry:
+Session 28 gave the quest its pay-out, and the reading it needed had been in
+the file all along. The report is [`milestone_reward.md`](milestone_reward.md),
+the seventh milestone, and the format work is in
+[`format_reward.md`](format_reward.md). What to carry:
 
-- **the stage declares its own lights and names them.** `stageparam.bin`'s
-  `stage_param` is a lighting rig: an ambient and up to two directionals per
-  *category*, and the categories are `ch` a character, `mc` the main
-  character, `bm` a background model, `np` an NPC, `st` the stage. Over 154
-  stages the name prefix and the category byte agree on **1,491 of 1,497
-  lights**, and the six that do not are five second ambients and one slip;
-- **the stage has no directional light at all, on any of the 154**, and that
-  absence *is* the lighting model. The geometry says the same thing from the
-  other side: **every mesh outside `stage.cpk` carries a normal lane and 94 %
-  of `stage.cpk` carries a baked vertex colour instead.** A stage is lit once
-  into its vertices, an actor is lit as it moves;
-- **`CMDL`'s four-byte attribute at layout byte 2 is that bake**, which closes
-  an open item that had been open since session 5. Bit 2 of the vertex type
-  and the layout byte agree on 15,833 of 15,833; the fourth byte is `0xff` on
-  5,076,882 of 5,412,488 vertices; and it is *smooth in space* against a
-  control - the mean luminance step across a triangle edge is **20.61**
-  against **38.88** between two random vertices of the same mesh, and the
-  edge is the smaller on **228 of 232 models**;
-- **`0x80` is unity in every colour lane, not `0xff`.** The rig is normalised:
-  ambient plus key lands at a median of 1.06 over 442 (category, stage) pairs
-  and the stage's ambient at 0.90, so a `0x808080` diffuse over a `0x808080`
-  bake has to come out at one and not at a quarter;
-- **the blend mode is byte 0 of the material's `+0x04`** - 1 opaque, 0 alpha,
-  2 additive - and three sources agree on it: the byte, the material name
-  (`_non_` 1,114 of 1,120, `_alp_` 15 of 15, `_add_` 7 of 7) and the texture
-  (38 % of an additive material's texels are black and opaque, against 6 %
-  and 8 %);
-- **a normal is carried by the inverse transpose**, which `cmdl.py` had never
-  had to do, and the posed geometry says so with the obvious mistake as the
-  control: posed by their own `CNOM`, a triangle's three vertex normals sit a
-  median of **14.89 deg** from the way the posed triangle faces against
-  **71.73 deg** left in the rest pose;
-- **the dark disc over `010_01_01` was a lens flare.** Not a heap of tree
-  trunks and not near the origin: `renz_frea_01..03`, drawn as opaque black
-  because there was one blend mode. `renz` is レンズ.
+- **the column is the draw and a row is one of its alternatives.** Ten slots
+  of sixteen bytes are ten columns, and grouping a block's entries by
+  `(column, kind)` — kind 4 split further by the class it names — **4,022 of
+  4,022 columns of `item_reward.bin` sum to at most 10,000** and 561 to
+  exactly it, against **244 of 644** for the grouping this document had
+  before. That closes "what an `item_reward.bin` row is", open since session
+  25, and it makes the six rows of class weapons at the foot of a block one
+  column offering one weapon per class — 397 of the 564 weapon columns;
+- **`it_drop_db_<id>.bin` is the same grid**, eight columns wide, and it was
+  only ever a join target. 579 tables, **4,369 of 4,369 columns carry their
+  kind in the top entry and not one repeats it below**, and a column whose
+  top entry names no item is a **gate**: **all 1,930 of those sum to exactly
+  10,000 underneath it**, all 2,439 ungated ones to at most 10,000, and
+  26,237 of 26,251 ids name an `it_db` row — the fourteen that do not are the
+  ten quest items;
+- **the region id is the monster's difficulty tier, not a multiplayer bit.**
+  0/1, 10/11, 20/21 … 250/251, and **194 of 194 monster blocks name tiers
+  that monster's own JSON declares** — the keys [`params.md`](params.md)
+  reads, where the odd member is the same monster at a higher `region_lv`
+  with `hp` ×1.5. The pair pays better on the odd side because it is harder,
+  not because it is multiplayer. The endless dungeon writes 100, 101, 110,
+  111 in the same field;
+- **the encyclopedia says in English where a thing comes from, and it
+  agrees.** 411 of 411 materials carry a `{{Dropped by}}` or
+  `{{Acquired from}}` tag, `dc_db_monster.bin`'s second word is the same
+  twelve-bit monster id, and **47 of 47** "Quest Reward" materials are in an
+  `item_reward.bin` while **292 of 298** materials a named monster drops are
+  given by that monster. The six misses are the text naming a family where
+  the table names a variant;
+- **four things pay now** — the quest finishing, a part breaking off, a
+  monster dying, and `cfAddItem`, which was a recorder. Over the disc, **179
+  quests paid 568,871 zeny and 2,762 items of 279 kinds**, and the five
+  numbers milestone 5 published came back to the digit. **One of the four
+  never fired**: not a part came off in 431 quests, because of the 83
+  monsters the quests field the **23 that carry a `region_data_brk` record
+  are all bosses**, and a boss does not stand inside a `piecelock` arena. It
+  wants a boss fight, and before that item 3. Two numbers are
+  declared policy (`BREAKS`, and drawing kind 0) and a third only looks like
+  one: on the catalog's own progress **no quest reaches its second reward
+  block**, because of the 22 two-block quests that grant a progress value,
+  **17 have their second block at exactly that value**. The later block is
+  what a replay pays.
 
-The renderer regression is clean: **1,127 of 1,127 models still draw**, 2
-blank, 9,095 of 9,304 draw calls still find their texture, and the two
-rasterisers still agree to the digit - median 0.797 against `stage.py`'s
-0.805, differing by 0.0050 and never by more than 0.0300.
+### 1. The effects now have a consumer that can show them.
 
-And there is one number that says the picture is not finished. `st_amb_1` is
-white at 0.9 on **all 154 stages**, so all the variation between one stage's
-brightness and another's is in the bake - and rendered, **29 of 124 stages
-come out below a mean luminance of 15**. Something is carrying part of those
-pictures that this renderer does not draw, and the candidate is the one thing
-in `stage_param` still unused: the fog. See item 3 below.
+`.PTP` and `effect.bin` have been read for six sessions with nothing able to
+draw them. The renderer has additive blending and a draw order, which is
+exactly what an effect needs, and [`format_ptp.md`](format_ptp.md)'s
+`(category, slot)` pair, the 69 `effect.bin` tables and `.mkc`'s emitter — a
+locator on the body — all have somewhere to go. It has a reading item
+attached: **which `.anmcmd` opcode spawns one**, which is item 6 below.
 
-### 1. Give the arena its pay-out.
+### 2. Two lanes the renderer still ignores, both declared.
 
-Unchanged for three sessions and now the best-posed engine item by some
-distance. [`mission.py`](../engine/mission.py) closes 210 of 229 arenas and
-hands back nothing; [`format_reward.md`](format_reward.md) has the tables.
-When a lock ends, walk `item_reward.bin`'s block and draw against the
-chances; when a part breaks, draw `item_reward_region.bin`'s slot for it. It
-is the first thing here that exercises a chance table rather than a lookup,
-and it gives the 431 quests a sharper measurement than "the arena closed":
-*what came out*.
-
-### 2. The effects now have a consumer that can show them.
-
-`.PTP` and `effect.bin` have been read for five sessions with nothing able to
-draw them. This is the session to try: the renderer has additive blending and
-a draw order, which is exactly what an effect needs, and
-[`format_ptp.md`](format_ptp.md)'s `(category, slot)` pair, the 69
-`effect.bin` tables and `.mkc`'s emitter - a locator on the body - all have
-somewhere to go. It also has a reading item attached: **which `.anmcmd` opcode
-spawns one**, which is item 7 below.
-
-### 3. Two lanes the renderer still ignores, both declared.
-
-- **vertex alpha.** The bake's fourth byte is not always `0xff` - 6 % of
-  vertices carry something else, and `010_01_01`'s `mizuumi_kiwa` uses it on
-  127 of its 237 vertices, which is a lake edge fading out. The rasteriser
-  interpolates three channels and would have to interpolate four;
 - **fog.** Every stage declares one to three fog records and none is drawn.
   The colour and the near/far are legible; the density word is not a float on
   every stage, so the mode byte selects something and nobody knows what.
-  **This is the likelier of the two to change a picture**: the 29 stages that
-  render nearly black are the dark ones, and `170_01_01` declares two fogs of
-  a warm brown at full strength, which in a cave is not haze but light.
+  **This is the likelier of the two to change a picture**: 29 of 124 stages
+  render below a mean luminance of 15, `st_amb_1` is white at 0.9 on all 154
+  so the darkness is all in the bake, and `170_01_01` declares two fogs of a
+  warm brown at full strength, which in a cave is not haze but light;
+- **vertex alpha.** The bake's fourth byte is not always `0xff` — 6 % of
+  vertices carry something else, and `010_01_01`'s `mizuumi_kiwa` uses it on
+  127 of its 237 vertices, which is a lake edge fading out. The rasteriser
+  interpolates three channels and would have to interpolate four.
 
-### 4. The walk is still the weak half.
+### 3. The walk is still the weak half.
 
-252 of the 431 quests walked their whole stage list and 125 runs end with *the
-body stopped walking*. That is this repository's steering and not a reading,
-and it is what stands between 210 arenas closed and the 25 of 131
-arena-bearing quests that finish end to end. The navigation mesh from session
-24 (`world.py graph`, `path`, `nearest_triangle`) is the instrument and
-nothing has been tuned against it. **And it can be drawn** - a path over a
-top-down render is a picture that says where the steering gives up.
+This is the oldest unmoved item and it now gates the newest one: a pay-out is
+only as good as the quests that reach it. 252 of the 431 quests walked their
+whole stage list and 125 runs end with *the body stopped walking*. That is
+this repository's steering and not a reading. The navigation mesh from
+session 24 (`world.py graph`, `path`, `nearest_triangle`) is the instrument
+and nothing has been tuned against it. **And it can be drawn** — a path over
+a top-down render is a picture that says where the steering gives up.
 
-### 5. The three entries beside `s_combo_graph`.
+### 4. The three entries beside `s_combo_graph`.
 
 Unchanged and still the cheapest well-posed reading item. `s_combo_finish_inf`
 (132 bytes on the warrior), `s_just_combo_inf` (8) and `s_combo_motA` (64) sit
 in the same `objbin.bin` and none is read. A finisher is a node with no
 outgoing edge, and a just window is a byte pair on an edge.
 
-### 6. A generator's counts and timers, now that one runs.
+### 5. A generator's counts and timers, now that one runs.
 
 `enemy_gen.bin` `+0x14`, `+0x18`, `+0x20`, `+0x24`, `+0x28` and `+0x30`.
 `+0x28`'s `k` is 0, 5, 10, 15, 30, 60 or 90 — halves and multiples of a second
 at 30 fps — and a respawn delay is testable the moment a monster can die.
 
-### 7. The `.anmcmd` opcodes.
+### 6. The `.anmcmd` opcodes.
 
 Thirty of fifty-two, with two consumers that want particular ones: which
 opcode spawns a projectile and which `ht_arrow_tbl` row it names, and what
-turns a weapon trail on. Item 2 above wants the first of those.
+turns a weapon trail on. Item 1 above wants the first of those.
+
+### 7. The endless dungeon, which is now half-read for free.
+
+`yggdrasill.cpk`'s twenty tables include **the same three reward records** —
+`yggdrasill_reward_item.bin` is the sixteen-byte entry under a head one word
+wider, and 277 of 277, 278 of 278 and 326 of 326 of its columns already fit
+the reading. The head's first word descends 176, 152, 127, 102, 77, 52 down
+the file, which is a floor number. The other seventeen tables — the floors,
+the monster sets, the fever mechanic — are unopened, and the tower is 170 of
+the stage list the quests already walk.
 
 ### Then
 
@@ -132,7 +127,8 @@ turns a weapon trail on. Item 2 above wants the first of those.
    and `+0x2c`. See [`format_cmdl.md`](format_cmdl.md).
 9. **The player's base defence and hit points**,
    [`combat_loop.md`](combat_loop.md) ledger item 2 — the level-up tables
-   `it_db_myorder*.bin` are the next place to look.
+   `it_db_myorder*.bin` are the next place to look, and `reward.py sources`
+   now names them as where six materials come from.
 10. **`se_hitlevel_tbl`'s third word**, 0 to 8 per class and not
     `it_db_weapon.bin` column 5.
 11. **`stageparam.bin` past its lights**: `shadow_param`, and the two unnamed
@@ -144,6 +140,13 @@ turns a weapon trail on. Item 2 above wants the first of those.
     that is settled rather than assumed.
 13. **The `CCLS` surface codes 1 to 13.** The navigation mesh walks a body
     over hundreds of them in a row, which is a second way in.
+14. **What picks between reward kinds 0, 2 and 3**, and what an `it_drop_db`
+    column's kind is. The three reward kinds are three versions of one column
+    - the same items, rarer, in bigger stacks - and nothing says which one a
+    run gets. In the drop tables, kinds 1, 3 and 5 gate and 0, 2, 4 and 8 do
+    not, and `prob_silver` and `prob_gold` sit next to `it_drop` in the
+    monster JSON without a reader.
+
 ---
 
 ## Deferred, with reasons
@@ -203,13 +206,14 @@ turns a weapon trail on. Item 2 above wants the first of those.
   [`format_reward.md`](format_reward.md),
   [`format_quest.md`](format_quest.md) and
   [`milestone_quest.md`](milestone_quest.md).
-- The reward tables' own leftovers: **what kinds 0, 2 and 3 of a reward entry
-  separate**, and what kind 2's round number (0 to 300 in tens) is a
-  percentage of — kind 4 is settled and is a player class; **what an
-  `item_reward.bin` row is**, since its count tracks neither the quest's
-  stages nor its monsters nor its generators; the **region group id**, 0..7
-  and 20..25 once the solo/multi digit is removed, which is not the broken
-  part and does not track the quest's rank; `chapter.bin`'s three bytes at
+- The reward tables' own leftovers: **what picks between kinds 0, 2 and 3 of
+  a reward entry**, and what kind 2's round number (0 to 300 in tens) is a
+  percentage of — kind 4 is settled and is a player class, and what the three
+  *are* is settled too: three versions of one column. **What an
+  `item_reward.bin` row is** is settled — one alternative of each column, and
+  the column is the draw. **The region group id** is settled — it is the
+  monster's difficulty tier, 194 of 194. What is left is `chapter.bin`'s
+  three bytes at
   `+0x15` and its `+0x03` and `+0x0f`; `weapon_decost.bin`'s four numbers,
   twice, with only six distinct rows on the disc; and `destructible.bin`'s two
   lanes that hold the number 50 on 3,642 rows and a **string** on the rest —
