@@ -80,6 +80,15 @@ to the pixel in the median.
 
 ### The scale is one number, and the measurement will not pin it closer than a band
 
+A second rasteriser reproduces it. [`engine/draw.py`](../engine/draw.py)
+renders **the same collision triangles** under **the same fitted transform**
+through its own camera and its own inner loop, and returns a median IoU of
+**0.797** against the 0.805 below - per stage the two differ by a median of
+0.005 and never by more than 0.030, with the masks themselves agreeing at
+0.964. That is what says this transform, and the `+z`-runs-down sign it took a
+measurement to establish, are the camera and not a fit. See
+[`milestone_draw.md`](milestone_draw.md).
+
 `python tools/stage.py minimap extract/tree/stage.cpk`, 135 stages:
 
 ```

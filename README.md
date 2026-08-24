@@ -10,7 +10,30 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-25 (2026-08-24). **A quest finishes itself.** A quest's own tables
+Sessions 1-26 (2026-08-24). **It is drawn.** A `CMDL` comes out of the
+engine as a picture - Loki with his gold and teal plumage and six eyes down
+the wings, the warrior posed by `msw213run` at frame 12 in a running stride,
+and `q00101`'s opening field seen from the spawn marker the quest starts on.
+No GPU, no dependency and no external viewer:
+[`engine/draw.py`](engine/draw.py) is a software rasteriser and a camera in
+500 lines. That is [milestone 6](docs/milestone_draw.md), *"it is drawn"*.
+
+It did what running something here usually does. The first stage drawn came
+out with **nine trees piled on the world origin**, and the cause had been in
+`cmdl.py` since session 5: a rigid mesh's vertices are in its node's own
+space, and the reader was multiplying them by an `Rx(90)` that belongs to the
+inverse bind pose. Nothing had caught it because both models that proved the
+format are *skinned*. Two measurements settle it, each against a file the
+model does not touch - a rigid mesh's centroid lands **0.055 m** from the node
+its own draw call names against 2.2 m either other way, and a stage's visible
+ground agrees with its collision mesh to **0.034 m** against 0.345 m. And the
+camera itself is checked by a rasteriser written seven sessions earlier:
+putting `stage.py`'s own collision triangles under `stage.py`'s own fitted
+transform through this one returns a median minimap overlap of **0.797**
+against the **0.805** already published, differing per stage by a median of
+0.005.
+
+**Before that, a quest finishes itself.** A quest's own tables
 put monsters on a stage, the player kills them, and the quest's own compiled
 script counts the kills and decides the arena is over - then opens the gate it
 closed and lets the run walk on to the next room. Nothing in the engine tells a
@@ -201,6 +224,7 @@ TXT messages     ->       76 files, 25,288 msgs tools/rmsg.py   0 errors
 JSON parameters  ->       89 files,  1,069 recs tools/params.py
 CTEX textures    ->   11,536 files, 5 formats   tools/ctex.py   0 errors
 CMDL geometry    ->    1,127 files, 5.6M tris   tools/cmdl.py   0 errors
+  drawn          ->    1,127 rendered            engine/draw.py
 CNOM motion      ->    3,043 files, 3.0M keys   tools/cnom.py   0 errors
 CCLS collision   ->      155 files, 107k tris   tools/ccls.py   0 errors
 CMTM material    ->       91 files, 1,388 keys  tools/cmtm.py   0 errors
@@ -544,6 +568,17 @@ python engine/player.py parts <tree>               the parts, against their
                                                    own names
 python engine/player.py reach <tree>               the swing against the weapon
 python engine/player.py arrows <tree>              the hunter's flight table
+
+python engine/draw.py model <tree> b17_00.CMDL loki.png   one model, drawn
+python engine/draw.py model <tree> msw2.CMDL run.png msw213run 12
+                                                   ... posed by a CNOM
+python engine/draw.py scene <tree> q00101 arena.png  the arena, from the spawn
+python engine/draw.py top   <tree> 010_01_01 top.png a stage from above
+python engine/draw.py check <tree>                 every model, does it draw?
+python engine/draw.py minimap <tree>               this rasteriser against
+                                                   stage.py's
+python engine/draw.py convention <tree>            which space a rigid mesh
+                                                   is in
 
 python engine/fight.py fight <tree> 010_01_01 AI_Z01_Orc  a monster fights
 python engine/fight.py fights <tree>               every monster, one stage

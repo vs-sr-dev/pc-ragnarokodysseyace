@@ -642,8 +642,17 @@ class Cmdl:
                     and bones[b] in names else node
                 out.append(mul(world[j], inverse))
             return out
-        bind = bind if bind is not None else self.bind()
-        return [mul(world[node], invert(mul(RX90, bind[node])))]
+        # A rigid mesh's vertices are in **its node's own space**, so the
+        # matrix is just that node's world matrix. This used to be
+        # `world * inverse(RX90 * bind)`, and no picture had ever been taken
+        # of the result - the renders that proved the format were skinned
+        # models, which take the branch above. `engine/draw.py convention`
+        # measures the three candidates against two files a model does not
+        # touch: a rigid mesh's centroid lands a median of **0.055 m** from
+        # the node its own draw call names, against 2.2 m either other way,
+        # and a stage's visible ground agrees with its collision mesh to
+        # **0.034 m** against 0.345 m turned.
+        return [world[node]]
 
     def posed(self, m: Mesh, matrices: list[Matrix]) -> list[tuple]:
         """The mesh's vertices under those matrices, weighted."""

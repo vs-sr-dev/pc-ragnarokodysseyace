@@ -7,123 +7,112 @@
 
 # Next session
 
-Session 25 read **the quest catalog and what a quest pays**, which was last
-session's item 1. The write-up is [`format_reward.md`](format_reward.md);
-[`reward.py`](../tools/reward.py) is the reader and `reward.py xref` prints
-all seventeen joins at once. What to carry:
+Session 26 reached **milestone 6**: the engine draws a frame. The report is
+[`milestone_draw.md`](milestone_draw.md), beside the five before it. What to
+carry:
 
-- **`chapter.bin` is the catalog and the join is one byte pair.** 711 rows,
-  431 of them a quest and 280 a continuation; the chapter and index bytes name
-  `q0<chapter><index>` on **431 of 431**, and the 431 pacs are each named
-  exactly once. A closed bijection. With it a quest has a title, a client, a
-  briefing, a place, a rank, a time limit, a zeny reward and its objectives;
-- **the objective is the same twelve-bit monster field `enemy.bin` uses** —
-  553 of 553 name a `monster.cpk` directory, low nibble zero on all of them —
-  or one of exactly ten quest items, against `it_db_name_quest.rmsg`'s exactly
-  ten messages;
-- **38,018 of the 38,025 reward item ids name an `it_db_*` row**, and every
-  one of the seven that do not carries item id 0. The `it_db` bands are
-  disjoint, so one dictionary of 4,210 ids covers weapons, materials, cards
-  and bottles alike;
-- **the entry's byte 7 is a selector, and it is proved twice.** On an
-  `item_reward` entry, kind 4 makes the next word a *player class*, and the
-  weapon's own `it_db_weapon.bin` column 5 agrees on **822 of 822**. On an
-  `item_reward_region` entry it is *which broken part*, and the set of values
-  per block is exactly the monster's `region_data_brk` list — a different
-  container, a different reader — on **298 of 298**;
-- **`destructible.bin` fills the `obj*` markers**, which
-  [`format_stage.md`](format_stage.md) had had open since session 14: 3,770 of
-  3,771 rows name a marker of their own stage and say a crate, a barrel or a
-  pot stands on it, and 3,707 name the `it_drop_db` table it drops;
-- **`mapexception.bin` is the route override** the `170_*` floors' `MapJump()`
-  branches on, and **`enemy_ref.bin` is `changeEnemySet`'s index** — 137 of
-  137 generators, and every table it names is a file the same pac ships.
+- **`engine/draw.py` is a software rasteriser**, 500 lines, no GPU and no
+  dependency. `model`, `scene`, `top`, `stage`, `check`, `minimap` and
+  `convention`. A `CMDL` comes out as a picture: Loki with his plumage, the
+  warrior posed by `msw213run`, and `q00101`'s opening field seen from the
+  spawn marker;
+- **a rigid `CMDL` mesh's vertices are in its node's own space**, and
+  `skin_matrices` was multiplying them by an `Rx(90)` that belongs to the
+  inverse bind pose. Two measurements, two orders of magnitude: a rigid mesh's
+  centroid lands **0.055 m** from the node its own draw call names against
+  2.2 m either other way, and a stage's visible ground agrees with its
+  collision mesh to **0.034 m** against 0.345 m. Fixed in `cmdl.py`. Nothing
+  had caught it because both models that proved the format are *skinned*;
+- **the camera is right and a seven-session-old rasteriser says so.**
+  `draw.py minimap` puts `stage.py`'s own collision triangles under
+  `stage.py`'s own fitted transform through this camera and this inner loop:
+  median IoU **0.797** against the published **0.805**, per-stage difference a
+  median of 0.005 and never above 0.030, masks agreeing at 0.964;
+- **the minimap follows the collision mesh and not the art** — the stage
+  model seen from a floor camera scores 0.169, because a player can see
+  ground they cannot stand on.
 
-### 1. Give the arena its pay-out.
+### 1. Light it, out of the disc rather than out of `draw.py`.
 
+The shading is this file's own: a face normal, one directional light, ambient,
+flat. Two things on the disc would replace it and both are one lane each —
+the **normal lane** a mesh already declares (`layout[1]`, present exactly when
+the position sits twelve bytes past it) and the **three RGBA words at material
+`+0x08`**, which [`format_cmdl.md`](format_cmdl.md) lists as open and which
+`808080ff` / `000000ff` dominate. A normal has to be skinned by the inverse
+transpose, which is the one piece of matrix work `cmdl.py` does not do yet.
+This is the cheapest item and it is the difference between a diagram and a
+render.
+
+### 2. Give the arena its pay-out.
+
+Unchanged from last session and still the best-posed engine item.
 [`mission.py`](../engine/mission.py) closes 210 of 229 arenas and hands back
-nothing. The tables are now read, so the missing piece is the *roll*: when a
-lock ends, walk `item_reward.bin`'s block for the player's progress and draw
-against the chances, and when a part breaks draw `item_reward_region.bin`'s
-slot for it. That turns the milestone-5 run into a run with a results screen,
-and it is the first thing here that will exercise a chance table rather than a
-lookup. It also gives the 431 quests a second, sharper measurement than
-"the arena closed": *what came out*.
+nothing; [`format_reward.md`](format_reward.md) now has the tables. When a
+lock ends, walk `item_reward.bin`'s block and draw against the chances; when a
+part breaks, draw `item_reward_region.bin`'s slot for it. It is the first
+thing here that exercises a chance table rather than a lookup, and it gives
+the 431 quests a sharper measurement than "the arena closed": *what came out*.
 
-### 2. The walk is still the weak half.
+### 3. Three things the first frame left visibly wrong.
 
-Unchanged from last session and still the thing between 210 arenas closed and
-the 25 of 131 arena-bearing quests that finish end to end. 252 of the 431
-quests walked their whole stage list and 125 runs end with *the body stopped
-walking*. That is this repository's steering and not a reading. The navigation
-mesh built in session 24 (`world.py graph`, `path`, `nearest_triangle`) is the
-instrument; nothing has been tuned against it yet.
+A picture is a bug report, which is most of why it was worth taking:
 
-### 3. The three entries beside `s_combo_graph`.
+- **`010_01_01` still has a heap of tree trunks near the origin.** The nine
+  `small_tree_*` nodes came right when the convention did; whatever is left is
+  a different node and has not been identified. Draw it and find out;
+- **alpha is a test and not a blend**, so grass and tree cards are cut-outs
+  with hard edges. A material name carries `_alp_` or `_non_` and that is the
+  whole of what `draw.py` knows about it;
+- **there is no draw order.** The list is walked as it comes, which is right
+  for opaque geometry with a z-buffer and wrong for anything transparent.
+
+### 4. The walk is still the weak half.
+
+252 of the 431 quests walked their whole stage list and 125 runs end with *the
+body stopped walking*. That is this repository's steering and not a reading,
+and it is what stands between 210 arenas closed and the 25 of 131
+arena-bearing quests that finish end to end. The navigation mesh from session
+24 (`world.py graph`, `path`, `nearest_triangle`) is the instrument and
+nothing has been tuned against it. **And now it can be drawn** — a path over a
+top-down render is a picture that says where the steering gives up.
+
+### 5. The effects have a consumer at last.
+
+`.PTP` and `effect.bin` have been read for four sessions with nothing able to
+show them. [`format_ptp.md`](format_ptp.md)'s `(category, slot)` pair, the 69
+`effect.bin` tables and `.mkc`'s emitter — a locator on the body — now have
+somewhere to go. Not a reading item: a *drawing* one.
+
+### 6. The three entries beside `s_combo_graph`.
 
 Unchanged and still the cheapest well-posed reading item. `s_combo_finish_inf`
 (132 bytes on the warrior), `s_just_combo_inf` (8) and `s_combo_motA` (64) sit
-in the same `objbin.bin` and none of them is read. They are the rest of the
-combo machinery, they are small, and the graph gives them a frame: a finisher
-is a node with no outgoing edge, and a just window is a byte pair on an edge.
+in the same `objbin.bin` and none is read. A finisher is a node with no
+outgoing edge, and a just window is a byte pair on an edge.
 
-### 4. A generator's counts and timers, now that one runs.
+### 7. A generator's counts and timers, now that one runs.
 
 `enemy_gen.bin` `+0x14`, `+0x18`, `+0x20`, `+0x24`, `+0x28` and `+0x30`.
 `+0x28`'s `k` is 0, 5, 10, 15, 30, 60 or 90 — halves and multiples of a second
-at 30 fps — and a respawn delay is testable the moment a monster can die,
-because a wave that respawns and a wave that does not reach the script's
-threshold at different times or not at all. Beside it, the 91 rows where the
-population is double the generator count.
-
-### 5. The `.anmcmd` opcodes, with two questions that name their own answer.
-
-Thirty of fifty-two are unread, and two consumers want particular ones:
-
-- **which opcode spawns a projectile and which `ht_arrow_tbl` row it names.**
-  42 rows, 15 distinct flights, and no join from a list to a row;
-- **what turns a weapon trail on.** A weapon carries three `par_tbl` records
-  and one `ref_tbl` entry to hang them on, so something outside the file picks
-  between them. See [`format_mkc.md`](format_mkc.md) for the six `.mkc`
-  opcodes still open, each with a file set that says something.
-
-Session 17's lesson still applies: a selector byte inside a payload changes
-what the rest of it means, and counting occurrences never sees that. Session
-25 hit it twice more — the reward entry's byte 7, and `destructible.bin`'s two
-lanes that hold the number 50 on 3,642 rows and a *string* on the rest.
-
-### 6. The player's *base* defence and hit points.
-
-[`combat_loop.md`](combat_loop.md) ledger item 2, unchanged and still the one
-gap in the loop that may not need the binary. The modifier side is read and
-named — `DEF` is ability 1 of `it_db_ability.bin` and `MAX HP` is ability 3 —
-and `it_db_equip.bin` is costumes, not armour. The level-up tables
-(`it_db_myorder*.bin`) are the next place to look, and `reward.py`'s id
-dictionary now reaches them.
-
-### 7. Draw it.
-
-`hitbox.py obj` writes a frame as Wavefront OBJ — bones, body capsules and hit
-volumes together. Nobody has looked at one yet, and there is an *arena* to
-take the picture of: eight bodies, a fence that went up around them, and the
-navigation mesh under all of it.
+at 30 fps — and a respawn delay is testable the moment a monster can die.
 
 ### Then
 
-8. **`se_hitlevel_tbl`'s third word**, 0 to 8 across the fifteen player
-   entries and per class rather than global — what a weapon or a skill
-   declares to pick its cue block, and *not* `it_db_weapon.bin` column 5.
-   `it_db_skill.bin` is the obvious other side.
-9. **The last two `ELBN` populations.** `stageparam.bin` is 154 files and only
-   its lights are read; `mot_param.bin` is 60 and only its motion id is.
-10. **Where the minimap's scale is declared.** Session 19 measured the
-    transform — see [`format_stage.md`](format_stage.md) — and it is not in
-    `stageparam.bin`. The scale is a band, 1.31 to 1.33 px/m.
-11. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
-    `+0x0a`. Bit fields; the obvious reading is a space or follow mode.
-12. **The `CCLS` surface codes 1 to 13**, and the pose layer says where a foot
-    is, so the triangle under it is a lookup away. The navigation mesh now
-    walks a body over hundreds of them in a row, which is a second way in.
+8. **The `.anmcmd` opcodes**, thirty of fifty-two, with two consumers that
+   want particular ones: which opcode spawns a projectile and which
+   `ht_arrow_tbl` row it names, and what turns a weapon trail on.
+9. **The player's base defence and hit points**,
+   [`combat_loop.md`](combat_loop.md) ledger item 2 — the level-up tables
+   `it_db_myorder*.bin` are the next place to look.
+10. **`se_hitlevel_tbl`'s third word**, 0 to 8 per class and not
+    `it_db_weapon.bin` column 5.
+11. **The last two `ELBN` populations**: `stageparam.bin` past its lights,
+    `mot_param.bin` past its motion id.
+12. **Where the minimap's scale is declared.** The band is 1.31 to 1.33 px/m
+    and it is not in `stageparam.bin`.
+13. **The `CCLS` surface codes 1 to 13.** The navigation mesh walks a body
+    over hundreds of them in a row, which is a second way in.
 
 ---
 
@@ -323,6 +312,39 @@ navigation mesh under all of it.
 ---
 
 # Log
+
+## Session 26 - 2026-08-24
+
+Milestone 6, written up in [`milestone_draw.md`](milestone_draw.md). What is
+here is what did not fit in the report.
+
+- **The first frame was a bug report.** `010_01_01` drew with nine trees piled
+  on the world origin, which is the signature the docs had warned about since
+  session 5 - *"a wrong pairing dragging limbs towards the origin"* - and it
+  had been sitting in `cmdl.py` the whole time. The `Rx(90)` in
+  `skin_matrices` is real for the *inverse bind matrices*, where
+  `cmdl.py check` confirms it on 872 of 931; it had been carried into the
+  branch rigid meshes take, which no picture had ever been taken of because
+  both models that proved the format are skinned.
+- **The fix was decided by measurement and not by looking.** `draw.py
+  convention` scores three candidate transforms against two files a model does
+  not touch, and `world[node]` wins both by two orders of magnitude: 0.055 m
+  from a rigid mesh's own node against 2.2 m, and 0.034 m between a stage's
+  visible ground and its collision mesh against 0.345 m.
+- **A second rasteriser is a cheap oracle.** `stage.py` has been rasterising
+  triangles since session 19 for the minimap fit, so `draw.py` had something
+  to be checked against on day one: same triangles, same fitted transform,
+  median IoU 0.797 against a published 0.805, per-stage difference a median of
+  0.005. That is the whole camera - projection, pixel mapping and the `+z`
+  down sign - checked without a single new fact about the disc.
+- **What the ortho near plane is for.** A stage model drawn from directly
+  above is entirely sky: the dome is the tallest thing in every file. Hanging
+  the camera half a metre over the collision mesh and letting the near plane
+  cut everything above it is not a filter, it is how a minimap camera is
+  mounted, and it is what turns the top-down render into a map.
+- **The renderer is fast enough to be used.** A character is under a second at
+  640x480 and a whole stage is two seconds at 800x450, in pure Python. Nothing
+  here needed to be optimised.
 
 ## Session 25 - 2026-08-24
 

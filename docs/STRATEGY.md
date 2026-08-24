@@ -194,6 +194,14 @@ list and a hit volume placed against a body on the collision mesh. Together
 with `host.py` that is **115 of the 285 host functions doing the work rather
 than recording the call**, and 18,435 of the 25,699 calls the disc makes.
 
+**And session 26 added the ninth, which is the first one you can look at.**
+[`draw.py`](../engine/draw.py) is a software rasteriser: it walks a `CMDL`'s
+draw list, skins each mesh, projects it through a camera and samples the
+`CTEX` the material names, in 500 lines with no GPU and no dependency. It also
+did what running something here usually does - **it found a bug in a reader
+that six sessions of arithmetic checks had not**. See
+[`milestone_draw.md`](milestone_draw.md).
+
 The shape of the rest is settled: a data-driven engine whose
 tables come from `ECH`, whose display text comes from `TXT`, whose actor
 parameters come from the JSON, and which hosts that VM. All four sources are
@@ -202,7 +210,17 @@ the game's own scripts verbatim", applies here after all.
 
 ## Phase 5 — Bring-up by area
 
-Not reached.
+Not reached. What stands between here and it is no longer reading: every
+format the disc ships is read and the logic runs. It is **four subsystems
+nobody has written a line of** - a renderer, an audio runtime, input, and the
+menus and save data - plus the decision of what language the shipping engine
+is in, since `engine/` is Python and Python is a research instrument.
+
+Session 26 started the first of the four. That is deliberate: of the four it
+is the one whose inputs are all read to completion (`CMDL`, `CTEX`, `CNOM`,
+`CMTM`, `PTP`), the one that makes every other subsystem debuggable, and the
+one that turns a number in a table into something a person can be wrong
+about in public.
 
 ---
 
@@ -314,6 +332,30 @@ Three things came out of it that reading could not produce:
   doing as well — and the hunter, which fires nothing off a weapon bone at
   all, is matched instead by `ht_arrow_tbl`, whose commonest flight covers
   21.3 m against a `cmb_hmg_search_radius` of 20.
+
+### 6. "It is drawn" — ✅ **reached, session 26**
+
+A `CMDL` comes out of the engine as a picture: `b17_00` with its gold and
+teal plumage and six eyes down the wings, the player body posed by
+`msw213run` at frame 12 in a running stride, and `q00101`'s opening field
+seen from the spawn marker the quest starts on. No GPU, no dependency, and no
+external viewer - `engine/draw.py` is a software rasteriser and a camera. The
+report is [`milestone_draw.md`](milestone_draw.md).
+
+Two things came out of it that reading could not produce:
+
+- **a rigid `CMDL` mesh's vertices are in its node's own space**, and
+  `skin_matrices` was multiplying them by an `Rx(90)` that belongs to the
+  inverse bind pose. Nothing had caught it because both models that proved
+  the format are *skinned*. Measured two ways against two files a model does
+  not touch: a rigid mesh's centroid lands **0.055 m** from the node its own
+  draw call names against 2.2 m either other way, and a stage's visible
+  ground agrees with its collision mesh to **0.034 m** against 0.345 m. The
+  tell was visible first: `010_01_01`'s nine trees all landed on the origin;
+- **the camera is right, because a rasteriser written seven sessions earlier
+  says so.** `stage.py minimap` fits each `.map` over its collision mesh with
+  its own scanline fill; putting the same triangles under the same fitted
+  transform through `draw.py`'s camera returns the same overlap score.
 
 ### 5. "A quest finishes itself" — ✅ **reached, session 24**
 

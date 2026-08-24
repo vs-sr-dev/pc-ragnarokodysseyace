@@ -348,6 +348,27 @@ mesh creasing at the hip, knee and elbow, with its own textures on it — and th
 same model at rest standing in a clean T-pose, which is the guard against the
 failure that does not crash, a wrong pairing dragging limbs towards the origin.
 
+## And the engine draws it now
+
+[`engine/draw.py`](../engine/draw.py) is a software rasteriser over this
+format: **1,127 of 1,127 models render**, only `aaa1` and `dummy` coming out
+blank, and **9,095 of 9,304 draw calls find the `CTEX` their material names
+sitting in the same `.pac`**. See [`milestone_draw.md`](milestone_draw.md).
+
+Drawing corrected one thing this document had wrong. **A rigid mesh's
+vertices are in its node's own space**, so the matrix is that node's world
+matrix; `skin_matrices` used to multiply them by the `Rx(90)` that belongs to
+the *inverse bind* pose above, and no picture had ever been taken of that
+branch because both models that proved the format are skinned. Measured
+against two files a model does not touch, a rigid mesh's centroid lands
+**0.055 m** from the node its own draw call names against 2.2 m either other
+way, and a stage's visible ground agrees with its collision mesh to
+**0.034 m** against 0.345 m. `python engine/draw.py convention extract/tree`.
+
+The eight stage grounds below account for **120 of the 209 draw calls that
+find no texture**; the other 89 are `menu.cpk` and `misc.cpk` interface
+models, which are the one place a texture does not sit beside its model.
+
 ## Still open
 
 - The four-byte attribute at layout byte 2 — colour is the obvious guess and
