@@ -5,75 +5,78 @@
 
 ---
 
-# Next session — a quest that pays
+# Next session
 
-Session 24 reached **milestone 5**: a quest finishes itself. The report is
-[`milestone_quest.md`](milestone_quest.md), beside
-[`milestone_player.md`](milestone_player.md),
-[`milestone_stage.md`](milestone_stage.md) and
-[`milestone_fight.md`](milestone_fight.md). What to carry:
+Session 25 read **the quest catalog and what a quest pays**, which was last
+session's item 1. The write-up is [`format_reward.md`](format_reward.md);
+[`reward.py`](../tools/reward.py) is the reader and `reward.py xref` prints
+all seventeen joins at once. What to carry:
 
-- **210 of the 229 arenas the body reached closed on the script's own count**,
-  over all 431 quests, on 1,534 kills. A trigger volume calls
-  `sfEnmGenStart`, `cfStartPieceLock` raises the fences and spawns the lock's
-  generators, each kill calls back the function `enemy_gen.bin` names, and the
-  quest's own `sfKill_Generator` counts to a constant compiled into its own
-  bytecode and calls `cfEndPieceLock`. Nothing in the engine tells it how many
-  to expect;
-- **the count is written twice and the two agree — 527 of 527.** The
-  threshold is a Squirrel integer; the generator list is a newline-separated
-  string in `piecelock.bin` `+0x1c`. Different files, different readers, no
-  way to arrange it. `python engine/mission.py counts extract/tree`;
-- **the callback counts generators, not corpses** — the script prints
-  `--- generator [emgen01] End ---`, and on 36 of the 527 the population byte
-  is twice the threshold;
-- **`lockarea` is the room and `lock_line` are the doors** — 2,813 of 2,817
-  spawners and 572 of 575 triggers inside the polygon;
-- **the stage list is a graph, not a path** — 767 of 1,280 consecutive pairs
-  carry a jump, but 398 of 428 lists are connected end to end;
-- **the ground mesh is a navigation mesh**, on two facts
-  [`format_ccls.md`](format_ccls.md) had already established and nothing had
-  used: it is welded, and the edge of the walkable region is the fence;
-- **the walk is the weak half.** 252 of the 431 quests walked their whole
-  stage list and 125 runs end with *the body stopped walking*. That is this
-  repository's steering and not a reading, and it is what stands between 210
-  arenas closed and the 25 of 131 arena-bearing quests that finish end to end.
+- **`chapter.bin` is the catalog and the join is one byte pair.** 711 rows,
+  431 of them a quest and 280 a continuation; the chapter and index bytes name
+  `q0<chapter><index>` on **431 of 431**, and the 431 pacs are each named
+  exactly once. A closed bijection. With it a quest has a title, a client, a
+  briefing, a place, a rank, a time limit, a zeny reward and its objectives;
+- **the objective is the same twelve-bit monster field `enemy.bin` uses** —
+  553 of 553 name a `monster.cpk` directory, low nibble zero on all of them —
+  or one of exactly ten quest items, against `it_db_name_quest.rmsg`'s exactly
+  ten messages;
+- **38,018 of the 38,025 reward item ids name an `it_db_*` row**, and every
+  one of the seven that do not carries item id 0. The `it_db` bands are
+  disjoint, so one dictionary of 4,210 ids covers weapons, materials, cards
+  and bottles alike;
+- **the entry's byte 7 is a selector, and it is proved twice.** On an
+  `item_reward` entry, kind 4 makes the next word a *player class*, and the
+  weapon's own `it_db_weapon.bin` column 5 agrees on **822 of 822**. On an
+  `item_reward_region` entry it is *which broken part*, and the set of values
+  per block is exactly the monster's `region_data_brk` list — a different
+  container, a different reader — on **298 of 298**;
+- **`destructible.bin` fills the `obj*` markers**, which
+  [`format_stage.md`](format_stage.md) had had open since session 14: 3,770 of
+  3,771 rows name a marker of their own stage and say a crate, a barrel or a
+  pot stands on it, and 3,707 name the `it_drop_db` table it drops;
+- **`mapexception.bin` is the route override** the `170_*` floors' `MapJump()`
+  branches on, and **`enemy_ref.bin` is `changeEnemySet`'s index** — 137 of
+  137 generators, and every table it names is a file the same pac ships.
 
-### 1. What a finished quest pays.
+### 1. Give the arena its pay-out.
 
-The quest completes and hands back nothing, which is the obvious next hole and
-it is all tables. A quest `.pac` ships `item_reward.bin`,
-`item_reward_multi.bin`, `item_reward_region.bin`, `weapon_decost.bin`,
-`destructible.bin`, `mapexception.bin`, `enemy_ref.bin`, `enemy02..04.bin` and
-the `q<NNNNN>.bin` that carries the quest's own header — nine tables, none of
-them described, and every one of them an [`ECH`](format_ech.md) whose container
-has been readable since session 6. Two of them have obvious second consumers:
-the header should name the quest, which joins to the 25,288 messages, and
-`item_reward*` should index `it_db_*`, which session 21c read. See
-[`format_quest.md`](format_quest.md).
+[`mission.py`](../engine/mission.py) closes 210 of 229 arenas and hands back
+nothing. The tables are now read, so the missing piece is the *roll*: when a
+lock ends, walk `item_reward.bin`'s block for the player's progress and draw
+against the chances, and when a part breaks draw `item_reward_region.bin`'s
+slot for it. That turns the milestone-5 run into a run with a results screen,
+and it is the first thing here that will exercise a chance table rather than a
+lookup. It also gives the 431 quests a second, sharper measurement than
+"the arena closed": *what came out*.
 
-### 2. The three entries beside `s_combo_graph`.
+### 2. The walk is still the weak half.
 
-Unchanged from last session and still the cheapest well-posed item.
-`s_combo_finish_inf` (132 bytes on the warrior), `s_just_combo_inf` (8) and
-`s_combo_motA` (64) sit in the same `objbin.bin` and none of them is read.
-They are the rest of the combo machinery, they are small, and the graph now
-gives them a frame to be read against: a finisher is a node with no outgoing
-edge, and a just window is a byte pair on an edge.
+Unchanged from last session and still the thing between 210 arenas closed and
+the 25 of 131 arena-bearing quests that finish end to end. 252 of the 431
+quests walked their whole stage list and 125 runs end with *the body stopped
+walking*. That is this repository's steering and not a reading. The navigation
+mesh built in session 24 (`world.py graph`, `path`, `nearest_triangle`) is the
+instrument; nothing has been tuned against it yet.
 
-### 3. A generator's counts and timers, now that one runs.
+### 3. The three entries beside `s_combo_graph`.
 
-`enemy_gen.bin` `+0x14`, `+0x18`, `+0x20`, `+0x24`, `+0x28` and `+0x30` were
-deferred because *"the disc has no second reader to check them against"*.
-It has one now: a running arena. `+0x28`'s `k` is 0, 5, 10, 15, 30, 60 or 90 —
-halves and multiples of a second at 30 fps — and a respawn delay is testable
-the moment a monster can die, because a wave that respawns and a wave that
-does not reach the script's threshold at different times or not at all.
-Beside it, the 91 rows where the population is double the generator count:
-a generator that ships two monsters still fires one callback, so what the
-second monster is and when it appears is now a question with a shape.
+Unchanged and still the cheapest well-posed reading item. `s_combo_finish_inf`
+(132 bytes on the warrior), `s_just_combo_inf` (8) and `s_combo_motA` (64) sit
+in the same `objbin.bin` and none of them is read. They are the rest of the
+combo machinery, they are small, and the graph gives them a frame: a finisher
+is a node with no outgoing edge, and a just window is a byte pair on an edge.
 
-### 4. The `.anmcmd` opcodes, with two questions that name their own answer.
+### 4. A generator's counts and timers, now that one runs.
+
+`enemy_gen.bin` `+0x14`, `+0x18`, `+0x20`, `+0x24`, `+0x28` and `+0x30`.
+`+0x28`'s `k` is 0, 5, 10, 15, 30, 60 or 90 — halves and multiples of a second
+at 30 fps — and a respawn delay is testable the moment a monster can die,
+because a wave that respawns and a wave that does not reach the script's
+threshold at different times or not at all. Beside it, the 91 rows where the
+population is double the generator count.
+
+### 5. The `.anmcmd` opcodes, with two questions that name their own answer.
 
 Thirty of fifty-two are unread, and two consumers want particular ones:
 
@@ -85,37 +88,40 @@ Thirty of fifty-two are unread, and two consumers want particular ones:
   opcodes still open, each with a file set that says something.
 
 Session 17's lesson still applies: a selector byte inside a payload changes
-what the rest of it means, and counting occurrences never sees that.
+what the rest of it means, and counting occurrences never sees that. Session
+25 hit it twice more — the reward entry's byte 7, and `destructible.bin`'s two
+lanes that hold the number 50 on 3,642 rows and a *string* on the rest.
 
-### 5. The player's *base* defence and hit points.
+### 6. The player's *base* defence and hit points.
 
 [`combat_loop.md`](combat_loop.md) ledger item 2, unchanged and still the one
 gap in the loop that may not need the binary. The modifier side is read and
 named — `DEF` is ability 1 of `it_db_ability.bin` and `MAX HP` is ability 3 —
 and `it_db_equip.bin` is costumes, not armour. The level-up tables
-(`it_db_myorder*.bin`) are the next place to look.
+(`it_db_myorder*.bin`) are the next place to look, and `reward.py`'s id
+dictionary now reaches them.
 
-### 6. Draw it.
+### 7. Draw it.
 
 `hitbox.py obj` writes a frame as Wavefront OBJ — bones, body capsules and hit
-volumes together. Nobody has looked at one yet, and there is now an *arena* to
+volumes together. Nobody has looked at one yet, and there is an *arena* to
 take the picture of: eight bodies, a fence that went up around them, and the
 navigation mesh under all of it.
 
 ### Then
 
-7. **`se_hitlevel_tbl`'s third word**, 0 to 8 across the fifteen player
+8. **`se_hitlevel_tbl`'s third word**, 0 to 8 across the fifteen player
    entries and per class rather than global — what a weapon or a skill
    declares to pick its cue block, and *not* `it_db_weapon.bin` column 5.
    `it_db_skill.bin` is the obvious other side.
-8. **The last two `ELBN` populations.** `stageparam.bin` is 154 files and only
+9. **The last two `ELBN` populations.** `stageparam.bin` is 154 files and only
    its lights are read; `mot_param.bin` is 60 and only its motion id is.
-9. **Where the minimap's scale is declared.** Session 19 measured the
-   transform — see [`format_stage.md`](format_stage.md) — and it is not in
-   `stageparam.bin`. The scale is a band, 1.31 to 1.33 px/m.
-10. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
+10. **Where the minimap's scale is declared.** Session 19 measured the
+    transform — see [`format_stage.md`](format_stage.md) — and it is not in
+    `stageparam.bin`. The scale is a band, 1.31 to 1.33 px/m.
+11. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
     `+0x0a`. Bit fields; the obvious reading is a space or follow mode.
-11. **The `CCLS` surface codes 1 to 13**, and the pose layer says where a foot
+12. **The `CCLS` surface codes 1 to 13**, and the pose layer says where a foot
     is, so the triangle under it is a lookup away. The navigation mesh now
     walks a body over hundreds of them in a row, which is a second way in.
 
@@ -168,14 +174,26 @@ navigation mesh under all of it.
 - The quest tables' leftovers: the counts and timers of a generator (`+0x14`,
   `+0x18`, `+0x20`, `+0x24`, `+0x28`, `+0x30` of `enemy_gen.bin`) — which now
   have a second reader, since an arena runs; the third
-  byte of `piecelock`'s `+0x08`, 24 to 26 on 109 rows; `enemy.bin`'s `+0x37`
-  and `+0x57`; and the reward tables a quest pac also ships —
-  `item_reward{,_multi,_region}.bin`, `weapon_decost.bin`, `destructible.bin`,
-  `mapexception.bin`, `enemy_ref.bin` and the `q<NNNNN>.bin` header, which is
-  next session's item 1. **`lockarea` and `lock_line` are settled** — the
+  byte of `piecelock`'s `+0x08`, 24 to 26 on 109 rows; and `enemy.bin`'s
+  `+0x37` and `+0x57`. **`lockarea` and `lock_line` are settled** — the
   first is the room and the second are the doors — and so is what closes an
-  arena. See [`format_quest.md`](format_quest.md) and
+  arena. **The reward tables are read**, and so is the catalog: see
+  [`format_reward.md`](format_reward.md),
+  [`format_quest.md`](format_quest.md) and
   [`milestone_quest.md`](milestone_quest.md).
+- The reward tables' own leftovers: **what kinds 0, 2 and 3 of a reward entry
+  separate**, and what kind 2's round number (0 to 300 in tens) is a
+  percentage of — kind 4 is settled and is a player class; **what an
+  `item_reward.bin` row is**, since its count tracks neither the quest's
+  stages nor its monsters nor its generators; the **region group id**, 0..7
+  and 20..25 once the solo/multi digit is removed, which is not the broken
+  part and does not track the quest's rank; `chapter.bin`'s three bytes at
+  `+0x15` and its `+0x03` and `+0x0f`; `weapon_decost.bin`'s four numbers,
+  twice, with only six distinct rows on the disc; and `destructible.bin`'s two
+  lanes that hold the number 50 on 3,642 rows and a **string** on the rest —
+  the selector trap again. Also **the 44 prerequisite flags and the 25 script
+  flags that name no catalog row**: the quest-flag space is wider than the 431
+  quests. See [`format_reward.md`](format_reward.md).
 - `TXT`: what word 2 of a record selects; why attribute id 0 carries both RGBA
   colours and scale factors.
 - `params`: what records 1 and 2 of a player class are — record 1 is plainly an
@@ -260,11 +278,13 @@ navigation mesh under all of it.
   `<name>.par` and the 1000-band ids in `_coop.par`; the five `ProbList` files
   whose group ids repeat rather than ascend; and the eight `EventTable.dat`
   and `MotStream.dat`. See [`format_ai.md`](format_ai.md).
-- The stage layout's own leftovers: the polyline's third word, 0 to 5; the 45
-  markers named `HTA*`; and what places the object a `obj*` marker marks — the
-  last of which is now half answered, since `obj` markers turn out to sit on
-  the collision mesh to a centimetre. **Whether a fence is a closed loop is
-  settled**: 105 of 145 stages close, 20 branch, see
+- The stage layout's own leftovers: the polyline's third word, 0 to 5, and the
+  45 markers named `HTA*`. **What places the object a `obj*` marker marks is
+  settled** and it is not in the stage at all: a quest's `destructible.bin`
+  names the marker and says a crate, a barrel or a pot stands on it, 3,770 of
+  3,771, each with its own drop table — see
+  [`format_reward.md`](format_reward.md). **Whether a fence is a closed loop
+  is settled**: 105 of 145 stages close, 20 branch, see
   [`milestone_numbers.md`](milestone_numbers.md).
 - The mercenary AI's leftovers, one fewer since the predicates' argument turns
   out to be an actor slot: the command ids other than 0, 14 and 15; the
@@ -303,6 +323,63 @@ navigation mesh under all of it.
 ---
 
 # Log
+
+## Session 25 - 2026-08-24
+
+The quest catalog and the pay-out, written up in
+[`format_reward.md`](format_reward.md). Reader
+[`reward.py`](../tools/reward.py); `reward.py xref` prints all seventeen
+joins together.
+
+- **`chapter.bin` is the catalog, and the join is one byte pair.** 711 rows of
+  92 bytes with no string pool, and nothing had opened it — `ech.py`'s own
+  docstring used it as its example of a lane that reads as nonsense. Byte 0 is
+  a record kind, **431 rows of 0 and 280 of 1**, and on a kind-0 row the next
+  two bytes are a chapter and an index: `q0<chapter><index>` **names a quest
+  pac on all 431, and the 431 pacs are named exactly once each**. A closed
+  bijection, and the only reading of those two bytes that gives one.
+- **A quest now reads as a card.** Title, client, briefing, place and four
+  target names, out of `msg_quest.bin`'s 1,478 messages — **all 3,448 ids in
+  range, the largest being 1,477, the last message in the file**. Beside them
+  a rank 1..15, a time limit of 600, 900, 1200 or 1800 seconds, a zeny reward
+  of 100 to 50,000, and the flag the quest sets and the flag it waits for.
+- **The objective is `enemy.bin`'s twelve-bit monster field**, in a second
+  table with a second consumer: **553 of 553 name a `monster.cpk` directory**,
+  low nibble zero on all 553. Where it is not a monster it is one of exactly
+  ten quest items — and `it_db_name_quest.rmsg` holds exactly ten messages.
+- **38,018 of the 38,025 reward item ids name an `it_db_*` row**, and every
+  one of the seven that do not carries item id 0. The bands are disjoint, so a
+  single dictionary of 4,210 ids reaches weapons, materials, cards and bottles
+  at once, and `reward.py drops` prints a quest's whole loot table in English.
+- **The entry's byte 7 is a selector and the disc proves it twice.** Kind 4
+  makes the word after it a *player class*, and `it_db_weapon.bin` column 5 —
+  a different table read by a different tool — agrees on **822 of 822**
+  entries in each of the two files. In `item_reward_region.bin` the same byte
+  is *which broken part*, and the values per block are exactly
+  `region_data_brk`'s record count for that monster, out of an `ELBN`, on
+  **298 of 298** blocks. Session 17's lesson, twice in one file family.
+- **The multiplayer table is the same table with better odds.** 17,229 of
+  17,300 aligned entries carry the same item, count, kind and word; the chance
+  differs on 12,153 and rises on 10,730 of those. `item_reward_region.bin`
+  does it inside one file, its region id even for one and odd for the other —
+  198 blocks each, every even one paired.
+- **`destructible.bin` fills the `obj*` markers.** 3,771 rows over 262 quests;
+  **3,770 name an `ATIH` marker of their own stage** and say a crate, a
+  barrel or a pot stands on it, and **3,707 name an `it_drop_db_<id>.bin`**,
+  the 64 that do not being the sentinel. That closes a
+  [`format_stage.md`](format_stage.md) question open since session 14, and the
+  answer is why the stage could never have held it: the stage marks the spot
+  and the quest fills it.
+- **`mapexception.bin` is the route override** — 61 of 61 "from" stages and 60
+  of 61 "to" stages inside the quest's own `piecelist.bin`, which is the other
+  half of session 24's finding that the stage list is a graph whose `170_*`
+  floors branch on `getQuestName()`. And **`enemy_ref.bin` is
+  `changeEnemySet`'s index**: 137 of 137 generators, every table it names a
+  file the same pac ships.
+- What did **not** come out: what an `item_reward.bin` *row* is. Its count
+  tracks neither the quest's stages, nor its monsters, nor its generators, and
+  the chances inside one do not normalise. Listed under the leftovers rather
+  than guessed at.
 
 ## Session 24 - 2026-08-24
 

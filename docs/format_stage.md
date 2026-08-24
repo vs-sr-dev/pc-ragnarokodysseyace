@@ -405,14 +405,16 @@ camera and sound.
   leave an end loose. `python engine/run.py check extract/tree/stage.cpk`
   prints it; see [`milestone_numbers.md`](milestone_numbers.md).
 - What the 45 markers literally named `HTA*` are for.
-- The `obj*` markers place objects, but nothing here says *which* object. The
-  `objbin.bin` and `stobjbin.bin` [`ELBN`](format_elbn.md) files beside them
-  are the obvious place to look; session 19 read the `objbin.bin` records and
-  they are a body - capsules, regions, clipping - so they say what an object
-  *is*, not which marker gets one. What session 14
-  did establish is that they are *placements* and not hints: all 772 of them
-  have ground underneath and the median sits **1 cm** above the collision
-  mesh.
+- ~~The `obj*` markers place objects, but nothing here says *which*
+  object.~~ **Settled by the quest, not by the stage.** A quest `.pac` ships
+  `destructible.bin`, and **3,770 of its 3,771 rows name an `obj*` marker of
+  a stage the quest visits** and say what stands on it - a crate, a barrel, a
+  pot, and the bomb variants of each - together with the
+  `it_drop_db_<id>.bin` it drops. So the stage marks the spot and the quest
+  fills it, which is why nothing in `param.pac` could ever have said. See
+  [`format_reward.md`](format_reward.md). What session 14 had established
+  stands: they are *placements* and not hints, all 772 have ground underneath
+  and the median sits **1 cm** above the collision mesh.
 - `stageparam.bin` is read as a container but its `stage_param` record is not
   named field by field. See [`ELBN`](format_elbn.md). It does **not** carry the
   minimap transform: its five entries are lights, shadows, fog and clipping.

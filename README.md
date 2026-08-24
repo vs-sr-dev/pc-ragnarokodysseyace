@@ -10,7 +10,7 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-24 (2026-08-24). **A quest finishes itself.** A quest's own tables
+Sessions 1-25 (2026-08-24). **A quest finishes itself.** A quest's own tables
 put monsters on a stage, the player kills them, and the quest's own compiled
 script counts the kills and decides the arena is over - then opens the gate it
 closed and lets the run walk on to the next room. Nothing in the engine tells a
@@ -24,6 +24,26 @@ kills. The ground mesh turned out to be a
 navigation mesh already, on two facts
 [`docs/format_ccls.md`](docs/format_ccls.md) had established and nothing had
 used.
+
+**And session 25 gave the quest a name and a price.** A quest completed and
+handed back nothing, because nothing had described the nine tables that say
+what it *is*. The catalog turns out to be one shared file - `chapter.bin`,
+711 rows - and the join to the 431 quest pacs is **one byte pair**: a chapter
+and an index, naming a pac on all 431, with nothing left over on either side.
+With it a quest reads out as a card: *"Orcish Stars"*, from Eadgils, in the
+Sograt Desert, thirty minutes, 9,000 zeny, kill an Orc King, an Orc Hero and
+an Orc Shaman - the objective written in the **same twelve-bit monster field**
+`enemy.bin` uses, 553 of 553 naming a directory. What it pays is three reward
+tables whose **38,018 of 38,025 item ids name a row of an `it_db_*.bin`**, and
+whose selector byte the disc proves twice over: on a drop it names a **player
+class**, agreeing with `it_db_weapon.bin`'s own class column on **822 of
+822**; on a broken-part drop it names **which part**, and the set of values
+per block is exactly the monster's `region_data_brk` list - read out of an
+`ELBN` by a different reader - on **298 of 298**. The same session settled a
+question open since session 14: the `obj*` markers a stage plants are filled
+by the *quest*, and `destructible.bin` says with what - a crate, a barrel, a
+pot - on **3,770 of 3,771 rows**, each naming its own drop table. See
+[`docs/format_reward.md`](docs/format_reward.md).
 
 **Before that, a fight in both directions.** A class
 presses a button its own combo graph accepts, plays the animation that graph
@@ -206,6 +226,11 @@ Squirrel script  ->    3,011 files, 315k insns tools/psq.py    0 errors
                                                  resolving in its own table
 quest tables     ->      430 quests, 8,024 gens tools/quest.py  0 errors
   the monsters   ->    2,503 slots, 83 ids naming 83 monster directories
+quest catalog    ->      431 quests named       tools/reward.py 0 errors
+  the join       ->      431 chapter rows naming 431 pacs, and nothing else
+  the objectives ->      553 of 553 naming a monster directory
+  what it pays   ->   38,018 of 38,025 reward ids naming an it_db row
+  the scenery    ->    3,770 of 3,771 crates on a marker of their own stage
 monster AI       ->      228 files, 6,550 rules tools/ai.py     0 errors
   action tables  ->    3,269 groups, 19,707 weighted actions
   condition terms->       66 of 76 named, 27,862 of 29,100 instructions
@@ -434,6 +459,10 @@ python tools/psq.py xref <dir>               whether a called name resolves
 python tools/quest.py check|list <dir>       the four tables of a quest .pac
 python tools/quest.py dump <dir> <quest>     its stages, monsters and spawners
 python tools/quest.py xref|enemies <dir>     whether the columns name anything
+
+python tools/reward.py check|xref <dir>      the catalog and the reward tables
+python tools/reward.py catalog <dir>         all 431 quests, named
+python tools/reward.py card|drops|props <dir> <quest>
 
 python tools/ai.py check|list <dir>          the monster AI
 python tools/ai.py probs|rules <dir> <name>  the action tables, and the rules

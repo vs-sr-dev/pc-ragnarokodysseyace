@@ -13,10 +13,11 @@ are [`../engine/mission.py`](../engine/mission.py) and
     python engine/mission.py route  extract/tree
 
 A quest `.pac` ships four [`ECH`](format_ech.md) tables and nothing had
-described any of them. The container has been readable since session 6; what
-was missing was the columns, and — for the one that matters most — the
-observation that a field here is **twelve bits wide**, which no lane-based
-reading can see.
+described any of them. (It ships eight more that say what the quest *is* and
+what it pays; those are in [`format_reward.md`](format_reward.md).) The
+container has been readable since session 6; what was missing was the columns,
+and — for the one that matters most — the observation that a field here is
+**twelve bits wide**, which no lane-based reading can see.
 
 ## The four tables, and how they join
 
@@ -295,8 +296,9 @@ shows and a type inference does not. Noted in
 - The third byte of `piecelock`'s `+0x08`, 24 to 26 on 109 rows.
 - `piecelock` `+0x14`, and `enemy.bin`'s `+0x37` and `+0x57`.
 - `enemy.bin`'s `+0x04` first byte, 1..15.
-- The other tables a quest pac ships and this document does not touch:
-  `item_reward.bin`, `item_reward_multi.bin`, `item_reward_region.bin`,
-  `weapon_decost.bin`, `destructible.bin`, `mapexception.bin`,
-  `enemy02..04.bin` (which `changeEnemySet` swaps in), `enemy_ref.bin`, and
-  the `q<NNNNN>.bin` that carries the quest's own header.
+- ~~The other tables a quest pac ships and this document does not touch.~~
+  **Read**, in [`format_reward.md`](format_reward.md): the catalog
+  `chapter.bin` that names every quest, the `q<NNNNN>.bin` header, the three
+  `item_reward*` tables, `destructible.bin`, `mapexception.bin`,
+  `enemy_ref.bin` and `enemy02..04.bin`, and `weapon_decost.bin`. What is left
+  inside them is listed there.

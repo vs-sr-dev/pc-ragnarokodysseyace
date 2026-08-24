@@ -367,6 +367,12 @@ lengths agree on **23 of 23 monsters**: `b18_00` breaks `HORN_U1`, `HORN_U2`,
 `TAIL`, `WING_L` and `WING_R` and drops 7950, 7951, 7952, 7953, 7954 in that
 order. That names one of the leftovers [`params.md`](params.md) listed.
 
+A quest overrides those drops, and **indexes them the same way**: a
+`item_reward_region.bin` block's entries carry a part number whose values are
+exactly `0 .. n-1` for this table's own record count, on **298 of 298 blocks**
+- a different container, a different reader, and the two lists agree. See
+[`format_reward.md`](format_reward.md).
+
 The break hit points are an order of magnitude above the region's — 15,000 for
 a horn against 500 for a head — so the two are separate pools, which is what a
 game with both a stagger meter and a breakable part needs.
