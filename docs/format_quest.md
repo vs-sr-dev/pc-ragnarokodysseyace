@@ -1,11 +1,16 @@
 # The quest tables — where the monsters come from
 
-**Status: read.** 430 quests, 1,708 stage entries, 2,503 monster slots, 8,024
-generators, 567 arena locks. Reader:
-[`../tools/quest.py`](../tools/quest.py).
+**Status: read, and run.** 430 quests, 1,708 stage entries, 2,503 monster
+slots, 8,024 generators, 567 arena locks. Reader:
+[`../tools/quest.py`](../tools/quest.py); the tables driving an actual quest
+are [`../engine/mission.py`](../engine/mission.py) and
+[`milestone_quest.md`](milestone_quest.md).
 
     python tools/quest.py dump extract/tree q01104
     python tools/quest.py xref extract/tree
+    python engine/mission.py counts extract/tree
+    python engine/mission.py area   extract/tree
+    python engine/mission.py route  extract/tree
 
 A quest `.pac` ships four [`ECH`](format_ech.md) tables and nothing had
 described any of them. The container has been readable since session 6; what
@@ -198,6 +203,76 @@ stage and copied, and it names locks and generators that only some of those
 quests declare. The call finds nothing and does nothing. Eleven `pl_` names out of 889
 calls are in no quest's table at all, which for a hand-maintained set of 430
 quests is what a handful of deleted locks looks like.
+
+## The script counts the same generators the lock names
+
+The strongest check on the lock table is not in the table at all. A quest's
+own `.psq` carries, for every arena, a function the generators name as their
+kill callback, and it ends
+
+```
+function sfKill_Generator(gen_name) {
+    cntGenKill++
+    if (cntGenKill >= 8) { sfEnmGenEnd() }
+}
+```
+
+The `8` is a constant compiled into Squirrel bytecode by
+[`psq.py`](format_psq.md). The generators the lock covers are a
+newline-separated string in `piecelock.bin` lane `+0x1c`, read by
+[`ech.py`](format_ech.md). Two files, two readers, and neither knows the
+other exists — so if the lane were read wrong the two numbers would differ,
+and there is no way to arrange the agreement from either side.
+
+**527 of 527 agree, with nothing left over.** 39 of the 567 locks have no
+generator naming a counting callback at all, and one names `BGMStop`, which
+counts nothing. `python engine/mission.py counts extract/tree` is the
+measurement.
+
+That is what closes the arena: the engine never tells the script how many
+monsters it put out, and the script never asks. It counts the callbacks the
+table sent it and stops at the number the table's own list is long.
+
+**And it counts generators, not corpses.** The callback is named
+`sfKill_Generator` and the line it prints is `--- generator [emgen01] End
+---`, which is the disc saying so in its own words. The measurement agrees:
+on **36 of the 527** matching locks, `enemy.bin`'s population byte for the
+slots those generators use is exactly *twice* the threshold — the 91 rows
+above where a generator produces two — and the script still stops at the
+number of generators. So a generator that ships two monsters fires one
+callback, when it is exhausted.
+
+## `lockarea` is the room and `lock_line` are the doors
+
+A lock names one `lockarea` polyline and a list of `lock_line`s, both of them
+`borderline.bin` polylines the stage script can enable, and nothing in the
+table says which is which. Two point-in-polygon tests settle it, and neither
+needs anything to run:
+
+```
+the spawners a lock covers          2,813 of 2,817 inside its own lockarea
+the trigger that closes the lock      572 of 575 inside it
+```
+
+So the `lockarea` is the arena — it contains both the monsters and the volume
+that seals them in — and the `lock_line`s, which are two-point segments thrown
+across corridors well outside it, are the gates. `python engine/mission.py
+area extract/tree`.
+
+## The stage list is a graph, not a path
+
+`piecelist.bin` is written in an order, and the obvious reading is that the
+order is the route. It is not, quite:
+
+```
+consecutive pairs where the first carries a jump_<second> marker   767 of 1,280
+stage lists reachable end to end from their own first stage        398 of   428
+```
+
+The 30 that are not are almost all `170_*`, and those stages carry a marker
+named **`jump_next`** whose trigger calls a `MapJump()` that branches on
+`getQuestName()` — interchangeable floors, so the exit does not name where it
+goes and the script decides. `python engine/mission.py route extract/tree`.
 
 ## What this says about `ECH` again
 

@@ -5,57 +5,77 @@
 
 ---
 
-# Next session — a quest that can be finished
+# Next session — a quest that pays
 
-Session 23 reached **milestone 4**: the player fights back. The report is
-[`milestone_player.md`](milestone_player.md), beside
+Session 24 reached **milestone 5**: a quest finishes itself. The report is
+[`milestone_quest.md`](milestone_quest.md), beside
+[`milestone_player.md`](milestone_player.md),
 [`milestone_stage.md`](milestone_stage.md) and
 [`milestone_fight.md`](milestone_fight.md). What to carry:
 
-- **both halves of a fight run.** The monster decides out of `ProbList` and
-  the player out of **`s_combo_graph`**, which nobody had opened: 189 nodes
-  and 266 edges over the six classes, checked against the `3AB` arithmetic in
-  the animation names (112 of 116 edges) and against the `_just` lists (14 of
-  14, both directions). See [`format_elbn.md`](format_elbn.md);
-- **a blow lands on a named part.** Six classes against every monster on the
-  disc, standing at `col_r + col_r`: **457 of the 492 pairs** land, 486 at
-  half that distance, and 1,002 of the 21,041 landings are on a part that
-  breaks off. The warrior duels all 83 monsters and **38 have a hit landing
-  both ways**;
-- **`region_data`'s names are where the words say.** Head above leg on 22 of
-  the 22 monsters with both, body above leg on 32 of 32, measured inside one
-  monster at a time;
-- **the reach is the weapon's** - 0.772 against the models on the same bone,
-  5 of 120 pairings as good - and **`ht_arrow_tbl` is the arrow's flight**,
-  21.3 m against a `cmb_hmg_search_radius` of 20;
-- what is left of the combat loop is the **damage expression**, and that is
-  [`combat_loop.md`](combat_loop.md) ledger item 1, one of the five that needs
-  the EBOOT.
+- **210 of the 229 arenas the body reached closed on the script's own count**,
+  over all 431 quests, on 1,534 kills. A trigger volume calls
+  `sfEnmGenStart`, `cfStartPieceLock` raises the fences and spawns the lock's
+  generators, each kill calls back the function `enemy_gen.bin` names, and the
+  quest's own `sfKill_Generator` counts to a constant compiled into its own
+  bytecode and calls `cfEndPieceLock`. Nothing in the engine tells it how many
+  to expect;
+- **the count is written twice and the two agree — 527 of 527.** The
+  threshold is a Squirrel integer; the generator list is a newline-separated
+  string in `piecelock.bin` `+0x1c`. Different files, different readers, no
+  way to arrange it. `python engine/mission.py counts extract/tree`;
+- **the callback counts generators, not corpses** — the script prints
+  `--- generator [emgen01] End ---`, and on 36 of the 527 the population byte
+  is twice the threshold;
+- **`lockarea` is the room and `lock_line` are the doors** — 2,813 of 2,817
+  spawners and 572 of 575 triggers inside the polygon;
+- **the stage list is a graph, not a path** — 767 of 1,280 consecutive pairs
+  carry a jump, but 398 of 428 lists are connected end to end;
+- **the ground mesh is a navigation mesh**, on two facts
+  [`format_ccls.md`](format_ccls.md) had already established and nothing had
+  used: it is welded, and the edge of the walkable region is the fence;
+- **the walk is the weak half.** 252 of the 431 quests walked their whole
+  stage list and 125 runs end with *the body stopped walking*. That is this
+  repository's steering and not a reading, and it is what stands between 210
+  arenas closed and the 25 of 131 arena-bearing quests that finish end to end.
 
-### 1. A quest, end to end.
+### 1. What a finished quest pays.
 
-The old item 6, and it is now the top one because everything under it works. A
-stage runs itself, a monster comes out of the spawner `enemy_gen.bin` names,
-and a fight happens in both directions. What is missing is the **state that
-changes**: the host binds `cfSetEnableEmGen`, `cfStartPieceLock` and
-`cfGetCntKillGenPieceLockOnly` to nothing that moves. A monster that can be
-killed needs no damage formula to be *counted* - the quest scripts ask how
-many are dead, not how much health they had - so a quest that reaches its own
-completion is a short step from here and it exercises the quest scripts the way
-the cutscenes were exercised. See [`format_quest.md`](format_quest.md).
+The quest completes and hands back nothing, which is the obvious next hole and
+it is all tables. A quest `.pac` ships `item_reward.bin`,
+`item_reward_multi.bin`, `item_reward_region.bin`, `weapon_decost.bin`,
+`destructible.bin`, `mapexception.bin`, `enemy_ref.bin`, `enemy02..04.bin` and
+the `q<NNNNN>.bin` that carries the quest's own header — nine tables, none of
+them described, and every one of them an [`ECH`](format_ech.md) whose container
+has been readable since session 6. Two of them have obvious second consumers:
+the header should name the quest, which joins to the 25,288 messages, and
+`item_reward*` should index `it_db_*`, which session 21c read. See
+[`format_quest.md`](format_quest.md).
 
 ### 2. The three entries beside `s_combo_graph`.
 
+Unchanged from last session and still the cheapest well-posed item.
 `s_combo_finish_inf` (132 bytes on the warrior), `s_just_combo_inf` (8) and
 `s_combo_motA` (64) sit in the same `objbin.bin` and none of them is read.
 They are the rest of the combo machinery, they are small, and the graph now
 gives them a frame to be read against: a finisher is a node with no outgoing
-edge, and a just window is a byte pair on an edge. Cheapest well-posed item on
-the list.
+edge, and a just window is a byte pair on an edge.
 
-### 3. The `.anmcmd` opcodes, with two questions that name their own answer.
+### 3. A generator's counts and timers, now that one runs.
 
-Thirty of fifty-two are unread, and two consumers now want particular ones:
+`enemy_gen.bin` `+0x14`, `+0x18`, `+0x20`, `+0x24`, `+0x28` and `+0x30` were
+deferred because *"the disc has no second reader to check them against"*.
+It has one now: a running arena. `+0x28`'s `k` is 0, 5, 10, 15, 30, 60 or 90 —
+halves and multiples of a second at 30 fps — and a respawn delay is testable
+the moment a monster can die, because a wave that respawns and a wave that
+does not reach the script's threshold at different times or not at all.
+Beside it, the 91 rows where the population is double the generator count:
+a generator that ships two monsters still fires one callback, so what the
+second monster is and when it appears is now a question with a shape.
+
+### 4. The `.anmcmd` opcodes, with two questions that name their own answer.
+
+Thirty of fifty-two are unread, and two consumers want particular ones:
 
 - **which opcode spawns a projectile and which `ht_arrow_tbl` row it names.**
   42 rows, 15 distinct flights, and no join from a list to a row;
@@ -67,41 +87,40 @@ Thirty of fifty-two are unread, and two consumers now want particular ones:
 Session 17's lesson still applies: a selector byte inside a payload changes
 what the rest of it means, and counting occurrences never sees that.
 
-### 4. The player's *base* defence and hit points.
+### 5. The player's *base* defence and hit points.
 
 [`combat_loop.md`](combat_loop.md) ledger item 2, unchanged and still the one
 gap in the loop that may not need the binary. The modifier side is read and
-named - `DEF` is ability 1 of `it_db_ability.bin` and `MAX HP` is ability 3 -
+named — `DEF` is ability 1 of `it_db_ability.bin` and `MAX HP` is ability 3 —
 and `it_db_equip.bin` is costumes, not armour. The level-up tables
-(`it_db_myorder*.bin`) are the next place to look. Beside it, the reward side
-of a quest pac: `item_reward{,_multi,_region}.bin`, `weapon_decost.bin`,
-`destructible.bin`, `mapexception.bin` and the `q<NNNNN>.bin` header.
+(`it_db_myorder*.bin`) are the next place to look.
 
-### 5. Draw it.
+### 6. Draw it.
 
-`hitbox.py obj` writes a frame as Wavefront OBJ - bones, body capsules and hit
-volumes together. Nobody has looked at one yet, and there is now a *duel* to
-take the picture of: two skeletons, two sets of `col_hit`, and the volume that
-reaches from one to the other.
+`hitbox.py obj` writes a frame as Wavefront OBJ — bones, body capsules and hit
+volumes together. Nobody has looked at one yet, and there is now an *arena* to
+take the picture of: eight bodies, a fence that went up around them, and the
+navigation mesh under all of it.
 
 ### Then
 
-6. **`se_hitlevel_tbl`'s third word**, 0 to 8 across the fifteen player
-   entries and per class rather than global - what a weapon or a skill
+7. **`se_hitlevel_tbl`'s third word**, 0 to 8 across the fifteen player
+   entries and per class rather than global — what a weapon or a skill
    declares to pick its cue block, and *not* `it_db_weapon.bin` column 5.
-   `it_db_skill.bin` is the obvious other side. (`ht_arrow_tbl`, the other
-   half of the old item 5, is read: [`format_elbn.md`](format_elbn.md).)
-7. **The last two `ELBN` populations.** `stageparam.bin` is 154 files and only
+   `it_db_skill.bin` is the obvious other side.
+8. **The last two `ELBN` populations.** `stageparam.bin` is 154 files and only
    its lights are read; `mot_param.bin` is 60 and only its motion id is.
-8. **Where the minimap's scale is declared.** Session 19 measured the
-   transform - see [`format_stage.md`](format_stage.md) - and it is not in
+9. **Where the minimap's scale is declared.** Session 19 measured the
+   transform — see [`format_stage.md`](format_stage.md) — and it is not in
    `stageparam.bin`. The scale is a band, 1.31 to 1.33 px/m.
-9. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
-   `+0x0a`. Bit fields; the obvious reading is a space or follow mode.
-10. **The `CCLS` surface codes 1 to 13**, and the pose layer says where a foot
-    is, so the triangle under it is a lookup away.
+10. **The three unread bytes of an `effect.bin` motion row**, `+0x08` to
+    `+0x0a`. Bit fields; the obvious reading is a space or follow mode.
+11. **The `CCLS` surface codes 1 to 13**, and the pose layer says where a foot
+    is, so the triangle under it is a lookup away. The navigation mesh now
+    walks a body over hundreds of them in a row, which is a second way in.
 
 ---
+
 ## Deferred, with reasons
 
 - **EBOOT decryption** (Phase 3). Narrower again: the quest state machine and
@@ -147,12 +166,16 @@ reaches from one to the other.
   [`format_quest.md`](format_quest.md) — the second of which shows a field can
   be **narrower than a byte**, which nothing in `ech.py` can see.
 - The quest tables' leftovers: the counts and timers of a generator (`+0x14`,
-  `+0x18`, `+0x20`, `+0x24`, `+0x28`, `+0x30` of `enemy_gen.bin`); the third
+  `+0x18`, `+0x20`, `+0x24`, `+0x28`, `+0x30` of `enemy_gen.bin`) — which now
+  have a second reader, since an arena runs; the third
   byte of `piecelock`'s `+0x08`, 24 to 26 on 109 rows; `enemy.bin`'s `+0x37`
   and `+0x57`; and the reward tables a quest pac also ships —
   `item_reward{,_multi,_region}.bin`, `weapon_decost.bin`, `destructible.bin`,
-  `mapexception.bin` and the `q<NNNNN>.bin` header. See
-  [`format_quest.md`](format_quest.md).
+  `mapexception.bin`, `enemy_ref.bin` and the `q<NNNNN>.bin` header, which is
+  next session's item 1. **`lockarea` and `lock_line` are settled** — the
+  first is the room and the second are the doors — and so is what closes an
+  arena. See [`format_quest.md`](format_quest.md) and
+  [`milestone_quest.md`](milestone_quest.md).
 - `TXT`: what word 2 of a record selects; why attribute id 0 carries both RGBA
   colours and scale factors.
 - `params`: what records 1 and 2 of a player class are — record 1 is plainly an
@@ -280,6 +303,44 @@ reaches from one to the other.
 ---
 
 # Log
+
+## Session 24 - 2026-08-24
+
+Milestone 5, written up in [`milestone_quest.md`](milestone_quest.md).
+Sessions 22 and 23 are in [`milestone_stage.md`](milestone_stage.md),
+[`milestone_fight.md`](milestone_fight.md) and
+[`milestone_player.md`](milestone_player.md); what is here is what did not fit
+in a milestone report.
+
+- **`enemy_gen.bin`'s kill callback fires once per generator, not once per
+  corpse.** The line the script prints is `--- generator [emgen01] End ---`,
+  and on 36 of the 527 locks whose threshold matches, `enemy.bin`'s population
+  byte for the slots those generators use is exactly twice the threshold. That
+  is the 91 doubled rows [`format_quest.md`](format_quest.md) already found,
+  seen from the consumer's side: a generator that ships two monsters still
+  reports once, when it is exhausted.
+- **A `piecelock` row's two polyline lanes are a room and its doors**, and
+  point-in-polygon says which is which without running anything: 2,813 of
+  2,817 spawners and 572 of 575 triggers inside the `lockarea`. The
+  `lock_line`s are two-point segments across corridors, mostly outside it.
+- **`piecelist.bin` is a graph, not a path.** Only 767 of 1,280 consecutive
+  pairs carry a `jump_<next>` marker, but 398 of 428 lists are connected end
+  to end under those markers. The thirty that are not are almost all `170_*`,
+  where the exit marker is named **`jump_next`** and the stage's own
+  `MapJump()` branches on `getQuestName()` - interchangeable floors, so the
+  door does not name where it goes.
+- **The ground mesh is a navigation mesh and it took no new data.**
+  [`format_ccls.md`](format_ccls.md) had established that the mesh is welded
+  and that the edge of the walkable region is the fence; those two facts are
+  the whole of a navmesh. `world.py` gains `graph`, `path` and
+  `nearest_triangle`, built out of `ccls.py`'s triangles and `stage.py`'s
+  polylines and nothing else.
+- **Four more host functions answer with a number**:
+  `cfGetCntKillGenPieceLockOnly`, `getLatestKilled`, `getNumOfEnemy` and
+  `getNumOfBoss`, which takes `host.py api` to 70 of the 285 and 70% of the
+  interface's traffic. And `brain.py`'s `State` finally has a crowd to count:
+  `other_zako`, `other_boss` and `same_kind` were marked *world* and had been
+  zero in every fight so far, because every fight had one monster in it.
 
 ## Session 21c — 2026-08-23
 

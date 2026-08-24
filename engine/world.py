@@ -16,10 +16,15 @@ A stage's `param.pac` holds five files this needs and
     stageparam.bin     ELBN, not used here
 
 Nothing is decoded here that `tools/` does not already decode. What is added
-is the two queries a simulation makes every frame:
+is the queries a simulation makes and a reader does not:
 
     floor(x, z)        the highest ground under a point, or None
     blocked(a, b)      does the step from a to b cross a fence
+    path(a, b)         waypoints from a to b over the ground
+
+`path` is session 24's, and it is the same mesh read as a navigation mesh -
+see `graph` below for why that costs no new data at all, and
+[`milestone_quest.md`](../docs/milestone_quest.md) for what it is for.
 
 ## Where the numbers come from, and where they do not
 
@@ -68,6 +73,11 @@ class World:
         self.lo, self.hi = self.ccls.bounds()
         self._walkable = [t for t in self.tris
                           if abs(_unit_normal(t['v'])[1]) >= WALKABLE_COS]
+        # A stage's `lockarea` and `lock_line` polylines are down until a
+        # quest raises them - `cfStartPieceLock` is what does it, and
+        # `mission.py` puts the names it raises in here. A fence in this set
+        # stops a body exactly as `chara_line` does.
+        self.raised: set = set()
 
     # -- markers ----------------------------------------------------------
 
@@ -114,11 +124,141 @@ class World:
                 best, code = y, t['code']
         return code
 
+    # -- the ground as a graph --------------------------------------------
+
+    def graph(self) -> dict:
+        """Which walkable triangles share an edge with which.
+
+        [`format_ccls.md`](../docs/format_ccls.md) established that the mesh
+        is **welded** - 150,236 of the disc's edges are shared by exactly two
+        triangles, matched by exact vertex equality, with no T-junctions - and
+        that *the edge of the walkable region is the fence*, because there are
+        not enough vertical triangles to wall a level. Both of those facts
+        together say the ground mesh is already a navigation mesh, and this is
+        what reads it as one. Nothing is decoded here that
+        [`../tools/ccls.py`](../tools/ccls.py) does not decode.
+        """
+        if getattr(self, '_adj', None) is None:
+            edges = {}
+            for i, t in enumerate(self._walkable):
+                for k in range(3):
+                    e = tuple(sorted((t['v'][k], t['v'][(k + 1) % 3])))
+                    edges.setdefault(e, []).append(i)
+            adj = [[] for _ in self._walkable]
+            for e, who in edges.items():
+                if len(who) != 2:
+                    continue
+                mid = ((e[0][0] + e[1][0]) / 2, (e[0][1] + e[1][1]) / 2,
+                       (e[0][2] + e[1][2]) / 2)
+                adj[who[0]].append((who[1], mid))
+                adj[who[1]].append((who[0], mid))
+            self._adj = adj
+            self._centre = [((t['v'][0][0] + t['v'][1][0] + t['v'][2][0]) / 3,
+                             (t['v'][0][1] + t['v'][1][1] + t['v'][2][1]) / 3,
+                             (t['v'][0][2] + t['v'][1][2] + t['v'][2][2]) / 3)
+                            for t in self._walkable]
+        return self._adj
+
+    def triangle_at(self, x: float, z: float, y: float = None):
+        """The index of the walkable triangle under a point."""
+        best, at = None, None
+        for i, t in enumerate(self._walkable):
+            h = _height_at(t['v'], x, z)
+            if h is None or (y is not None and h > y + 1.0):
+                continue
+            if best is None or h > best:
+                best, at = h, i
+        return at
+
+    def nearest_triangle(self, p):
+        """The walkable triangle whose centre is nearest a point.
+
+        A `jump_` marker sits in a doorway and a `lockarea` centre is the
+        middle of a room, and neither is guaranteed to be over ground the
+        mesh calls walkable. This is what a destination falls back to.
+        """
+        self.graph()
+        best, at = None, None
+        for i, c in enumerate(self._centre):
+            d = math.dist((c[0], c[2]), p)
+            if best is None or d < best:
+                best, at = d, i
+        return at
+
+    def path(self, a, b, radius: float = 0.5, kind: str = 'chara_line'):
+        """Waypoints from `a` to `b` over the ground, or None.
+
+        A* across the triangle graph, with a step refused when the segment
+        between the two centres crosses a fence or when the shared edge is
+        narrower than the body. The waypoints are the shared edges' midpoints,
+        which is the crossing the mesh itself offers.
+
+        This is the engine's own, like the sliding rule in
+        [`actor.py`](actor.py): the disc says where the ground is and where
+        the fence is, and says nothing at all about how a body gets across a
+        room.
+        """
+        adj = self.graph()
+        start = self.triangle_at(a[0], a[1])
+        goal = self.triangle_at(b[0], b[1])
+        if goal is None:
+            goal = self.nearest_triangle(b)     # a marker off the mesh
+        if start is None:
+            start = self.nearest_triangle(a)
+        if start is None or goal is None:
+            return None
+        if start == goal:
+            return [b]
+        segs = []
+        for ln in self.fences(kind):
+            pts = [(q[0], q[2]) for q in ln.world()]
+            segs += list(zip(pts, pts[1:]))
+        c = self._centre
+        end = (c[goal][0], c[goal][2])
+
+        def h(i):
+            return math.dist((c[i][0], c[i][2]), end)
+
+        import heapq                                       # noqa: PLC0415
+        seen = {start: (0.0, None, None)}
+        heap = [(h(start), start)]
+        while heap:
+            _, i = heapq.heappop(heap)
+            if i == goal:
+                break
+            g0 = seen[i][0]
+            for j, mid in adj[i]:
+                p = (c[i][0], c[i][2])
+                q = (c[j][0], c[j][2])
+                if any(_crosses(p, q, u, v) for u, v in segs):
+                    continue
+                if any(math.dist(_closest(u, v, (mid[0], mid[2])),
+                                 (mid[0], mid[2])) < radius * 0.6
+                       for u, v in segs):
+                    continue
+                g = g0 + math.dist(p, q)
+                if j in seen and seen[j][0] <= g:
+                    continue
+                seen[j] = (g, i, mid)
+                heapq.heappush(heap, (g + h(j), j))
+        if goal not in seen:
+            return None
+        last = (b if self.triangle_at(b[0], b[1]) is not None
+                else (c[goal][0], c[goal][2]))
+        out, i = [last], goal
+        while seen[i][1] is not None:
+            mid = seen[i][2]
+            out.append((mid[0], mid[2]))
+            i = seen[i][1]
+        out.reverse()
+        return out
+
     # -- the fence --------------------------------------------------------
 
     def fences(self, kind: str = 'chara_line'):
         """The polylines that stop a body. `chara_line` is the player's."""
-        return [ln for ln in self.stage.lines if ln.kind == kind]
+        return [ln for ln in self.stage.lines
+                if ln.kind == kind or ln.name in self.raised]
 
     def push_out(self, p, radius: float, kind: str = 'chara_line'):
         """Move `p` out of any fence it is within `radius` of.
@@ -149,6 +289,22 @@ class World:
             if not moved:
                 break
         return (x, z), touched
+
+    def touching(self, name: str, p, radius: float) -> bool:
+        """Is a point within `radius` of a named polyline?
+
+        What it is for: a fence that goes up around a body already standing
+        on it would wall that body out of the room it just walked into. See
+        [`mission.py`](mission.py).
+        """
+        for ln in self.stage.lines:
+            if ln.name != name:
+                continue
+            pts = [(q[0], q[2]) for q in ln.world()]
+            for u, v in zip(pts, pts[1:]):
+                if math.dist(_closest(u, v, p), p) < radius:
+                    return True
+        return False
 
     def blocked(self, a, b, kind: str = 'chara_line'):
         """Does the step from `a` to `b` cross a fence?

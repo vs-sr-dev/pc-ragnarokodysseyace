@@ -18,16 +18,28 @@ load the scripts, call `sfStageInit()` - on **every** stage on the disc, which
 is the only way to find out whether the reading generalises. `api` reports how
 much of the interface any of that reaches.
 
+Milestone 5 is [`mission.py`](mission.py), which plugs a quest's four tables
+into the `spawner` slot below and turns nine of these calls from recorders
+into state that moves.
+
 ## What "bound" means here, and what it does not
 
-Of the 285, **66 do something** - and they carry 17,635 of the 25,699 calls
-the disc makes, which is 69% of the interface's traffic: they move the body, read the marker table,
-toggle a fence or a spawner, keep a flag bank, jump to another stage, or hand
+Of the 285, **70 do something** - and they carry 17,862 of the 25,699 calls
+the disc makes, which is 70% of the interface's traffic: they move the body,
+read the marker table, toggle a fence or a spawner, keep a flag bank, jump to
+another stage, spawn what a quest declares, or hand
 back a number the disc says they hand back. The rest are recorded and return
 0 - which is a stub, and the report says so every time it prints a count.
+
 Returning 0 rather than null is deliberate: nearly every one of these answers
 a question with a number, and a null turns the script's first comparison into
 an error and hides everything after it.
+
+Four of the seventy answer with a number **only when a quest layer is
+loaded**: `cfGetCntKillGenPieceLockOnly`, `getLatestKilled`, `getNumOfEnemy`
+and `getNumOfBoss` are what a quest script asks about what is alive, and
+[`mission.py`](mission.py)'s `Spawner` is what knows. Without one they behave
+as they always did, which is to say they return 0.
 
 The 285 are listed in `NATIVES` with the number of calls each gets across the
 disc, so the file declares the whole interface whether or not it implements
@@ -62,6 +74,7 @@ skipped.
 from __future__ import annotations
 
 import fnmatch
+import inspect
 import math
 import pathlib
 import random
@@ -335,6 +348,25 @@ def _literal(a: str):
         return _BAD
 
 
+def _arity(fn):
+    """How many positional arguments a binding takes, at least and at most."""
+    if fn is None:
+        return 0, 0
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return 0, 99
+    lo = hi = 0
+    for p in sig.parameters.values():
+        if p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD):
+            return lo, 99
+        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD):
+            hi += 1
+            if p.default is p.empty:
+                lo += 1
+    return lo, hi
+
+
 # -- geometry --------------------------------------------------------------
 
 
@@ -372,7 +404,7 @@ class Character:
 class Host:
     """One running game: a world, a VM, the flag banks and the scheduler."""
 
-    def __init__(self, tree, quest='', seed=1, verbose=True):
+    def __init__(self, tree, quest='', seed=1, verbose=True, spawner=None):
         self.tree = pathlib.Path(tree)
         self.vm = VM(printer=self._print)
         self.quest = quest
@@ -383,6 +415,7 @@ class Host:
         self.events = []
         self.stub_calls = {}                    # name -> how many times
         self.real_calls = {}
+        self.arity = {}                         # ... with the wrong count
         self.implemented = set()                # the ones that do something
         self.wanted = set()                     # every name the scripts call
         self.steps = 0                          # instructions retired
@@ -406,6 +439,13 @@ class Host:
         self.stage_name = ''
         self.pending_jump = None
         self.loaded = []
+        # The quest layer, when there is one: `mission.py`'s `Spawner`, which
+        # owns `enemy_gen.bin`, `enemy.bin` and `piecelock.bin` and turns
+        # nine of the calls below from recorders into state that moves.
+        # Without it they behave exactly as they did before.
+        self.spawner = spawner
+        if spawner is not None:
+            spawner.host = self
         self.bind()
 
     @property
@@ -464,7 +504,13 @@ class Host:
                 'spawner', '%s delayed by %s frames' % (n, to_string(d))),
             'cfStartPieceLock': self._start_lock,
             'cfEndPieceLock': self._end_lock,
-            'cfGetCntKillGenPieceLockOnly': lambda: 0,
+            'cfSetEnemyMax': self._enemy_max,
+            # The four questions a quest script asks about what is alive.
+            # Without a spawner they are what they were: zero.
+            'cfGetCntKillGenPieceLockOnly': lambda: self._ask('kills', 0),
+            'getLatestKilled': lambda: self._ask('latest_killed', 0),
+            'getNumOfEnemy': lambda *a: self._ask('num_enemy', 0),
+            'getNumOfBoss': lambda *a: self._ask('num_boss', 0),
             'cfGetPosInHta': self._hta_axis,
             'getHTAPos': self._hta_pos,
             'cfMapJump': self._map_jump,
@@ -530,12 +576,26 @@ class Host:
                                        True))
 
     def _counted(self, name, fn, real):
+        """One binding, wrapped so it counts and so its arity is Squirrel's.
+
+        Squirrel calls a native with whatever the source wrote and the engine
+        reads what it wants; Python raises. `q01106`'s stage script calls
+        `cfSetEnableBorderline()` with no arguments at all, which is a
+        one-line slip in a hand-written script that the real game shrugs off,
+        and a run of 430 quests should not end on it. Missing arguments are
+        filled with 0 and extra ones dropped, and every adaptation is
+        recorded in `arity` so the report can say it happened.
+        """
         table = self.real_calls if real else self.stub_calls
+        lo, hi = _arity(fn)
 
         def call(*args):
             table[name] = table.get(name, 0) + 1
             if fn is None:
                 return 0
+            if not lo <= len(args) <= hi:
+                self.arity[name] = self.arity.get(name, 0) + 1
+                args = (tuple(args) + (0,) * lo)[:max(lo, min(len(args), hi))]
             return fn(*args)
         return call
 
@@ -555,15 +615,33 @@ class Host:
         self.note('stage', 'fence %s %s' % (name, 'on' if on else 'off'))
 
     def _enable_spawner(self, name, on):
-        self.spawners[name] = bool(on)
+        self.spawners[str(name)] = bool(on)
         self.note('stage', 'spawner %s %s' % (name, 'on' if on else 'off'))
+        if self.spawner is not None:
+            self.spawner.enable(str(name), bool(on))
+
+    def _enemy_max(self, n):
+        self.note('stage', 'at most %s alive at once' % to_string(n))
+        if self.spawner is not None:
+            self.spawner.at_once = int(n)
+
+    def _ask(self, what, default=0):
+        """A number only the quest layer knows. `format_api.md` says what
+        each of them means; `mission.py` is what has one."""
+        if self.spawner is None:
+            return default
+        return getattr(self.spawner, what)
 
     def _start_lock(self, name):
-        self.piece_lock = name
+        self.piece_lock = str(name)
         self.note('stage', 'piece lock %s closes' % name)
+        if self.spawner is not None:
+            self.spawner.start_lock(str(name))
 
     def _end_lock(self):
         self.note('stage', 'piece lock %s opens' % (self.piece_lock or '?'))
+        if self.spawner is not None:
+            self.spawner.end_lock()
         self.piece_lock = None
 
     def _hta_axis(self, name, axis):
@@ -704,6 +782,8 @@ class Host:
         self.stage_name = name
         self.characters.clear()
         self.hit_areas = {m.name: True for m in self.world.stage.markers}
+        if self.spawner is not None:
+            self.spawner.enter(name, self.world)
         self.note('stage', 'entered %s at %s (%d markers, %d triggers)'
                   % (name, marker, len(self.world.stage.markers),
                      len(self.world.stage.triggers)))

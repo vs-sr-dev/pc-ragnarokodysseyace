@@ -10,7 +10,22 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-23 (2026-08-23). **A fight runs in both directions.** A class
+Sessions 1-24 (2026-08-24). **A quest finishes itself.** A quest's own tables
+put monsters on a stage, the player kills them, and the quest's own compiled
+script counts the kills and decides the arena is over - then opens the gate it
+closed and lets the run walk on to the next room. Nothing in the engine tells a
+script how many monsters it put out; the script knows because the tables say
+so, in two different files, and **527 of 527 arena locks agree with the
+constant compiled into their own kill callback**. That is [milestone
+5](docs/milestone_quest.md), *"a quest finishes itself"* -
+[`engine/mission.py`](engine/mission.py). Driving all 431 quests, **210 of the
+229 arenas the body reached were closed by the script itself**, on 1,534
+kills. The ground mesh turned out to be a
+navigation mesh already, on two facts
+[`docs/format_ccls.md`](docs/format_ccls.md) had established and nothing had
+used.
+
+**Before that, a fight in both directions.** A class
 presses a button its own combo graph accepts, plays the animation that graph
 names, and the hit records on it land on a *named part* of a monster's body -
 `Leg_R`, `HEAD`, or one of the parts that break off - while the monster, in
@@ -229,8 +244,14 @@ a monster fights ->       83 of 83 deciding      engine/brain.py
   the gate       ->    0.590 correlation, `_act.par`'s range against the swing
   the chain      ->    1,419 actions -> 1,109 motions -> 683 event lists
 
+a quest finishes ->      527 of 527 kill counts agreeing  engine/mission.py
+  driven         ->      210 of 229 arenas closed by the script itself
+  the arena      ->    2,813 of 2,817 spawners inside their own lockarea
+  the route      ->      398 of 428 stage lists connected by their jumps
+  the ground     ->      a navigation mesh, at no extra cost  engine/world.py
+
 the scripts run  ->    3,011 of 3,011 executing  engine/squirrel.py  0 faults
-  the interface  ->      285 bound, 66 doing the work    engine/host.py
+  the interface  ->      285 bound, 70 doing the work    engine/host.py
   a stage        ->      155 loaded and initialised, 507 of 507 triggers read
   a cutscene     ->       68 of 68 running to their own setDemoEnd
   a conversation ->       13 lines, resumed through the suspend protocol
@@ -274,7 +295,8 @@ tables](docs/format_quest.md),
 ends in a ledger of what is still missing. What running it produced is in
 [milestone 1](docs/milestone_numbers.md), [milestone
 2](docs/milestone_stage.md), [milestone 3](docs/milestone_fight.md),
-[milestone 4](docs/milestone_player.md) and [the
+[milestone 4](docs/milestone_player.md), [milestone
+5](docs/milestone_quest.md) and [the
 pose](docs/pose.md), which
 now covers the hit volume as well as the foot. The
 plan is in
@@ -464,16 +486,25 @@ read.
 
 ## Engine
 
-`engine/` is where the reading stops and the reimplementation starts. Ten
-files and no renderer: a world that answers where the floor is and
-where the fence is, an actor that moves under the game's parameter table, a
+`engine/` is where the reading stops and the reimplementation starts. Eleven
+files and no renderer: a world that answers where the floor is,
+where the fence is and how to get across the room, an actor that moves under
+the game's parameter table, a
 pose layer that puts a skeleton on the ground, a hitbox layer that puts a
 volume on the skeleton, a driver that reports what comes out - and, since
 session 22, a Squirrel 2.2 virtual machine, the 285 host functions the
 game's own scripts call into, a monster's decision tables and the fight they
-turn into, and since session 23 the player's own half of that fight.
+turn into, since session 23 the player's own half of that fight, and since
+session 24 a quest that runs itself to its own end.
 
 ```
+python engine/mission.py run <tree> q00102 sw      one quest, end to end
+python engine/mission.py runs <tree>               every quest on the disc
+python engine/mission.py counts <tree>             the script's kill count
+                                                   against the lock's list
+python engine/mission.py area <tree>               is the lockarea the arena?
+python engine/mission.py route <tree>              is the stage list a route?
+
 python engine/player.py duel <tree> 010_01_01 AI_B01_OrcKing sw
                                                    both halves, one loop
 python engine/player.py duels <tree> sw            every monster, both halves

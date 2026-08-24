@@ -313,3 +313,28 @@ Three things came out of it that reading could not produce:
   doing as well — and the hunter, which fires nothing off a weapon bone at
   all, is matched instead by `ht_arrow_tbl`, whose commonest flight covers
   21.3 m against a `cmb_hmg_search_radius` of 20.
+
+### 5. "A quest finishes itself" — ✅ **reached, session 24**
+
+A quest's own tables put monsters on a stage, the player kills them, and **the
+quest's own compiled script counts the kills and decides the arena is over** —
+then opens the gate it closed and lets the run walk on. The engine never tells
+a script how many monsters it put out. Over the disc, driving all 431 quests,
+**210 of the 229 arenas the body reached were closed by the script itself**, on
+1,534 kills. The report is [`milestone_quest.md`](milestone_quest.md).
+
+Three things came out of it that reading could not produce:
+
+- **the kill count is written twice, in two files, by two authors, and the two
+  agree.** The threshold in a `sfKill_Generator` is an integer compiled into
+  Squirrel bytecode; the generators a lock covers are a newline-separated
+  string in `piecelock.bin` lane `+0x1c`. **527 of 527 locks agree, with
+  nothing left over** — and there is no way to arrange that from either side;
+- **`lockarea` is the room and `lock_line` are the doors.** 2,813 of the 2,817
+  spawners a lock covers, and 572 of the 575 triggers that close one, lie
+  inside the lock's own `lockarea` polygon;
+- **the ground mesh is a navigation mesh**, and it took no new data to make it
+  one. [`format_ccls.md`](format_ccls.md) had already established that the
+  mesh is welded and that the edge of the walkable region is the fence; those
+  two facts are the whole of a navmesh, and the A\* that walks a body across a
+  room is built out of `ccls.py`'s triangles and nothing else.

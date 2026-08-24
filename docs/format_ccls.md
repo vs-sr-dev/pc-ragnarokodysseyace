@@ -79,6 +79,13 @@ near enough to fence 155 levels, and it does not need to be: **the edge of the
 walkable region is the fence.** Those 21,448 single-use edges are the outline
 of every stage in the game.
 
+Those two facts together — welded, with the boundary as the wall — are the
+whole of a navigation mesh, and session 24 read the file as one without
+decoding anything new: the 150,236 two-use edges are the doorways between
+triangles and the 21,448 single-use ones are where a body stops.
+[`world.py`](../engine/world.py)'s `graph` and `path` are that reading, and
+[`milestone_quest.md`](milestone_quest.md) is what it was for.
+
 **The coordinates are the stage's own model space, with nothing in between.**
 On 124 of the 155 stages every collision vertex lies inside the bounding box of
 that stage's `ground.CMDL` — which draws a good deal further out than the
