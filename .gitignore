@@ -60,6 +60,15 @@ generated/
 *.vag
 *.mpg
 
+# Key material for the SELF decryption (Phase 3). Not game content, but not
+# ours to redistribute either, and not derivable from the disc: it is a local
+# input with exactly the standing the ISO has. `tools/self.py` takes the path
+# to it as an argument, so the tool is publishable and the keys are not.
+keys/
+*.keys
+# And a third-party source tree dropped in for the same purpose.
+rpcs3-master/
+
 # build
 build/
 out/

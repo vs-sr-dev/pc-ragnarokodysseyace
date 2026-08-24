@@ -7,55 +7,86 @@
 
 # Next session
 
-Session 28 gave the quest its pay-out, and the reading it needed had been in
-the file all along. The report is [`milestone_reward.md`](milestone_reward.md),
-the seventh milestone, and the format work is in
-[`format_reward.md`](format_reward.md). What to carry:
+Session 29 took the walk, which had been the weak half since session 24 and
+was gating the pay-out. The report is [`milestone_walk.md`](milestone_walk.md),
+the eighth milestone, and it has an instrument — `run.py nav` — and a picture,
+`draw.py route`. What to carry:
 
-- **the column is the draw and a row is one of its alternatives.** Ten slots
-  of sixteen bytes are ten columns, and grouping a block's entries by
-  `(column, kind)` — kind 4 split further by the class it names — **4,022 of
-  4,022 columns of `item_reward.bin` sum to at most 10,000** and 561 to
-  exactly it, against **244 of 644** for the grouping this document had
-  before. That closes "what an `item_reward.bin` row is", open since session
-  25, and it makes the six rows of class weapons at the foot of a block one
-  column offering one weapon per class — 397 of the 564 weapon columns;
-- **`it_drop_db_<id>.bin` is the same grid**, eight columns wide, and it was
-  only ever a join target. 579 tables, **4,369 of 4,369 columns carry their
-  kind in the top entry and not one repeats it below**, and a column whose
-  top entry names no item is a **gate**: **all 1,930 of those sum to exactly
-  10,000 underneath it**, all 2,439 ungated ones to at most 10,000, and
-  26,237 of 26,251 ids name an `it_db` row — the fourteen that do not are the
-  ten quest items;
-- **the region id is the monster's difficulty tier, not a multiplayer bit.**
-  0/1, 10/11, 20/21 … 250/251, and **194 of 194 monster blocks name tiers
-  that monster's own JSON declares** — the keys [`params.md`](params.md)
-  reads, where the odd member is the same monster at a higher `region_lv`
-  with `hp` ×1.5. The pair pays better on the odd side because it is harder,
-  not because it is multiplayer. The endless dungeon writes 100, 101, 110,
-  111 in the same field;
-- **the encyclopedia says in English where a thing comes from, and it
-  agrees.** 411 of 411 materials carry a `{{Dropped by}}` or
-  `{{Acquired from}}` tag, `dc_db_monster.bin`'s second word is the same
-  twelve-bit monster id, and **47 of 47** "Quest Reward" materials are in an
-  `item_reward.bin` while **292 of 298** materials a named monster drops are
-  given by that monster. The six misses are the text naming a family where
-  the table names a variant;
-- **four things pay now** — the quest finishing, a part breaking off, a
-  monster dying, and `cfAddItem`, which was a recorder. Over the disc, **179
-  quests paid 568,871 zeny and 2,762 items of 279 kinds**, and the five
-  numbers milestone 5 published came back to the digit. **One of the four
-  never fired**: not a part came off in 431 quests, because of the 83
-  monsters the quests field the **23 that carry a `region_data_brk` record
-  are all bosses**, and a boss does not stand inside a `piecelock` arena. It
-  wants a boss fight, and before that item 3. Two numbers are
-  declared policy (`BREAKS`, and drawing kind 0) and a third only looks like
-  one: on the catalog's own progress **no quest reaches its second reward
-  block**, because of the 22 two-block quests that grant a progress value,
-  **17 have their second block at exactly that value**. The later block is
-  what a replay pays.
+- **the body was standing under the floor.** `run.py check` had measured the
+  distance from a marker to its ground for six sessions and never its sign:
+  **36 of the 661 `appear` markers, 183 of the 2,123 `emgen_pos`, 20 `jump_`
+  and 14 `pl_q` sit more than `col_r` below their own floor**, by fifteen
+  metres on `100_03_02`. A body put there has nothing under it, falls, gets
+  put back where it fell from, and falls again for the whole run.
+  `world.stand` places a body on the ground under its marker — the ground
+  nearest the marker's own Y, because a stage has storeys — and that one rule
+  is most of the session;
+- **and it corrects two published numbers.** `run.py sweep` goes from *127 of
+  135* stages crossed on legal ground to **135 of 135**, and its largest
+  vertical move in a frame from 8.000 m to 0.109: the eight stages it called
+  *"a hole in the mesh"* were the eight whose spawn is under their own floor.
+  `fall_spd_max` is unaffected as a reading — the body was still outside the
+  level, just from underneath rather than over the edge — but nothing on the
+  disc falls any more, so that demonstration does not reproduce;
+- **a stair is not welded.** [`format_ccls.md`](format_ccls.md)'s weld holds
+  across one floor and not between two. Of the 22,020 single-use walkable
+  edges, **2,093 have another within `col_r` sharing no vertex** — a seam, not
+  an outline — and `070_01_02`'s staircase is nine components of a graph built
+  on the weld alone. `world.graph` joins them at `col_r`, which is
+  `actor.py`'s own step. The disc has no step height to declare: slab risers
+  decay smoothly to 0.9 m over 67 stages and then spike at exactly 1.0 m,
+  which is the tower's modular kit on 35 `170_*` floors, and going from 0.5 to
+  1.5 m buys no extra reachable exit anywhere;
+- **the class table has a ground probe nobody had read.** `ry_r_walk` 0.15,
+  `ry_r_run` 0.30, `ry_r_fast` 0.35, `ry_r_fall` 0.35 — the only per-gait
+  length the player has, on all six classes and no monster, keyed to exactly
+  the four locomotion states `actor.py` models. Used as the radius a body
+  looks for ground within, which is a reading and is marked as one in
+  [`params.md`](params.md);
+- **two smaller things the disc got wrong itself.** Five polyline kinds are
+  misspelled over ten stages — `chare_line`, `chara_lime`, `Lock_Line`,
+  `lock_area`, `stop_line` — and `chare_line01` on `020_02_01` is a 36-point
+  player fence nothing in this repository could see; and **the `CCLS` surface
+  code is not geometry**, since all thirteen have a median slope under four
+  degrees, which rules the codes out as a walkability flag and leaves them
+  where [`format_ccls.md`](format_ccls.md) already had them, as a terrain
+  type.
 
-### 1. The effects now have a consumer that can show them.
+**What it came to, over all 431 quests.** Against the numbers milestone 5
+published and milestone 7 reproduced: **284 quests finish against 247**, and
+of the ones that put a locked arena in front of the player **59 of 133
+against 25 of 131**. **322 of the 344 arenas the body reached were closed by
+the script's own kill count**, against 210 of 272 — 94 % against 77 %, with
+72 more arenas reached at all. Kills went 1,534 to **3,017** on the same
+`BLOWS` policy, and the pay-out with them: **689,375 zeny and 5,086 items of
+349 kinds** against 568,871 and 2,762. *The body stopped walking* went **125
+to 66**, and eleven stages account for all 66 — `070_01_02` thirteen times,
+`100_02_01` ten, `170_08_01`, `080_01_02` and `050_02_03` eight each.
+
+**And the sweep is now the slow half of a session.** It cost an hour when
+most quests gave up in the second room; quests that walk their whole list and
+fight everything on it cost more. Launch it first, not halfway through.
+
+### 1. The walk, again — the three that are left.
+
+The instrument now says exactly where it fails, which is the point of having
+one. Three things are known and unfixed:
+
+- **`070_01_02`'s exit.** The first riser out of its spawn room is 0.61 m over
+  a 0.21 m gap, a 71-degree slope, and a wall by the mesh's own walkability
+  test. Four quests stop under it. **The body has never jumped** —
+  `jp_speed_y` 0.42 against `fall_gravity_y` −0.035 is an apex of 2.5 m — and
+  a jump is the disc's own answer to a ledge;
+- **an unreachable exit is still chosen.** Preferring a reachable one was
+  tried, measured, and reverted: it fixed nothing and turned `q00306` from
+  finishing into pacing between two rooms, because A* says None for places a
+  body does get to. Making A* less conservative about a fence is the real
+  item;
+- **`_goal` is still the run's and not the disc's.** The body walks at a
+  marker because nothing has read what actually leads a player through a
+  stage.
+
+### 2. The effects now have a consumer that can show them.
 
 `.PTP` and `effect.bin` have been read for six sessions with nothing able to
 draw them. The renderer has additive blending and a draw order, which is
@@ -64,7 +95,7 @@ exactly what an effect needs, and [`format_ptp.md`](format_ptp.md)'s
 locator on the body — all have somewhere to go. It has a reading item
 attached: **which `.anmcmd` opcode spawns one**, which is item 6 below.
 
-### 2. Two lanes the renderer still ignores, both declared.
+### 3. Two lanes the renderer still ignores, both declared.
 
 - **fog.** Every stage declares one to three fog records and none is drawn.
   The colour and the near/far are legible; the density word is not a float on
@@ -77,16 +108,6 @@ attached: **which `.anmcmd` opcode spawns one**, which is item 6 below.
   vertices carry something else, and `010_01_01`'s `mizuumi_kiwa` uses it on
   127 of its 237 vertices, which is a lake edge fading out. The rasteriser
   interpolates three channels and would have to interpolate four.
-
-### 3. The walk is still the weak half.
-
-This is the oldest unmoved item and it now gates the newest one: a pay-out is
-only as good as the quests that reach it. 252 of the 431 quests walked their
-whole stage list and 125 runs end with *the body stopped walking*. That is
-this repository's steering and not a reading. The navigation mesh from
-session 24 (`world.py graph`, `path`, `nearest_triangle`) is the instrument
-and nothing has been tuned against it. **And it can be drawn** — a path over
-a top-down render is a picture that says where the steering gives up.
 
 ### 4. The three entries beside `s_combo_graph`.
 
@@ -105,7 +126,7 @@ at 30 fps — and a respawn delay is testable the moment a monster can die.
 
 Thirty of fifty-two, with two consumers that want particular ones: which
 opcode spawns a projectile and which `ht_arrow_tbl` row it names, and what
-turns a weapon trail on. Item 1 above wants the first of those.
+turns a weapon trail on. Item 2 above wants the first of those.
 
 ### 7. The endless dungeon, which is now half-read for free.
 
@@ -350,6 +371,35 @@ the stage list the quests already walk.
 ---
 
 # Log
+
+## Session 29 - 2026-08-24
+
+Milestone 8, written up in [`milestone_walk.md`](milestone_walk.md). What is
+here is what did not fit in the report.
+
+- **The bug was in the oldest check in the repository.** `run.py check` has
+  printed "markers standing on the mesh" since session 14 and it computed
+  `abs(y - marker_y)`. The absolute value threw away the only thing that
+  mattered. Six sessions of steering work were spent on a body that, on nine
+  stages, was under the floor before it took a step.
+- **A measurement that is silent is worse than none.** The same check reported
+  `emgen_pos` at a median of 0.566 m from its ground - by far the worst of the
+  five kinds, printed every time, and read by nobody as a problem because the
+  four kinds beside it looked fine.
+- **The ablation is the method.** Every change here was reverted in place and
+  re-measured: the step join at `STEP=-1` against `STEP=0.5` (it broke
+  `030_03_01` until the waypoint test went in), the capsule ground probe
+  against the point one (it earns nothing on `sweep` and its case is the
+  stairs), and the reachable-exit rule, which lost outright and is a comment
+  now. Three of the four survived.
+- **`STEP=0.0` is not "off".** The first ablation looked clean and was not:
+  two loose edges at exactly the same place have a gap of 0.0, and `0.0 > 0.0`
+  is false, so a zero threshold still joins every coincident pair. A boolean
+  would have been the honest switch.
+- **Success costs time.** The full quest sweep took an hour when most quests
+  gave up in the second room. Quests that walk their whole list and fight
+  everything on it take longer, so the sweep is now the slower half of a
+  session rather than a background errand.
 
 ## Session 26 - 2026-08-24
 
