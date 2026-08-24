@@ -14,6 +14,7 @@ has been rasterising triangles here since session 19.
     python engine/draw.py stage   <dir> <stage> <out.png> [width]
     python engine/draw.py scene   <dir> <quest> <out.png> [size] [body]
     python engine/draw.py top     <dir> <stage> <out.png> [size]
+    python engine/draw.py route   <dir> <stage> <out.png> [size] [goal]
     python engine/draw.py check   <dir> [glob]
     python engine/draw.py light   <dir> [glob]
     python engine/draw.py minimap <dir> [glob]
@@ -1178,6 +1179,114 @@ def paint(frame: Frame, cam: Camera, tris, shade: float = 1.0) -> int:
     return n
 
 
+def stroke(frame: Frame, cam: Camera, pts, colour, width: int = 1) -> None:
+    """A polyline of world points, straight onto the colour buffer.
+
+    No depth, because this draws *over* a picture rather than into it: a
+    route and a fence are annotations on the render and not things in the
+    world. The rasteriser is untouched.
+    """
+    prev = None
+    for p in pts:
+        x, y, _, _ = cam.project(cam.view(p))
+        cur = (x, y)
+        if prev is not None:
+            n = max(1, int(max(abs(cur[0] - prev[0]), abs(cur[1] - prev[1]))))
+            for k in range(n + 1):
+                t = k / n
+                _plot(frame, prev[0] + (cur[0] - prev[0]) * t,
+                      prev[1] + (cur[1] - prev[1]) * t, colour, width)
+        prev = cur
+
+
+def _plot(frame: Frame, x, y, colour, width: int) -> None:
+    for dy in range(-(width // 2), width // 2 + 1):
+        for dx in range(-(width // 2), width // 2 + 1):
+            px, py = int(x) + dx, int(y) + dy
+            if 0 <= px < frame.w and 0 <= py < frame.h:
+                i = (py * frame.w + px) * 4
+                frame.col[i:i + 3] = bytes(colour)
+
+
+def cmd_route(root, stage, out, size='700', goal='') -> int:
+    """Where the steering goes, drawn over the ground it goes on.
+
+    Six sessions of readings and one instrument: the walk is the half of
+    this repository that is nobody's reading and everybody's problem, and
+    until now the only thing it could say about a failure was a number of
+    metres. This draws it - the walkable mesh from below, the fence over it,
+    every `lockarea` it has, and the body's own trail from `appear01` to
+    each destination, green where it arrived and red where it gave up.
+
+    The trail is [`run.py`](run.py)'s `nav`, frame for frame, so the picture
+    and the number are the same run.
+    """
+    import run as runner                                       # noqa: PLC0415
+    from ccls import Ccls                                       # noqa: PLC0415
+    from world import World                                     # noqa: PLC0415
+
+    d = pathlib.Path(root) / 'stage.cpk' / stage / 'param.pac'
+    w = World(d)
+    p = runner.load(str(pathlib.Path(root) / 'job.cpk' / 'sw' / 'sw.json'))
+    n = int(size)
+    lo, hi = w.lo, w.hi
+    span = max(hi[0] - lo[0], hi[2] - lo[2]) or 1.0
+    sc = n / span * 0.94
+    ox = n * 0.5 - sc * (lo[0] + hi[0]) / 2
+    oy = n * 0.5 - sc * (lo[2] + hi[2]) / 2
+    f = Frame(n, n)
+    cam = Camera.overhead(n, n, sc, ox, oy, top=hi[1] + 100.0)
+    paint(f, cam, [tuple(t['v']) for t in w.tris], shade=0.22)
+    paint(f, cam, [tuple(t['v']) for t in w._walkable], shade=0.42)
+    top = hi[1] + 1.0
+    for ln in w.stage.lines:
+        low = ln.name.lower()
+        if low.startswith('chara') or low.startswith('chare'):
+            col = (210, 90, 70)
+        elif low.startswith(('lockarea', 'lock_area')):
+            col = (70, 120, 210)
+        elif low.startswith(('lock_line', 'lock_line'.title())):
+            col = (110, 90, 170)
+        else:
+            continue
+        stroke(f, cam, [(q[0], top, q[2]) for q in ln.world()], col)
+    names = w.stage.atih.by_name() if w.stage.atih else {}
+    start = names.get('appear01') or names.get('appear')
+    if start is None:
+        raise SystemExit(f'{stage}: no appear01 to start from')
+    here = (start.position[0], start.position[2])
+    goals = [(m.name, (m.position[0], m.position[2]))
+             for m in w.stage.markers if m.name.startswith('jump_')]
+    for ln in w.stage.lines:
+        if ln.name.lower().startswith(('lockarea', 'lock_area')):
+            got = w.into(ln.name, here)
+            if got is not None:
+                goals.append((ln.name, got))
+    if goal:
+        goals = [g for g in goals if g[0] == goal]
+    made = 0
+    for name, to in goals:
+        got = runner._navwalk(w, p, start, to, p.get('col_r', 0.5), 2000,
+                              keep=True)
+        made += got['how'] == 'arrived'
+        col = (90, 210, 110) if got['how'] == 'arrived' else (230, 70, 70)
+        stroke(f, cam, [(x, top, z) for x, z in got['trail']], col, 3)
+        stroke(f, cam, [(to[0] - 1.2, top, to[1]),
+                        (to[0] + 1.2, top, to[1])], col, 3)
+        stroke(f, cam, [(to[0], top, to[1] - 1.2),
+                        (to[0], top, to[1] + 1.2)], col, 3)
+        print(f'  {name:<22} {got["how"]:<8} {got["close"]:6.1f} m short, '
+              f'{got["went"]:6.0f} m walked, {got["paths"]:3d} routes')
+    stroke(f, cam, [(here[0] - 1.6, top, here[1] - 1.6),
+                    (here[0] + 1.6, top, here[1] + 1.6)], (250, 230, 90), 3)
+    stroke(f, cam, [(here[0] - 1.6, top, here[1] + 1.6),
+                    (here[0] + 1.6, top, here[1] - 1.6)], (250, 230, 90), 3)
+    f.png(out)
+    print(f'{stage}  {n}x{n} looking down, {span:.1f} m across, '
+          f'{made} of {len(goals)} destinations reached  ->  {out}')
+    return 0
+
+
 def cmd_minimap(root, want='*') -> int:
     """The rasteriser on trial against the one already here.
 
@@ -1261,6 +1370,8 @@ def main() -> int:
         return cmd_stage(*rest)
     if cmd == 'top':
         return cmd_top(*rest)
+    if cmd == 'route':
+        return cmd_route(*rest)
     if cmd == 'scene':
         return cmd_scene(*rest)
     if cmd == 'check':

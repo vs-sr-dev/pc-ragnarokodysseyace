@@ -19,6 +19,8 @@ Nothing is decoded here that `tools/` does not already decode. What is added
 is the queries a simulation makes and a reader does not:
 
     floor(x, z)        the highest ground under a point, or None
+    under(x, z)        the same, under the whole capsule and not a point
+    stand(x, z, y)     the ground a body placed on a marker stands on
     blocked(a, b)      does the step from a to b cross a fence
     path(a, b)         waypoints from a to b over the ground
 
@@ -55,6 +57,21 @@ from stage import Stage                                       # noqa: E402
 # The floor query ignores triangles steeper than this. A stage ground is a
 # welded mesh with walls in it, and standing on a wall is not standing.
 WALKABLE_COS = 0.34                    # about 70 degrees from horizontal
+
+# A body steps up or down anything within `col_r` and the capsule it stands in
+# has that same radius - both are [`actor.py`](actor.py)'s, and `col_r = 0.5`
+# is the disc's, out of the class JSON `params.md` found byte-identical across
+# all six classes. Two things here use it, and both are the graph and the
+# walker being made to agree about what a step is: a stair is not one welded
+# slab but a run of separate ones a step apart, and a capsule standing on the
+# lip of a slab is still standing on it.
+STEP = 0.5
+
+# What the disc's level editor typed by hand and got wrong: five kinds over
+# ten stages, listed in `format_stage.md`. `stop_line` on `050_04_01` is the
+# fifth and it is left alone, because nothing says which fence it is.
+TYPOS = {'chare_line': 'chara_line', 'chara_lime': 'chara_line',
+         'Lock_Line': 'lock_line', 'lock_area': 'lockarea'}
 
 
 class World:
@@ -110,6 +127,65 @@ class World:
                 best = y
         return best
 
+    def stand(self, x: float, z: float, y: float = None):
+        """The height a body *placed* at `(x, z)` has its feet at.
+
+        `floor` answers *what is the highest ground here*, which is the
+        question a falling body asks. Putting a body down on a marker is a
+        different question, and `hta.bin` does not answer it: `run.py check`
+        measures the marker table against the mesh and the two do not agree
+        to the centimetre, so a marker's own Y names the level it means
+        rather than the height a body stands at. **The walkable height
+        nearest that Y is the floor of that level**, and the body stands on
+        it.
+
+        This matters because the disagreement is not always small, and
+        `run.py check` reports it: 36 of the 661 `appear` markers, 183 of the
+        2,123 `emgen_pos`, 20 of the 272 `jump_` and 14 of the 74 `pl_q` sit
+        more than `col_r` *below* their own ground - by 15 metres on
+        `100_03_02` - and a body put down there is under the floor, which to
+        [`actor.py`](actor.py) is a body with no ground beneath it: it falls,
+        and it keeps falling.
+
+        Returns None where the mesh has no walkable ground under the point
+        at all, which is one `appear`, ten `emgen_pos` and three `jump_`.
+        """
+        best = None
+        for t in self._walkable:
+            h = _height_at(t['v'], x, z)
+            if h is None:
+                continue
+            if best is None or (h > best if y is None
+                                else abs(h - y) < abs(best - y)):
+                best = h
+        return best
+
+    def under(self, x: float, z: float, ceiling: float = None,
+              radius: float = STEP):
+        """The highest ground under a *capsule* centred on `(x, z)`.
+
+        `floor` asks what is under a point. A body is not a point: it is a
+        capsule of radius `col_r`, which is the number `push_out` already
+        keeps between its centre and a fence. A capsule whose centre has gone
+        a hand's breadth past the lip of a slab is still standing on that
+        slab, and a stair with a 0.3 m gap between two of its steps is still
+        a stair - a body crossing it moves 0.17 m in a frame and would
+        otherwise find nothing under itself halfway.
+
+        The centre is asked first and the rim only when the centre finds
+        nothing, so the common case costs exactly what `floor` costs.
+        """
+        got = self.floor(x, z, ceiling)
+        if got is not None:
+            return got
+        for k in range(8):
+            a = math.pi * k / 4.0
+            got = self.floor(x + math.cos(a) * radius,
+                             z + math.sin(a) * radius, ceiling)
+            if got is not None:
+                return got
+        return None
+
     def surface(self, x: float, z: float):
         """The surface code of the ground under a point, or None.
 
@@ -123,6 +199,55 @@ class World:
             if y is not None and (best is None or y > best):
                 best, code = y, t['code']
         return code
+
+    def into(self, name: str, near=None):
+        """Somewhere inside a named polyline that a body can stand on.
+
+        A `lockarea` is the arena and the middle of it is where
+        [`mission.py`](mission.py) sends the body. On `010_01_02` that
+        middle is a hole: `lockarea05` is 54 by 87 metres with a lake in the
+        middle of it, and its centroid has no ground under it at all. A
+        walkable triangle centre *inside the polygon* is a place; the one
+        nearest `near` is the nearest way in, and a body already inside the
+        arena is already there.
+
+        Falls back to the centroid where the polyline is not a polygon or
+        holds no ground, so a caller always gets a point.
+
+        The ground a polygon encloses is worked out once per polyline and
+        kept: `mission.py` asks this on every frame the arena is running, and
+        a point-in-polygon test against two thousand triangle centres thirty
+        times a second is the sort of thing that turns an hour's sweep into
+        an afternoon's.
+        """
+        if not hasattr(self, '_inside'):
+            self._inside = {}
+        if name not in self._inside:
+            pts = None
+            for ln in self.stage.lines:
+                if ln.name == name:
+                    pts = [(q[0], q[2]) for q in ln.world()]
+                    break
+            if not pts:
+                self._inside[name] = None
+            else:
+                mid = (sum(a for a, _ in pts) / len(pts),
+                       sum(b for _, b in pts) / len(pts))
+                got = []
+                if len(pts) >= 4:
+                    self.graph()
+                    got = [(c[0], c[2]) for c in self._centre
+                           if _in_polygon((c[0], c[2]), pts)]
+                self._inside[name] = (got, mid)
+        held = self._inside[name]
+        if held is None:
+            return None
+        got, mid = held
+        if not got:
+            return mid
+        if near is None:
+            return got[0]
+        return min(got, key=lambda q: math.dist(q, near))
 
     # -- the ground as a graph --------------------------------------------
 
@@ -152,6 +277,33 @@ class World:
                        (e[0][2] + e[1][2]) / 2)
                 adj[who[0]].append((who[1], mid))
                 adj[who[1]].append((who[0], mid))
+            # A stair is not welded. `070_01_02` climbs eight metres in seven
+            # slabs and every consecutive pair is a separate component of the
+            # welded graph, 0.19 to 0.36 m apart - which is a step, and
+            # `actor.py` walks up a step. So an edge no second triangle
+            # shares is offered to every other such edge, and two that come
+            # within `STEP` of each other in three dimensions are joined.
+            # Without this the exit of `070_01_02` is up a staircase of
+            # islands and A* returns None.
+            loose = [(e, who[0]) for e, who in edges.items() if len(who) == 1]
+            self._steps = 0
+            for i in range(len(loose)):
+                ea, ia = loose[i]
+                for j in range(i + 1, len(loose)):
+                    eb, ib = loose[j]
+                    if ia == ib or set(ea) & set(eb):
+                        # Sharing a vertex means the two are the next edges
+                        # along one outline, not two slabs meeting. Without
+                        # this the test pairs 21,961 of the disc's 22,020
+                        # single-use edges; with it, 2,093, and those are
+                        # the seams.
+                        continue
+                    d, at = _seg_gap(ea[0], ea[1], eb[0], eb[1])
+                    if d > STEP:
+                        continue
+                    adj[ia].append((ib, at))
+                    adj[ib].append((ia, at))
+                    self._steps += 1
             self._adj = adj
             self._centre = [((t['v'][0][0] + t['v'][1][0] + t['v'][2][0]) / 3,
                              (t['v'][0][1] + t['v'][1][1] + t['v'][2][1]) / 3,
@@ -230,7 +382,16 @@ class World:
             for j, mid in adj[i]:
                 p = (c[i][0], c[i][2])
                 q = (c[j][0], c[j][2])
-                if any(_crosses(p, q, u, v) for u, v in segs):
+                w = (mid[0], mid[2])
+                # Centre to waypoint to centre, and not centre to centre.
+                # A crossing joined as a step is two slabs that touch rather
+                # than two halves of one, so its two centres can sit on the
+                # same side of a fence that runs between them and the
+                # straight line between them miss it. `030_03_01` has one,
+                # and a body sent over it stands against `chara_line02` for
+                # the rest of the run.
+                if any(_crosses(p, w, u, v) or _crosses(w, q, u, v)
+                       or _crosses(p, q, u, v) for u, v in segs):
                     continue
                 if any(math.dist(_closest(u, v, (mid[0], mid[2])),
                                  (mid[0], mid[2])) < radius * 0.6
@@ -256,9 +417,18 @@ class World:
     # -- the fence --------------------------------------------------------
 
     def fences(self, kind: str = 'chara_line'):
-        """The polylines that stop a body. `chara_line` is the player's."""
+        """The polylines that stop a body. `chara_line` is the player's.
+
+        The kind is a polyline's name with its digits taken off, so a slip in
+        the level editor makes a kind of its own and an exact match walks
+        straight past it - `chare_line01` on `020_02_01` is a 36-point fence
+        round most of a room. See [`format_stage.md`](../docs/format_stage.md)
+        for the six the disc has; they are aliased here rather than tidied
+        away, because the misspelling is the disc's.
+        """
+        want = {kind} | {k for k, v in TYPOS.items() if v == kind}
         return [ln for ln in self.stage.lines
-                if ln.kind == kind or ln.name in self.raised]
+                if ln.kind in want or ln.name in self.raised]
 
     def push_out(self, p, radius: float, kind: str = 'chara_line'):
         """Move `p` out of any fence it is within `radius` of.
@@ -324,6 +494,20 @@ class World:
 
 # --------------------------------------------------------------------------
 
+def _in_polygon(p, poly) -> bool:
+    """Even-odd, in the XZ plane - the same test `mission.py area` uses."""
+    x, z = p
+    out, j = False, len(poly) - 1
+    for i in range(len(poly)):
+        xi, zi = poly[i]
+        xj, zj = poly[j]
+        if (zi > z) != (zj > z) and x < (
+                (xj - xi) * (z - zi) / ((zj - zi) or 1e-12) + xi):
+            out = not out
+        j = i
+    return out
+
+
 def _unit_normal(v):
     a, b, c = v
     e1 = [b[k] - a[k] for k in range(3)]
@@ -350,6 +534,32 @@ def _height_at(v, x, z):
     if u < -1e-6 or w < -1e-6 or t < -1e-6:
         return None
     return u * ay + w * by + t * cy
+
+
+def _seg_gap(a0, a1, b0, b1):
+    """The distance between two segments in three dimensions, and the point
+    halfway across the gap. Clamped parameters, which is the textbook one."""
+    ux = [a1[k] - a0[k] for k in range(3)]
+    vx = [b1[k] - b0[k] for k in range(3)]
+    wx = [a0[k] - b0[k] for k in range(3)]
+    a = sum(t * t for t in ux)
+    b = sum(ux[k] * vx[k] for k in range(3))
+    c = sum(t * t for t in vx)
+    d = sum(ux[k] * wx[k] for k in range(3))
+    e = sum(vx[k] * wx[k] for k in range(3))
+    den = a * c - b * b
+    if den < 1e-12:
+        s_ = 0.0
+        t_ = (e / c) if c > 1e-12 else 0.0
+    else:
+        s_ = (b * e - c * d) / den
+        t_ = (a * e - b * d) / den
+    s_ = max(0.0, min(1.0, s_))
+    t_ = max(0.0, min(1.0, t_))
+    p = [a0[k] + ux[k] * s_ for k in range(3)]
+    q = [b0[k] + vx[k] * t_ for k in range(3)]
+    return (math.dist(p, q),
+            tuple((p[k] + q[k]) / 2 for k in range(3)))
 
 
 def _closest(a, b, p):

@@ -321,7 +321,31 @@ stops, `lock_line` (304) and `lockarea` (101) are camera, `cam_line`/`cmr_line`
 the `.se` file) is sound. The `.cmr` points carry `y = 1000` where the others
 carry zero, so the camera fence stands ten units above the floor.
 
-One stage spells a polyline `chara_lime`, twice.
+### The kinds are typed by hand, and five stages are typed wrong
+
+The kind is the name with its trailing digits taken off, so a level editor's
+slip becomes a kind of its own. Over the 155 stages there are six such kinds,
+and a reader that matches `chara_line` exactly sees straight through them:
+
+```
+chare_line   020_02_01                                a player fence, 36 points
+chara_lime   170_05_01, 170_13_01                     a player fence, 2 points
+Lock_Line    010_02_02                                an arena door
+lock_area    030_03_03, 030_03_04, 030_04_01,         an arena
+             060_01_01, 060_01_02
+stop_line    050_04_01                                one of a kind
+```
+
+`chare_line01` on `020_02_01` is a 36-point fence, which is most of a room,
+and until session 29 nothing in this repository could see it. Ten stages
+carry no `chara_line` at all — the eight `170_20_*` tower floors and
+`900_04_01` and `900_07_02` — and those are genuinely unfenced rather than
+misspelled.
+
+A consumer should match a fence by prefix and without regard to case, and a
+consumer that looks a polyline up **by name** — which is what
+`piecelock.bin` does, since the table writes `lock_area02` where the file
+does — was never affected.
 
 ## `trigger.trg` — the scripts, in the clear
 

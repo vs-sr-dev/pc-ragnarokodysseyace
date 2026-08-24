@@ -219,7 +219,10 @@ class Enemy:
                 break
             self.x, self.z = nx, nz
             if world is not None:
-                y = world.floor(self.x, self.z)
+                # `stand` rather than `floor`: the ground a walking monster
+                # follows is the level it is already on, not the highest one
+                # the mesh has over that point.
+                y = world.stand(self.x, self.z, self.y)
                 if y is not None:
                     self.y = y
 

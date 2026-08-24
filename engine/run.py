@@ -18,6 +18,7 @@ a body moving at `acc = 0.035` and arriving somewhere.
 
     python engine/run.py check extract/tree/stage.cpk
     python engine/run.py sweep extract/tree/stage.cpk <class json>
+    python engine/run.py nav   extract/tree/stage.cpk <class json> [glob]
 
 `numbers` needs no stage: it turns the parameter table into quantities a
 person can have an opinion about - seconds, metres, multiples of Earth
@@ -31,6 +32,7 @@ collision mesh, and does the fence close.
 """
 from __future__ import annotations
 
+import fnmatch
 import math
 import pathlib
 import statistics
@@ -45,6 +47,26 @@ from world import World                                       # noqa: E402
 # be "at" the exit on frame one. Only crossings longer than this are counted
 # as crossings.
 LONG = 20.0
+
+# How close to a destination counts as arriving at it. A `jump_` marker is a
+# box and a `lockarea` is a room, so this is the body being at the door
+# rather than on the spot.
+NEAR = 2.0
+
+
+def place(p, w, m, facing=None) -> Actor:
+    """A body put down on a marker, standing on the ground under it.
+
+    `hta.bin` gives a marker a Y and `check` measures that it is not the
+    mesh's: 36 of the 661 `appear` markers sit more than `col_r` *below*
+    their own ground and a body put down there has nothing under it, falls,
+    and never arrives. `world.stand` is the query, and it says the marker's
+    Y names a level rather than a height.
+    """
+    y = w.stand(m.position[0], m.position[2], m.position[1])
+    return Actor(p, m.position[0],
+                 m.position[1] if y is None else y, m.position[2],
+                 m.rotation[1] if facing is None else facing)
 
 
 def cmd_numbers(json_path) -> int:
@@ -129,7 +151,7 @@ def cmd_walk(stage_dir, json_path, start='appear01', goal='', gait='run',
           + ('none - the spawn is off the mesh' if floor is None
              else f'{floor:.3f}, the marker says {a.position[1]:.3f}'))
 
-    act = Actor(p, a.position[0], a.position[1], a.position[2], face)
+    act = place(p, w, a, face)
     reach = max(3.0, max(b.extents[0], b.extents[2]))
     log, off_mesh, fence = [], 0, None
     for _ in range(limit):
@@ -181,7 +203,7 @@ def cmd_trace(stage_dir, json_path, out, start='appear01', goal='',
                     if m.kind.startswith('jump_'))
     a, b = _plan(w, start, goal)
 
-    act = Actor(p, a.position[0], a.position[1], a.position[2], a.rotation[1])
+    act = place(p, w, a)
     reach = max(3.0, max(b.extents[0], b.extents[2]))
     path = [(act.x, act.z)]
     for _ in range(limit):
@@ -246,8 +268,7 @@ def cmd_stride(stage_dir, json_path, tree, motion, gait='run',
     p = load(json_path)
     body, play, path = load_pose(tree, motion)
     a = w.marker(start)
-    act = Actor(p, a.position[0], a.position[1], a.position[2],
-                a.rotation[1])
+    act = place(p, w, a)
     frames = max(1, int(cycles)) * play.length
     speed = p[{'walk': 'walk_sp', 'run': 'run_sp',
                'fast': 'fast_sp'}.get(gait, 'run_sp')]
@@ -319,27 +340,14 @@ def cmd_check(stage_root) -> int:
     read: the marker table against the collision mesh, and the fence against
     itself."""
     import collections                                        # noqa: PLC0415
-    from world import _height_at                              # noqa: PLC0415
 
     root = pathlib.Path(stage_root)
     dirs = sorted(p for p in root.iterdir() if (p / 'param.pac').is_dir())
     by_kind = collections.defaultdict(list)
     missing = collections.Counter()
+    under = collections.Counter()
     stages = closed = fenced = 0
     branch = 0
-
-    def nearest(w, x, z, y):
-        """The ground nearest a marker's own height, not the highest ground.
-
-        A stage mesh has more than one storey in places, so "the highest
-        triangle under this point" answers the wrong question when asking
-        whether a marker was placed on the floor."""
-        best = None
-        for t in w._walkable:                                 # noqa: SLF001
-            h = _height_at(t['v'], x, z)
-            if h is not None and (best is None or abs(h - y) < abs(best - y)):
-                best = h
-        return best
 
     for d in dirs:
         try:
@@ -355,11 +363,21 @@ def cmd_check(stage_root) -> int:
                 k = 'jump'
             elif k not in ('emgen_pos', 'obj', 'pl_q'):
                 continue
-            y = nearest(w, m.position[0], m.position[2], m.position[1])
+            # The ground nearest the marker's own height rather than the
+            # highest ground, because a stage has storeys - `world.stand`,
+            # which is the query a body is placed with.
+            y = w.stand(m.position[0], m.position[2], m.position[1])
             if y is None:
                 missing[k] += 1
             else:
                 by_kind[k].append(abs(y - m.position[1]))
+                # And the sign matters, which this did not look at until a
+                # body was put on one. A marker *above* its floor drops the
+                # body onto it; a marker more than `col_r` *below* the floor
+                # is under it, and to `actor.py` that is a body with nothing
+                # beneath it, which falls and keeps falling.
+                if m.position[1] < y - 0.5:
+                    under[k] += 1
 
         lines = w.fences()
         if not lines:
@@ -389,6 +407,12 @@ def cmd_check(stage_root) -> int:
               f'{sum(1 for v in a if v <= 0.10):>7} '
               f'{a[-1]:>8.2f}')
     print('    (metres between the marker and the nearest ground under it)')
+    print('  and how many are more than col_r *below* their own floor - a '
+          'body')
+    print('    put down on one of those has no ground under it at all: '
+          + ', '.join('%s %d' % (k, under[k])
+                      for k in ('obj', 'appear', 'jump', 'pl_q', 'emgen_pos')
+                      if under[k]))
     print()
     print('  the fence closes - every chara_line endpoint shared by two ends')
     print(f'    {closed} of {fenced} stages close, {branch} branch, '
@@ -420,8 +444,7 @@ def cmd_sweep(stage_root, json_path, gait='run', limit=4000) -> int:
             skipped += 1
             continue
         a, b = names[start], exits[0]
-        act = Actor(p, a.position[0], a.position[1], a.position[2],
-                    a.rotation[1])
+        act = place(p, w, a)
         reach = max(3.0, max(b.extents[0], b.extents[2]))
         off, went, rise, was = 0, 0.0, 0.0, act.y
         for _ in range(limit):
@@ -483,6 +506,111 @@ def cmd_sweep(stage_root, json_path, gait='run', limit=4000) -> int:
     return 0
 
 
+def cmd_nav(stage_root, json_path, want='*', limit=2000) -> int:
+    """Every stage's spawn to every destination it has, over the nav mesh.
+
+    `sweep` steers a body straight at the exit and is a test of the movement
+    model: it walks into whatever the room has in it and reports what
+    happened. This is the other measurement, and it is the one the quest
+    needs - **the steering**, which is `mission.py`'s and not the disc's. A
+    quest is a list of rooms and an arena in some of them, so the
+    destinations are exactly those: every `jump_` marker and the middle of
+    every `lockarea`, walked from `appear01` over
+    [`world.py`](world.py)'s A* with the same rule `mission.py` uses.
+
+    Nothing here is a reading. It is the instrument for tuning the walk, and
+    the number it prints is this repository's own steering marked as such.
+    """
+    root = pathlib.Path(stage_root)
+    p = load(json_path)
+    r = p.get('col_r', 0.5)
+    tot = ok = 0
+    misses = []
+    for d in sorted(x for x in root.iterdir() if (x / 'param.pac').is_dir()):
+        if not fnmatch.fnmatch(d.name, want):
+            continue
+        try:
+            w = World(d / 'param.pac')
+        except (Exception, SystemExit):                       # noqa: BLE001
+            continue
+        names = w.stage.atih.by_name() if w.stage.atih else {}
+        start = names.get('appear01') or names.get('appear')
+        if start is None:
+            continue
+        goals = [(m.name, (m.position[0], m.position[2]))
+                 for m in w.stage.markers if m.name.startswith('jump_')]
+        here = (start.position[0], start.position[2])
+        for ln in w.stage.lines:
+            if not ln.name.lower().startswith(('lockarea', 'lock_area')):
+                continue
+            got = w.into(ln.name, here)
+            if got is not None:
+                goals.append((ln.name, got))
+        for name, to in goals:
+            got = _navwalk(w, p, start, to, r, limit)
+            tot += 1
+            ok += got['how'] == 'arrived'
+            if got['how'] != 'arrived':
+                misses.append((d.name, name, got))
+    print(f'{ok} of {tot} destinations reached over the nav mesh, '
+          f'{len({m[0] for m in misses})} stages with one it never reaches')
+    if misses:
+        print(f'  {"stage":<14} {"goal":<20} {"closest":>8} {"walked":>8} '
+              f'{"routes":>7} {"no route":>9}')
+    for st, name, g in misses[:24]:
+        print(f'    {st:<14} {name:<20} {g["close"]:>7.1f} m '
+              f'{g["went"]:>6.0f} m {g["paths"]:>7d} {g["nul"]:>9d}')
+    return 0
+
+
+def _navwalk(w, p, start, to, radius, limit, keep=False):
+    """One body, from a marker to a point, steered over the mesh.
+
+    The same rule as [`mission.py`](mission.py)'s `Field.steer`: A* to the
+    destination, the waypoint dropped within a metre of it, the route rebuilt
+    when the body has stopped moving or two seconds have passed. Kept here as
+    well as there so that the measurement does not need a quest.
+    """
+    act = place(p, w, start)
+    trail = [(act.x, act.z)] if keep else None
+    route, cur, was, still, since = [], None, None, 0, 0
+    paths, nul, went = 0, 0, 0.0
+    close = math.dist((act.x, act.z), to)
+    for _ in range(limit):
+        here = (act.x, act.z)
+        close = min(close, math.dist(here, to))
+        if close <= NEAR:
+            return {'how': 'arrived', 'close': close, 'went': went,
+                    'paths': paths, 'nul': nul, 'trail': trail}
+        still = still + 1 if (was is not None
+                              and math.dist(here, was) < 0.02) else 0
+        since += 1
+        was = here
+        if (to != cur or still > 15 or since > 120
+                or (not route and since > 30)):
+            cur, still, since = to, 0, 0
+            found = w.path(here, to, radius)
+            nul += found is None
+            route = found or [to]
+            paths += 1
+        while route and math.dist(here, route[0]) < 1.0:
+            route.pop(0)
+        aim = route[0] if route else to
+        old = (act.x, act.y, act.z)
+        ev = act.step(w, gait='run',
+                      facing=bearing(here[0], here[1], aim[0], aim[1]))
+        went += math.dist((old[0], old[2]), (act.x, act.z))
+        if keep:
+            trail.append((act.x, act.z))
+        if ev['event'].startswith('off') and act.grounded is False:
+            act.x, act.y, act.z = old
+            act.vy, act.grounded, act.speed = 0.0, True, 0.0
+            if route:
+                route.pop(0)
+    return {'how': 'gave up', 'close': close, 'went': went, 'paths': paths,
+            'nul': nul, 'trail': trail}
+
+
 def main() -> int:
     a = sys.argv[1:]
     if not a:
@@ -502,6 +630,8 @@ def main() -> int:
         return cmd_check(rest[0])
     if cmd == 'sweep':
         return cmd_sweep(rest[0], rest[1], *rest[2:])
+    if cmd == 'nav':
+        return cmd_nav(rest[0], rest[1], *rest[2:])
     print(f'unknown command: {cmd}')
     return 1
 

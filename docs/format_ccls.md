@@ -86,6 +86,54 @@ triangles and the 21,448 single-use ones are where a body stops.
 [`world.py`](../engine/world.py)'s `graph` and `path` are that reading, and
 [`milestone_quest.md`](milestone_quest.md) is what it was for.
 
+### A stair is not welded, and one edge in ten is a seam
+
+Session 29 found the limit of that reading by walking a body up one.
+`070_01_02` climbs eight metres from its spawn room to its exit and **every
+step of the climb is a separate connected component** — nine islands in one
+file, with each pair of consecutive slabs 0.19 to 0.36 m apart and sharing no
+vertex at all. So "single-use edge" and "outline" are not the same set.
+
+Take the walkable triangles' single-use edges and ask which of them has
+another such edge within `col_r` in three dimensions, *sharing no vertex* —
+sharing one only means being the next edge along the same outline, and that
+pairs 21,961 of them and says nothing. Sharing none:
+
+```
+22,020 single-use walkable edges over the 155 stages
+   2,093 have another within col_r that shares no vertex  — a seam
+  19,927 have nothing beside them                          — an outline
+```
+
+**2,093 of 22,020, one in ten.** A seam is two slabs of ground that meet
+without being welded, which is how this disc builds a step, a kerb and a
+staircase. The mesh boundary is still the fence everywhere else; it is not
+the fence there, and a body that treats it as one stands at the bottom of the
+stairs.
+
+What the disc's own stairs are made of, measured the same way — every pair of
+single-use edges within half a metre of each other in the XZ plane, by the
+height between them:
+
+```
+   0.0 m  17,631   64.7%     the flat seams: two slabs of one floor
+   0.1 m   2,917   75.4%
+   0.2 m   1,346   80.3%
+   0.3 m     765   83.1%
+   ...                       a smooth decay, with no gap in it
+   0.9 m     130   88.3%
+   1.0 m   2,870   98.8%     <- and then this
+   1.1 m      41   98.9%
+```
+
+The tail to 0.9 m is the stairs, spread over 67 stages. **The spike at
+exactly 1.0 m is not**: 35 stages carry it and the twelve largest are all
+`170_*`, the endless dungeon, whose floors are built from a modular kit on a
+one-metre grid. So the disc has no step height to declare and its geometry
+does not imply one either — [`../engine/world.py`](../engine/world.py) joins
+two slabs that come within `col_r` of each other, which is `actor.py`'s own
+step, and [`milestone_walk.md`](milestone_walk.md) reports what that buys.
+
 **The coordinates are the stage's own model space, with nothing in between.**
 On 124 of the 155 stages every collision vertex lies inside the bounding box of
 that stage's `ground.CMDL` — which draws a good deal further out than the
@@ -102,6 +150,32 @@ skinned geometry has one baked into its inverse bind matrices.
 Drawn as a plan they are broad contiguous patches rather than scatter, which is
 what a terrain type looks like — footstep sound and footprint effect are what a
 per-triangle ground code usually selects. The disc does not say so here.
+
+**And the code is not geometry.** One hypothesis a navigation mesh raises is
+that the code says what a body may stand on — that 8 is floor and something
+else is wall. It does not. Every triangle on the disc, by its code and its
+slope:
+
+```
+code    tris  stages  <10deg  >70deg  median     p90
+1       1912      12   99.9%    0.1%     0.0     0.0
+2       6424      22   83.0%    0.0%     0.0    19.0
+3      21779      42   77.0%    0.1%     2.3    21.5
+4       9090      12   84.2%    0.1%     3.3    14.1
+5       7357      12   81.1%    0.3%     3.6    17.5
+6       4380       4   84.6%    0.1%     3.8    12.9
+7       1360       6   96.9%    0.3%     0.0     0.0
+8      54364     100   87.5%    1.5%     0.0    13.6
+10       104       2   65.4%    0.0%     0.0    28.3
+11       322       5  100.0%    0.0%     2.0     3.1
+13       247       8   57.1%    0.0%     0.0    26.7
+```
+
+**Every one of the thirteen has a median slope under four degrees**, and none
+has as much as two per cent of its triangles standing up. A code that named a
+wall would show as a column of steep ones; there is no such column. Whatever
+the codes name is a property of the ground and not of its shape, which leaves
+the footstep table exactly where this section already put it.
 
 ## The fifteen words are one bit about the stage
 

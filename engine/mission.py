@@ -202,10 +202,20 @@ class Tables:
 class Spawn:
     """One monster, standing on the marker its generator names."""
 
-    def __init__(self, gen: dict, mid: int, kind: str, marker):
+    def __init__(self, gen: dict, mid: int, kind: str, marker, world=None):
         self.gen, self.id, self.kind = gen, mid, kind
         self.marker = marker
         self.x, self.y, self.z = marker.position
+        # A monster stands on the ground under its marker, not at the
+        # marker's own Y - see `world.stand`. 183 of the disc's 2,123
+        # `emgen_pos` are more than `col_r` below their own floor, one of
+        # them by fifteen metres, and a monster down there is a monster the
+        # player's swing cannot reach: `against` is a test between two
+        # capsules in three dimensions, and the arena never opens.
+        if world is not None:
+            y = world.stand(self.x, self.z, self.y)
+            if y is not None:
+                self.y = y
         self.heading = marker.rotation[1]
         self.enemy = None                   # the brain, built when it fights
         self.hits = 0
@@ -397,10 +407,7 @@ class Spawner:
             if m is None:
                 self.log['generator names no marker'] += 1
                 return
-            s = Spawn(g, mid, kind, m)
-            y = self.world.floor(s.x, s.z)
-            if y is not None:
-                s.y = y
+            s = Spawn(g, mid, kind, m, self.world)
             if self.at_once and len(self.live) >= self.at_once:
                 self.log['held back by cfSetEnemyMax'] += 1
                 return
@@ -718,7 +725,8 @@ class Field:
 # -- the run ---------------------------------------------------------------
 
 
-def _goal(host, t: Tables, stage: str, done: set, want: list, running=''):
+def _goal(host, t: Tables, stage: str, done: set, want: list, running='',
+          at=None):
     """Where the player is trying to get to, as `(name, (x, z))`.
 
     First any arena the quest has armed on this stage and not yet cleared -
@@ -750,16 +758,32 @@ def _goal(host, t: Tables, stage: str, done: set, want: list, running=''):
             m = by_name.get(name)
             if m is None or not host.hit_areas.get(name, True):
                 continue
-            ln = lines.get(k['area'])
-            if k['name'] == running and ln is not None:
-                pts = [(p[0], p[2]) for p in ln.world()]
-                return k['area'], (sum(p[0] for p in pts) / len(pts),
-                                   sum(p[1] for p in pts) / len(pts)), k
+            if k['name'] == running and k['area'] in lines:
+                # Inside the polygon rather than at the middle of it. The
+                # middle is not always a place: `lockarea05` on `010_01_02`
+                # is 54 by 87 metres with a lake in it and its centroid has
+                # no ground under it at all, so a body sent there walks into
+                # the fence around the water and stands until the run gives
+                # the stage up. `world.into` answers with ground the polygon
+                # encloses, nearest the body - and a body already in the
+                # arena is already there.
+                got = host.world.into(k['area'], at)
+                if got is not None:
+                    return k['area'], got, k
             return name, (m.position[0], m.position[2]), k
     # `jump_next` is the tower's exit: the 170 stages are interchangeable
     # floors, so the marker does not name where it goes and the stage's own
     # `MapJump()` branches on `getQuestName()` to decide where it leads.
     names = ['jump_' + s for s in want] + ['jump_next']
+    # Reachability was tried here and it lost. `route` established that
+    # `piecelist.bin` is a graph rather than a path, so passing over an exit
+    # the mesh cannot reach in favour of one it can looked free - and on the
+    # four quests it was aimed at, `070_01_02`'s exit up a 0.61 m riser, it
+    # changed nothing, while `q00306` went from finishing to walking between
+    # two rooms for the rest of the run. A* is conservative about a fence
+    # and says None for places a body does get to, so a wrong "unreachable"
+    # sends the body the wrong way. The order the list is written in is left
+    # to decide.
     for name in names:
         m = by_name.get(name)
         if m is not None and host.hit_areas.get(name, True):
@@ -817,7 +841,14 @@ def play(tree, name: str, cls='sw', blows=BLOWS, seed=1, verbose=True,
             break
         out['stages'].append(stage)
         spawn = host.world.marker('appear01')
-        field.player = Actor(ar.params, spawn.position[0], spawn.position[1],
+        # The same rule as a monster's: the body stands on the ground under
+        # the marker. Seven stages spawn the player more than `col_r` under
+        # their own floor, and on those the body fell out of the world on
+        # frame one and `_on_ground` put it back exactly where it fell from.
+        floor = host.world.stand(spawn.position[0], spawn.position[2],
+                                 spawn.position[1])
+        field.player = Actor(ar.params, spawn.position[0],
+                             spawn.position[1] if floor is None else floor,
                              spawn.position[2], spawn.rotation[1])
         field.attack, field.walk, field.step = None, [], 0
         field.route, field.to, field.was = [], None, None
@@ -836,7 +867,8 @@ def play(tree, name: str, cls='sw', blows=BLOWS, seed=1, verbose=True,
             where, goal, arena = _goal(host, t, stage,
                                        cleared | (set(sp.started) - busy),
                                        left,
-                                       sp.lock['name'] if sp.lock else '')
+                                       sp.lock['name'] if sp.lock else '',
+                                       (field.player.x, field.player.z))
             if goal is None:
                 break
             field.where = where

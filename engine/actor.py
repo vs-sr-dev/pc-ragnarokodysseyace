@@ -7,6 +7,7 @@ come from [`units.md`](../docs/units.md):
 
     acc               0.035    metres per frame squared
     run_sp            0.17     metres per frame
+    ry_r_walk/run/fast/fall  0.15 / 0.30 / 0.35 / 0.35   metres
     walk_sp           0.05
     fast_sp / fast_acc  0.28 / 0.045
     rot_y_acc         8        degrees per frame squared
@@ -42,6 +43,18 @@ Three things, all of them stated here so they can be argued with:
 - **Walls.** A blocked step slides along the fence instead of stopping. The
   disc says where the fence is and nothing about what happens at it, so this
   is the engine's choice, marked as such.
+- **The ground under a body.** The ground is asked for under a *disc* and
+  not under the centre point - `world.under` rather than `world.floor`. A
+  body that has gone a hand's breadth past the lip of a slab is still
+  standing on it, and the disc's own stairs have gaps of a fifth of a metre
+  between their steps that a body moving 0.17 m in a frame would otherwise
+  fall into. **The radius of that disc is not invented either**: the class
+  JSON carries `ry_r_walk` 0.15, `ry_r_run` 0.30, `ry_r_fast` 0.35 and
+  `ry_r_fall` 0.35 - four radii keyed to exactly the four locomotion states
+  this model has, carried by all six classes, by no monster, and read by
+  nothing until now. What the name abbreviates is not on the disc; that a
+  per-gait radius growing with speed is the ground probe is the reading, and
+  it is the only per-gait length the player's table has.
 
 Everything else - the values, the units, the frame - is read, not chosen.
 """
@@ -56,7 +69,8 @@ FPS = 30.0                     # units.md, from the run cycle and from gravity
 WANT = ('acc', 'run_sp', 'walk_sp', 'fast_sp', 'fast_acc',
         'rot_y_acc', 'rot_y_spd', 'weight', 'col_r',
         'fall_gravity_y', 'fall_spd_max', 'jp_speed_y',
-        'aerial_gravity_y', 'aerial_spd_y')
+        'aerial_gravity_y', 'aerial_spd_y',
+        'ry_r_walk', 'ry_r_run', 'ry_r_fast', 'ry_r_fall')
 
 
 def load(json_path, record: str = '0') -> dict:
@@ -93,6 +107,15 @@ class Actor:
 
     def accel(self, gait: str) -> float:
         return self.p['fast_acc'] if gait == 'fast' else self.p['acc']
+
+    def probe(self, gait: str) -> float:
+        """How far out from its centre the body looks for ground.
+
+        `ry_r_walk`, `ry_r_run`, `ry_r_fast` and `ry_r_fall` - the disc's,
+        one per locomotion state, and see the note at the head of this file
+        for what is read and what is assumed. `stop` gets the walking one."""
+        return self.p.get('ry_r_' + ('walk' if gait == 'stop' else gait),
+                          self.p['ry_r_run'])
 
     # -- one frame ---------------------------------------------------------
 
@@ -139,7 +162,8 @@ class Actor:
             # is the capsule radius because nothing on the disc names a step
             # height, and reusing a parameter beats inventing one.
             step = self.radius
-            ground = world.floor(self.x, self.z, self.y + step)
+            ground = world.under(self.x, self.z, self.y + step,
+                                 self.probe(gait))
             if ground is None:
                 event = event or 'off the mesh'
                 self.grounded = False
@@ -152,7 +176,8 @@ class Actor:
             self.vy = max(-self.p['fall_spd_max'],
                           self.vy + self.p['fall_gravity_y'])
             self.y += self.vy
-            ground = world.floor(self.x, self.z, self.y + 0.01)
+            ground = world.under(self.x, self.z, self.y + 0.01,
+                                 self.probe('fall'))
             if ground is None:
                 event = event or 'off the mesh'
             elif self.vy <= 0 and self.y <= ground:

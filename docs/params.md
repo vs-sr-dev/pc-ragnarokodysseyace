@@ -97,7 +97,23 @@ walk_sp       0.05     0.05     0.05     0.05     0.05     0.05
 rot_y_spd       32       32       32       32       32       32
 weight          50       50       50       50       50       50
 col_r          0.5      0.5      0.5      0.5      0.5      0.5
+ry_r_walk     0.15     0.15     0.15     0.15     0.15     0.15
+ry_r_run       0.3      0.3      0.3      0.3      0.3      0.3
+ry_r_fast     0.35     0.35     0.35     0.35     0.35     0.35
+ry_r_fall     0.35     0.35     0.35     0.35     0.35     0.35
 ```
+
+**The `ry_r_*` four are the only per-gait length in the table**, and session
+29 gave them a consumer. They are keyed to exactly the four locomotion states
+[`../engine/actor.py`](../engine/actor.py) models — walking, running,
+dashing, falling — they are carried by all six classes and by **none of the
+83 monsters**, they are in metres like everything else here, and no reader had
+touched them in fifteen sessions. What `ry` abbreviates is not on the disc.
+Read as the radius a body looks for ground within, they are the number
+[`milestone_walk.md`](milestone_walk.md) needed and did not want to invent: a
+faster body probes further ahead, 0.15 m walking against 0.35 m at a dash,
+and 0.35 m again while falling, which is two frames of a run. That is a
+reading and it is marked as one.
 
 What differs is combat: attack speed and braking, evade (`es_*`), hit-stop,
 critical rate, and guard.
@@ -271,6 +287,10 @@ was counted.
 - The remaining four elements of the `ab_*` vectors.
 - `sz`, `flash_c`, `back_angle`, `turn_ang`, `limit_height`, `spin_blow_r`,
   `wall_dmg`, `wall_stop` — present in the core but unexamined.
+- **What `ry_r_*` stands for.** The four are used above as a ground probe on
+  the strength of being per-gait, player-only and in metres; nothing on the
+  disc names them, and a second reading that fits the same four numbers would
+  be worth having.
 - `b13_00` records 60 and 61 each carry a field whose **name is the empty
   string**, with the value 0. An authoring artefact, harmless, but a reader
   that indexes fields by name should expect it.
