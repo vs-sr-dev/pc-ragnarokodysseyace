@@ -129,7 +129,7 @@ So a renderer that hardcodes `1.32 px/m` about the footprint centroid is right
 about two thirds of the picture on every stage in the game, and per-stage
 fitting buys the rest. Where the disc declares the per-stage part is **not
 found**: `stageparam.bin`, the `ELBN` sitting in the same `param.pac`, carries
-only lights, shadows, fog and clipping — see [`format_elbn.md`](format_elbn.md).
+only lights, shadows, fog and clipping — see [`lighting.md`](lighting.md).
 
 ### Where the fit loses, it loses for a visible reason
 
@@ -391,7 +391,7 @@ param.pac/borderline.bin                4 fences, 52 points
 param.pac/borderline.cmr.bin            the camera fence, 34 points
 param.pac/borderline.se.bin             a sound line, 14 points
 param.pac/trigger.trg                   2 triggers
-param.pac/stageparam.bin                ELBN: lights, fog, water, shadows
+param.pac/stageparam.bin                ELBN: the light rig; lighting.md
 param.pac/010_01_01.psq                 the cutscene, still unread
 sound.pac/                              music and effect banks
 ```
@@ -424,9 +424,10 @@ camera and sound.
   [`format_reward.md`](format_reward.md). What session 14 had established
   stands: they are *placements* and not hints, all 772 have ground underneath
   and the median sits **1 cm** above the collision mesh.
-- `stageparam.bin` is read as a container but its `stage_param` record is not
-  named field by field. See [`ELBN`](format_elbn.md). It does **not** carry the
-  minimap transform: its five entries are lights, shadows, fog and clipping.
+- ~~`stageparam.bin`'s `stage_param` record is not named field by field.~~
+  **Read in session 27**: it is the stage's own lighting rig, and every light
+  in it carries its own name. See [`lighting.md`](lighting.md). It still does
+  **not** carry the minimap transform.
 - **`ef_B` and `ef_C` are outside the drawn map on every instance** - 0 of 43
   and 1 of 89 - while every marker kind that stands on the ground is inside it
   at 93 to 98 %. Whatever those two effect kinds are, they ring the stage from

@@ -309,6 +309,24 @@ def apply(m: Matrix, v) -> tuple[float, float, float]:
                  for r in range(3))
 
 
+def _apply3(m: Matrix, v) -> tuple[float, float, float]:
+    """The linear part only - what a direction transforms by."""
+    return tuple(sum(m[r][c] * v[c] for c in range(3)) for r in range(3))
+
+
+def _unit(v):
+    n = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+    return (v[0] / n, v[1] / n, v[2] / n) if n > 1e-12 else (0.0, 1.0, 0.0)
+
+
+def normal_matrix(m: Matrix) -> Matrix:
+    """The inverse transpose of the linear part, which is what carries a
+    normal. Equal to the rotation itself when nothing scales."""
+    inv = invert(m)
+    rows = [[inv[c][r] for c in range(3)] + [0.0] for r in range(3)]
+    return rows + [[0.0, 0.0, 0.0, 1.0]]
+
+
 def from_euler(r) -> Matrix:
     """The node rotation, which is Rz Ry Rx in radians."""
     cx, sx = math.cos(r[0]), math.sin(r[0])
@@ -387,6 +405,14 @@ class Mesh:
     def normal_offset(self) -> int | None:
         """Present exactly when the position sits twelve bytes past it."""
         return self.layout[1] if self.layout[0] - self.layout[1] == 12 else None
+
+    @property
+    def colour_offset(self) -> int | None:
+        """Four bytes of RGBA, present exactly when bit 2 of the vertex type
+        is set - `layout[2]` is where they are. See *The vertex colour* above:
+        it is the disc's baked lighting, and 13,168 of the 15,833 drawable
+        meshes carry it."""
+        return self.layout[2] if self.vtype & 0x4 else None
 
     @property
     def uv_offset(self) -> int | None:
@@ -490,6 +516,7 @@ class Cmdl:
         return {
             'texture': struct.unpack_from('>H', self.buf, o + 2)[0],
             'colours': struct.unpack_from('>3I', self.buf, o + 8),
+            'blend': self.buf[o + 4],
         }
 
     def _names(self, o: int, room: int) -> list[str]:
@@ -677,6 +704,51 @@ class Cmdl:
         o = self.at(m.vertex_ptr) + m.position_offset
         return [struct.unpack_from('>3f', self.buf, o + i * m.stride)
                 for i in range(m.vertices)]
+
+    def normals(self, m: Mesh) -> list[tuple[float, float, float]] | None:
+        """Three floats, unit length. 28,497 of 28,544 sampled land within
+        1e-3 of one, which is what says they are normals and not a second
+        position lane."""
+        off = m.normal_offset
+        if off is None:
+            return None
+        o = self.at(m.vertex_ptr) + off
+        return [struct.unpack_from('>3f', self.buf, o + i * m.stride)
+                for i in range(m.vertices)]
+
+    def colours(self, m: Mesh) -> list[tuple[int, int, int, int]] | None:
+        """The baked RGBA, one per vertex, bytes as written."""
+        off = m.colour_offset
+        if off is None:
+            return None
+        o = self.at(m.vertex_ptr) + off
+        return [tuple(self.buf[o + i * m.stride:o + i * m.stride + 4])
+                for i in range(m.vertices)]
+
+    def posed_normals(self, m: Mesh, matrices: list[Matrix]) -> list[tuple] | None:
+        """The mesh's normals under those matrices, weighted.
+
+        A normal transforms by the **inverse transpose** of the linear part,
+        which is the same thing as the rotation when nothing scales and is not
+        when something does - and 25 models on this disc scale a node.
+        """
+        nrm = self.normals(m)
+        if nrm is None:
+            return None
+        it = [normal_matrix(mt) for mt in matrices]
+        if not m.skinned:
+            return [_unit(_apply3(it[0], v)) for v in nrm]
+        out = []
+        for v, (w, slot) in zip(nrm, self.skin(m)):
+            acc = [0.0, 0.0, 0.0]
+            for k in range(4):
+                if not w[k] or slot[k] >= len(it):
+                    continue
+                q = _apply3(it[slot[k]], v)
+                for r in range(3):
+                    acc[r] += w[k] / 255.0 * q[r]
+            out.append(_unit(acc))
+        return out
 
     def uvs(self, m: Mesh) -> list[tuple[float, float]] | None:
         off = m.uv_offset
@@ -1027,6 +1099,204 @@ def cmd_obj(root, name, out, motion='', frame='0') -> int:
     return 0
 
 
+def cmd_lanes(root, samples: str = '8') -> int:
+    """The two lanes a renderer lights with, checked against the disc.
+
+    **The normal.** `layout[1]` is a normal exactly when the position sits
+    twelve bytes past it, and three floats read there should be a unit vector.
+    Nothing forces that but the file being what it is called.
+
+    **The colour.** Bit 2 of the vertex type declares a four-byte attribute at
+    `layout[2]`, and the claim here is that it is a baked RGBA - the light the
+    artist put there, since a stage has no runtime directional to light it
+    with. Two things say so and both have a control: the fourth byte is 0xff
+    on almost every vertex while the first three range freely, and the
+    luminance **steps less across a triangle edge than between two vertices
+    of the same mesh picked at random** - a bake is smooth in space and a
+    tint or an index would not be.
+    """
+    import random                                              # noqa: PLC0415
+    import statistics                                          # noqa: PLC0415
+
+    rng = random.Random(20260824)
+    step = max(1, int(samples))
+    meshes = withn = withc = mismatch = 0
+    lens: list[float] = []
+    alpha = [0, 0]
+    edge: list[float] = []
+    rand: list[float] = []
+    wins = [0, 0]
+    for path, blob in collect(root):
+        try:
+            m = Cmdl(blob, path)
+        except Exception:                                      # noqa: BLE001
+            continue
+        fe: list[float] = []
+        fr: list[float] = []
+        for i in range(m.meshes):
+            me = m.mesh(i)
+            if not me.drawable:
+                continue
+            meshes += 1
+            # bit 2 of the vertex type and the layout byte must agree: the
+            # attribute is at layout[2] exactly when that is neither the
+            # position nor the normal
+            base = me.normal_offset
+            base = base if base is not None else me.layout[0]
+            if bool(me.vtype & 0x4) != (me.layout[2] != base):
+                mismatch += 1
+            if me.normal_offset is not None:
+                withn += 1
+                o = m.at(me.vertex_ptr) + me.normal_offset
+                for k in range(0, me.vertices, max(1, me.vertices // step)):
+                    n = struct.unpack_from('>3f', m.buf, o + k * me.stride)
+                    lens.append(math.sqrt(n[0] ** 2 + n[1] ** 2 + n[2] ** 2))
+            if me.colour_offset is None:
+                continue
+            withc += 1
+            c = m.colours(me)
+            for v in c:
+                alpha[0] += v[3] == 255
+                alpha[1] += 1
+            lum = [(v[0] + v[1] + v[2]) / 3 for v in c]
+            if len(lum) < 32 or max(lum) - min(lum) < 8:
+                continue
+            tris = m.triangles(me)
+            if not tris:
+                continue
+            if len(tris) > 200:
+                tris = rng.sample(tris, 200)
+            for a, b, d in tris:
+                if max(a, b, d) >= len(lum):
+                    continue
+                fe += [abs(lum[a] - lum[b]), abs(lum[b] - lum[d]),
+                       abs(lum[a] - lum[d])]
+            n = len(lum)
+            for _ in range(3 * len(tris)):
+                fr.append(abs(lum[rng.randrange(n)] - lum[rng.randrange(n)]))
+        if fe and fr:
+            wins[0] += statistics.fmean(fe) < statistics.fmean(fr)
+            wins[1] += 1
+            edge += fe
+            rand += fr
+    lens.sort()
+    print(f'{meshes} drawable meshes: {withn} carry a normal lane, '
+          f'{withc} a colour lane')
+    print(f'  bit 2 of the vertex type and layout byte 2 agree on '
+          f'{meshes - mismatch} of {meshes}')
+    if lens:
+        unit = sum(1 for v in lens if abs(v - 1.0) < 1e-3)
+        print(f'  {len(lens)} sampled normals: median '
+              f'{lens[len(lens) // 2]:.6f}, within 1e-3 of unit on '
+              f'{unit} of {len(lens)}')
+    if alpha[1]:
+        print(f'  the colour lane fourth byte is 0xff on {alpha[0]} of '
+              f'{alpha[1]} vertices')
+    if edge and rand:
+        e, r = statistics.fmean(edge), statistics.fmean(rand)
+        print(f'  mean luminance step across a triangle edge {e:.2f} against '
+              f'{r:.2f} between two vertices of the same mesh at random, '
+              f'a ratio of {e / r:.3f}')
+        print(f'  and the edge is the smaller of the two on {wins[0]} of '
+              f'{wins[1]} models')
+    return 0
+
+
+def cmd_shading(root, want: str = '*', n: str = '12') -> int:
+    """Is a skinned normal in the right place? Ask the skinned geometry.
+
+    `posed_normals` carries a normal by the **inverse transpose** of the same
+    matrices the positions take, and nothing in the file says whether that is
+    right. The posed triangles do: put a model in a pose its own `CNOM`
+    names, and the mean of a triangle's three vertex normals should point the
+    way the triangle now faces. Leaving the normals in the rest pose is the
+    control, and it is the thing a reader would do by accident.
+    """
+    import random                                              # noqa: PLC0415
+    import statistics                                          # noqa: PLC0415
+
+    from cnom import Cnom                                      # noqa: PLC0415
+
+    def unit(v):
+        k = math.sqrt(sum(c * c for c in v)) or 1.0
+        return tuple(c / k for c in v)
+
+    def acute(a, b):
+        d = max(-1.0, min(1.0, sum(a[k] * b[k] for k in range(3))))
+        d = math.degrees(math.acos(d))
+        return min(d, 180.0 - d)
+
+    rng = random.Random(3)
+    root = pathlib.Path(root)
+    files = [q for q in root.rglob('*.CMDL') if fnmatch.fnmatch(q.name, want)]
+    rng.shuffle(files)
+    posed: list[float] = []
+    rest: list[float] = []
+    used = 0
+    for q in files:
+        if used >= int(n):
+            break
+        try:
+            m = Cmdl(q.read_bytes(), q.name)
+        except Exception:                                      # noqa: BLE001
+            continue
+        want_mesh = [i for i in range(m.meshes)
+                     if m.mesh(i).drawable and m.mesh(i).skinned
+                     and m.mesh(i).normal_offset is not None]
+        if not want_mesh:
+            continue
+        names = set(m.names(5))
+        motion = None
+        for a in list(q.parent.parent.rglob('*.CNOM'))[:40]:
+            try:
+                c = Cnom(a.read_bytes(), a.name)
+                if sum(1 for t in c.pose(5.0) if t in names) > 3:
+                    motion = c
+                    break
+            except Exception:                                  # noqa: BLE001
+                continue
+        if motion is None:
+            continue
+        used += 1
+        pose = motion.pose(7.0)
+        world, bind = m.world(pose), m.bind()
+        for node, _, i in m.draws():
+            me = m.mesh(i)
+            if i not in want_mesh:
+                continue
+            mats = m.skin_matrices(i, node, world, bind)
+            pos = m.posed(me, mats)
+            pn = m.posed_normals(me, mats)
+            rn = m.normals(me)
+            tris = m.triangles(me)
+            if len(tris) > 60:
+                tris = rng.sample(tris, 60)
+            for a, b, c in tris:
+                if max(a, b, c) >= len(pos):
+                    continue
+                u = [pos[b][k] - pos[a][k] for k in range(3)]
+                v = [pos[c][k] - pos[a][k] for k in range(3)]
+                f = unit((u[1] * v[2] - u[2] * v[1],
+                          u[2] * v[0] - u[0] * v[2],
+                          u[0] * v[1] - u[1] * v[0]))
+                for src, out in ((pn, posed), (rn, rest)):
+                    g = unit([sum(src[j][k] for j in (a, b, c)) / 3
+                              for k in range(3)])
+                    out.append(acute(f, g))
+    if not posed:
+        print('no skinned model with a motion beside it matched')
+        return 1
+    print(f'{used} skinned models, each posed by a CNOM that names its bones,'
+          f' {len(posed)} triangles')
+    for label, v in (('skinned by the inverse transpose', posed),
+                     ('left in the rest pose', rest)):
+        v.sort()
+        print(f'  {label:<34s} median {v[len(v) // 2]:6.2f} deg from the '
+              f'posed face, within 30 deg on '
+              f'{sum(1 for x in v if x < 30) / len(v):.3f}')
+    return 0
+
+
 def cmd_find(root, pattern) -> int:
     n = 0
     for path, blob in collect(root):
@@ -1114,6 +1384,10 @@ def main() -> int:
         return cmd_obj(rest[0], rest[1], rest[2], *rest[3:5])
     if cmd == 'gait':
         return cmd_gait(rest[0], rest[1], rest[2])
+    if cmd == 'lanes':
+        return cmd_lanes(*rest)
+    if cmd == 'shading':
+        return cmd_shading(*rest)
     if cmd == 'find':
         return cmd_find(rest[0], rest[1])
     print(f'unknown command: {cmd}')

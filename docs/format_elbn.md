@@ -110,7 +110,7 @@ at -4e37 and was obvious; here it comes out at 27610.5 and is not.
 
 ```
 trace_par.bin       207   par_tbl, ref_tbl: the weapon trail
-stageparam.bin      154   the stage's own parameters; see format_stage.md
+stageparam.bin      154   the stage's own lights; see lighting.md
 objbin.bin           89   clip_distance, col_hit, jostle_data, se_hitlevel_tbl
 stobjbin.bin         89
 mot_param.bin        60   motionDataHeader and _dataA, per character class
@@ -144,7 +144,7 @@ says who the parameter belongs to, since the name alone rarely does:
 
 ```
 par_tbl, ref_tbl                     207   trace_par.bin, per weapon
-stage_param, waterparam              155   stageparam.bin, per stage
+stage_param, waterparam              155   stageparam.bin, the light rig
 character_clipping_distance          154   stageparam.bin
 shadow_offset, shadow_param          154   stageparam.bin
 statusData, statusDataHeader          89   stobjbin.bin, per actor
@@ -747,8 +747,12 @@ those opcodes are still unread.
 - **`chuck_off_param`'s third word**, which is not one field: it reads
   `04 64 00 00`, `03 64 00 00`, `02 1e 00 00` — a small index and a 100 or a
   30, the four-`u8`-in-a-lane trap [`ech.py`](format_ech.md) warns about.
-- Everything in the other two populations: `stageparam.bin` past the lights
-  and `mot_param.bin` past the motion id, and the mercenary AI's four tables.
+- `stageparam.bin` past `stage_param` — its `shadow_param`, and the two
+  unnamed blocks `stage_param` points at from `+0x20` and `+0x24`. **The
+  lights themselves are read**: see [`lighting.md`](lighting.md), and
+  `python tools/elbn.py lights extract/tree`. The fog record's density word
+  is not a float on every stage, so what its mode byte selects is open.
+- `mot_param.bin` past the motion id, and the mercenary AI's four tables.
   `trace_par.bin` is *The weapon trail* below.
 
 ---

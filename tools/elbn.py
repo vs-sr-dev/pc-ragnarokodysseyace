@@ -124,6 +124,7 @@ that is where the AI's own tables are.
     regions   a monster's body regions, joined to the bones and the drops
     trace     `trace_par.bin`, the weapon trail: its textures and its bones
     combo     `s_combo_graph`, the player's combo tree, and two checks on it
+    lights    `stage_param`: the stage's own lighting rig, named light by light
 """
 
 from __future__ import annotations
@@ -1066,6 +1067,202 @@ def arrow_rows(f: Elbn) -> list[dict]:
     return out
 
 
+LIGHT = 28                                # bytes to one light record
+CATEGORY = {0x00: 'st', 0x08: 'ch', 0x09: 'np', 0x0a: 'mc',
+            0x0b: 'pv', 0x0c: 'bm'}
+
+
+def _f32(w: int) -> float:
+    return struct.unpack('>f', struct.pack('>I', w))[0]
+
+
+def light_records(f: Elbn, base: int, n: int, kind: str) -> list[dict]:
+    """`n` light records at `base`. Every one of them is 28 bytes:
+
+        +0x00  ptr    the light's own name
+        +0x04  u32    category in the top byte, then three flag bytes
+        +0x08  rgba   colour
+        +0x0c  f32    intensity
+        +0x10  f32[3] the direction, unnormalised, and zero on an ambient
+    """
+    out = []
+    for i in range(n):
+        r = base + LIGHT * i
+        flags = f.word(r + 4)
+        col = f.word(r + 8)
+        name = f.string_at(f.word(r)) or ''
+        out.append({
+            'kind': kind,
+            'name': name,
+            'category': CATEGORY.get(flags >> 24, f'{flags >> 24:#04x}'),
+            'flags': flags & 0xFFFFFF,
+            'colour': tuple((col >> (24 - 8 * k)) & 255 for k in range(4)),
+            'intensity': _f32(f.word(r + 12)),
+            'direction': tuple(_f32(f.word(r + 16 + 4 * k)) for k in range(3)),
+        })
+    return out
+
+
+def fog_records(f: Elbn, base: int, n: int) -> list[dict]:
+    """The fog, in the same 28-byte slot as a light but not the same record.
+
+        +0x00  ptr    name, `st_fog_0` on 106 stages
+        +0x04  u32    a mode byte, then three bytes of colour
+        +0x08  f32    density        +0x0c  f32  near      +0x10  f32  far
+        +0x18  f32    strength
+
+    The colour reading is this file's guess and is marked as one: the low
+    three bytes are the only lane in the record that looks like a colour, and
+    they run over greens, browns, blues and one red across the disc. The
+    density word is not a float on every stage, so whatever selects the
+    reading is the mode byte and is not settled.
+    """
+    out = []
+    for i in range(n):
+        r = base + LIGHT * i
+        w = f.word(r + 4)
+        out.append({
+            'kind': 'fog',
+            'name': f.string_at(f.word(r)) or '',
+            'mode': w >> 24,
+            'colour': tuple((w >> (16 - 8 * k)) & 255 for k in range(3)),
+            'density': _f32(f.word(r + 8)),
+            'near': _f32(f.word(r + 12)),
+            'far': _f32(f.word(r + 16)),
+            'strength': _f32(f.word(r + 24)),
+        })
+    return out
+
+
+def light_rig(f: Elbn) -> dict | None:
+    """`stage_param`, which is where a stage declares how it is lit.
+
+    48 bytes, and six of its twelve words are a (pointer, count) pair or a
+    pointer to a small block:
+
+        +0x00  ptr    f32[2]   clip: 1 and 500 on the field stages
+        +0x04  ptr    u32      0x01010100
+        +0x08  ptr    the directional lights   +0x0c  u32  how many
+        +0x10  ptr    the ambient lights       +0x14  u32  how many
+        +0x18  ptr    the fog                  +0x1c  u32  how many
+        +0x20  ptr    f32[4]                   +0x24  ptr  f32[3]
+        +0x28  f32                             +0x2c  ptr  -> waterparam
+    """
+    e = f.by_name().get('stage_param')
+    if e is None:
+        return None
+    o = e.offset
+    w = [f.word(o + 4 * k) for k in range(12)]
+    return {
+        'clip': tuple(_f32(f.word(w[0] + 4 * k)) for k in range(2)),
+        'dir': light_records(f, w[2], w[3], 'dir'),
+        'amb': light_records(f, w[4], w[5], 'amb'),
+        'fog': fog_records(f, w[6], w[7]),
+    }
+
+
+def cmd_lights(root, want: str = '*') -> int:
+    """The stage's own lighting rig, out of `stage_param`.
+
+    Every stage on the disc declares a set of named lights, and the names are
+    the point: `ch_dir_1`, `ch_dir_2`, `ch_amb_1` light a character,
+    `mc_*` the main character, `bm_*` the background models, `np_*` an NPC,
+    and `st_amb_1` - an ambient with no directional beside it - the stage.
+    That last absence is the whole lighting model: a stage carries its light
+    baked into its vertices, an actor is lit as it moves.
+    """
+    files = [(path, blob) for path, blob in collect(root, 'stageparam.bin')
+             if path.rsplit('/', 1)[-1] == 'stageparam.bin'
+             and fnmatch.fnmatch(path, f'*{want}*')]
+    if not files:
+        print('no stageparam.bin matched')
+        return 1
+    counts = collections.Counter()
+    agree = [0, 0]
+    odd: list[str] = []
+    unity: list[float] = []
+    unity_st: list[float] = []
+    updown = collections.Counter()
+    shown = 0
+    for path, blob in files:
+        f = Elbn(blob, path)
+        rig = light_rig(f)
+        if rig is None:
+            continue
+        if shown < 2:
+            shown += 1
+            print(path)
+            print(f'  clip {rig["clip"][0]:g} to {rig["clip"][1]:g}')
+            for kind in ('dir', 'amb'):
+                for L in rig[kind]:
+                    d = ('  dir ' + ' '.join(f'{v:7.2f}' for v in L['direction'])
+                         if kind == 'dir' else '')
+                    print(f'  {kind}  {L["name"]:<12s} {L["category"]:>3s} '
+                          f'{L["flags"]:06x}  rgb '
+                          + ' '.join(f'{c:3d}' for c in L['colour'][:3])
+                          + f'  x{L["intensity"]:.2f}{d}')
+            for g in rig['fog']:
+                print(f'  fog  {g["name"]:<12s}  mode {g["mode"]}  rgb '
+                      + ' '.join(f'{c:3d}' for c in g['colour'])
+                      + f'  density {g["density"]:.4g}'
+                      f'  {g["near"]:g} to {g["far"]:g}'
+                      f'  x{g["strength"]:.2f}')
+            print()
+        amb, key = {}, {}
+        for kind in ('dir', 'amb'):
+            for L in rig[kind]:
+                counts[(kind, L['name'])] += 1
+                pre = L['name'][:2]
+                agree[0] += pre == L['category']
+                agree[1] += 1
+                if pre != L['category']:
+                    odd.append(f'{path.split("/")[1]} {L["name"]} '
+                               f'carries the {L["category"]} byte')
+                lit = tuple(L['colour'][k] / 255.0 * L['intensity']
+                            for k in range(3))
+                if kind == 'amb':
+                    amb[L['category']] = lit
+                else:
+                    updown[(L['name'][-1],
+                            'above' if L['direction'][1] > 0 else 'below')] += 1
+                    if L['name'].endswith('_1'):
+                        key[L['category']] = lit
+        for cat in set(amb) & set(key):
+            unity.append(max(amb[cat][k] + key[cat][k] for k in range(3)))
+        if 'st' in amb:
+            unity_st.append(max(amb['st']))
+    print(f'{len(files)} stages')
+    print(f'  the name prefix and the category byte say the same thing on '
+          f'{agree[0]} of {agree[1]} lights')
+    for line in odd:
+        print(f'    {line}')
+    print('  the light named _1 points above the horizon on '
+          f'{updown[("1", "above")]} of '
+          f'{updown[("1", "above")] + updown[("1", "below")]}, '
+          f'and the one named _2 below it on {updown[("2", "below")]} of '
+          f'{updown[("2", "above")] + updown[("2", "below")]}')
+    if unity:
+        unity.sort()
+        near = sum(1 for v in unity if 0.85 <= v <= 1.15)
+        print('  a surface turned to the key light receives, in its brightest'
+              ' channel,')
+        print(f'    ambient + key = {unity[0]:.2f} to {unity[-1]:.2f}, median '
+              f'{unity[len(unity) // 2]:.2f}, within 15 % of 1.0 on '
+              f'{near} of {len(unity)} (category, stage) pairs')
+    if unity_st:
+        unity_st.sort()
+        print(f'    and the stage, which has no key at all, {unity_st[0]:.2f} '
+              f'to {unity_st[-1]:.2f}, median '
+              f'{unity_st[len(unity_st) // 2]:.2f}')
+        print('  so the rig is normalised to one unit of light, which is what'
+              ' says 0x80 and not')
+        print('  0xff is unity in the colour lanes that multiply it.')
+    print('  lights, by name:')
+    for k in sorted(counts):
+        print(f'    {k[0]}  {k[1]:<12s} on {counts[k]:3d} stages')
+    return 0
+
+
 def cmd_combo(root, want: str = '*') -> int:
     """The player's combo graph, and two checks on it.
 
@@ -1192,6 +1389,8 @@ def main() -> int:
         return cmd_regions(rest[0], *rest[1:2])
     if cmd == 'trace':
         return cmd_trace(rest[0], *rest[1:2])
+    if cmd == 'lights':
+        return cmd_lights(*rest)
     if cmd == 'combo':
         return cmd_combo(rest[0], *rest[1:2])
     print(f'unknown command: {cmd}')

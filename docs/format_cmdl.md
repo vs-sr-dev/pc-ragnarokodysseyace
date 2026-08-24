@@ -172,8 +172,65 @@ list, and those names are `CTEX` names — the `CTEX` files of exactly those
 names sit in the same `.pac` as the model. Model → material → texture resolves
 by name inside one container, with nothing else to consult.
 
-The three words at `+0x08` are RGBA colours; `808080ff` and `000000ff` are the
-common pair.
+### Its four colours, and where unity is
+
+The three words at `+0x08` are RGBA colours, and a fourth sits at `+0x28`:
+
+```
++0x08  rgba  diffuse    808080ff on 4,696 of 5,425, then 959595ff and 000000ff
++0x0c  rgba  ambient    808080ff on 4,929, and the same second and third
++0x10  rgba  specular   000000ff on 5,391 — six distinct values in all
++0x28  rgba             808080ff on 5,424 of 5,425, so it says nothing
+```
+
+`+0x10` is named specular by the company it keeps. Thirty-four materials over
+the whole disc are not black there, and they are `wp_as10`, `wp_ht7`,
+`wp_mg6`, `wp_mg14`, `wp_cl10_shield`, a suit of armour, a monster's plates
+and four birds — the metal and the feathers, which is where a highlight goes.
+
+**`0x80` is unity in these lanes and `0xff` is twice it.** Two things say so
+and neither is a convention taken from another console:
+
+- the commonest value of a colour lane is its neutral, and here that value is
+  `0x80` on 4,696 and 4,929 of 5,425 rather than `0xff`;
+- the stage's own lighting rig is normalised to one unit of light —
+  `stageparam.bin`'s ambient plus key sums to a median of 1.06 in its
+  brightest channel over 442 (category, stage) pairs, and the stage's own
+  ambient to 0.90. Read `0x80` as `0.5` and every surface in the game renders
+  at half, and a stage — which multiplies a material colour by a vertex
+  colour — at a quarter. See [`lighting.md`](lighting.md).
+
+### Byte 0 of `+0x04` is the blend mode
+
+```
+0x01   opaque      4,077 materials
+0x00   alpha       773
+0x02   additive    571
+0x03                 4
+```
+
+The materials name it too, on the ones whose names say anything: **`_non_` is
+`0x01` on 1,114 of 1,120, `_alp_` is `0x00` on 15 of 15, and `_add_` is `0x02`
+on 7 of 7** — a string and a number written by different halves of a toolchain
+agreeing. The textures agree from a third side. Grouped by the byte, the mean
+texture under it is
+
+```
+byte   fully transparent   partly transparent   black and opaque
+0x01               0.008                0.036              0.056
+0x00               0.172                0.206              0.078
+0x02               0.084                0.129              0.383
+```
+
+`0x00` is where the transparency is, and `0x02` is where **38 % of the texels
+are black and fully opaque** against 6 % and 8 % — which is what an additive
+sprite looks like, because black adds nothing. Its materials are named
+`eff_light01`, `mt02_fire02`, `moon_cloud`, `window_a` and `renz_frea_03`:
+lights, fire, the moon, lit windows and a lens flare.
+
+The name test is nearly useless on its own, which is worth saying because
+`draw.py` used to rely on it: **4,178 of the 5,425 materials carry no blend
+token in their name at all**, and only 15 carry `_alp_`.
 
 The index is in range on 1,119 files. The eight that are not are stage grounds
 where one material of forty-odd points one slot past the end of `S7`; on those
@@ -251,8 +308,53 @@ bit 4 of the vertex type is set. Bits 5 and 6 add a second and third set, eight
 bytes each, stacked in front of the first; bits 8 and 9 add the four-byte pair
 a skinned mesh needs — weights at offset 0 and palette slots at `stride - 4` —
 which is why the `0x03__` types are the character bodies and the `0x00__` types
-the rigid attachments. Byte 2 is the offset of a
-four-byte attribute sitting between the coordinates and the normal.
+the rigid attachments.
+
+### Byte 2 is a baked vertex colour
+
+**Bit 2 of the vertex type declares a four-byte attribute and byte 2 of the
+layout is where it is** — 15,833 of 15,833 meshes agree with that rule read
+both ways, the bit and the offset, with the offset differing from both the
+position and the normal exactly when the bit is set.
+
+It is RGBA, and the light the artist baked there:
+
+- **the fourth byte is `0xff` on 5,076,882 of 5,412,488 vertices** while the
+  first three range over the whole byte and cluster on greys — `ffffffff`,
+  `808080ff`, `7f7f7fff`, `595959ff` — which is an alpha and three channels
+  and not four of anything else;
+- **it is smooth in space**, which a bake is and a tint or an index is not.
+  The mean luminance step across a triangle edge is **20.61** against **38.88**
+  between two vertices of the same mesh drawn at random, a ratio of 0.530, and
+  the edge is the smaller of the two on **228 of the 232 models** that vary at
+  all;
+- 11,745 of the 13,168 meshes that carry it vary within themselves, with a
+  median luminance spread of 126 out of 255.
+
+The census that makes it a lighting model rather than a curiosity is the split
+by container:
+
+| container | meshes | with a normal | with a colour |
+|---|---:|---:|---:|
+| `stage.cpk` | 13,672 | 0.093 | 0.940 |
+| `character.cpk` | 1,083 | 1.000 | 0.029 |
+| `monster.cpk` | 562 | 1.000 | 0.365 |
+| `npc.cpk` | 154 | 1.000 | 0.000 |
+| `menu.cpk` `misc.cpk` `item.cpk` `demo.cpk` | 362 | 1.000 | — |
+
+**Every mesh outside `stage.cpk` carries a normal; almost none of `stage.cpk`
+does, and 94 % of it carries a colour instead.** A stage is lit once, at build
+time, into its vertices; an actor is lit as it moves. The stage's own
+`stageparam.bin` says the same thing from the other side by declaring an
+ambient for the stage and no directional at all — see
+[`lighting.md`](lighting.md).
+
+`python tools/cmdl.py lanes extract/tree` runs every measurement above, and
+`python tools/cmdl.py shading extract/tree` checks the other half of reading
+a normal — that it is carried by the **inverse transpose** of the matrices
+the positions take. Posed by their own `CNOM`, a triangle's three vertex
+normals sit a median of **14.89°** from the way the posed triangle faces
+against **71.73°** left in the rest pose.
 
 **Vertices are already in model space**, not in node space. No transform has to
 be composed to draw a model; the node hierarchy is read for the skeleton, not
@@ -371,8 +473,14 @@ models, which are the one place a texture does not sit beside its model.
 
 ## Still open
 
-- The four-byte attribute at layout byte 2 — colour is the obvious guess and
-  the obvious guess has been wrong twice on this disc.
+- ~~The four-byte attribute at layout byte 2.~~ **A baked RGBA vertex
+  colour** — see *Byte 2 is a baked vertex colour* above. The obvious guess
+  was right this time, and it took a control to say so.
+- What byte 1 of `+0x04` is: `0x80` on all but 17 materials, and the 15 that
+  carry `_alp_` in their name are 15 of the 17.
+- The rest of the material record: `+0x14`, `+0x18` (whose byte 0 tracks the
+  blend mode loosely and is not it), `+0x1c` — `0x0a`, `0x05` and `0x00` in
+  the top byte, which would fit a specular power — and `+0x2c`.
 - The middle byte of the mesh descriptor's first word, and `+0x04`, constant at
   `0x0e250200` everywhere.
 - `S8`, and the 16-byte digests at the head of `S9` — one per texture, so a
