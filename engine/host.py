@@ -446,6 +446,9 @@ class Host:
         self.spawner = spawner
         if spawner is not None:
             spawner.host = self
+        # `mission.py` puts a `purse.Purse` here, and `cfAddItem` stops being
+        # a recorder. Ten call sites across the scripts hand it an item id.
+        self.purse = None
         self.bind()
 
     @property
@@ -486,6 +489,7 @@ class Host:
             'setInt': lambda bank, slot, v: self.ints.__setitem__(
                 (int(bank), int(slot)), v),
             'getQuestName': lambda: self.quest,
+            'cfAddItem': self._add_item,
             'cfIsQuestSelect': lambda: 1 if self.quest else 0,
             'cfIsQuestClear': lambda name: 0,
             'getHardwareType': lambda: 0,       # 0 is the PS3; isVITA is 0
@@ -600,6 +604,16 @@ class Host:
         return call
 
     # -- the implementations ----------------------------------------------
+
+    def _add_item(self, item, n=1):
+        """`cfAddItem(id, n)` - the one way a script hands over an item.
+
+        Ten call sites, with ids like 80787, and until there was something to
+        put it in this counted and did nothing.
+        """
+        self.note('item', '%s x%s' % (to_string(item), to_string(n)))
+        if self.purse is not None:
+            self.purse.add(int(item), int(n) or 1, 'a script')
 
     def _set_counter(self, n):
         self.main_counter = int(n)

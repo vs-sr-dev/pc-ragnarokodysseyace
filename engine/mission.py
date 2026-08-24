@@ -1,5 +1,5 @@
 """
-mission.py - a quest that finishes.
+mission.py - a quest that finishes, and pays.
 
 [`host.py`](host.py) runs a stage: the script initialises it, a body walks it
 and the trigger volumes fire. [`fight.py`](fight.py) and
@@ -67,6 +67,18 @@ with every run:
 Nothing else in the loop is a policy. The spawn points are markers, the
 monsters are the table's, the fences are polylines, the counting is the
 script's own and the threshold is the script's own.
+
+## And now it pays
+
+Session 28 gave the loop its far end. [`purse.py`](purse.py) holds what came
+out and draws it against the disc's own chances, and this file calls it from
+four places: a corpse (`Spawner.kill`, out of the monster's own `it_drop`), a
+part that comes off (`Field._break`, out of the quest's
+`item_reward_region.bin`), the quest finishing (`play`, out of
+`item_reward.bin` and `chapter.bin`'s zeny) and `cfAddItem`, which
+[`host.py`](host.py) routes. The second policy this file needs is declared
+there: how many landed volumes take a part off. See
+[`milestone_reward.md`](../docs/milestone_reward.md).
 """
 from __future__ import annotations
 
@@ -90,10 +102,11 @@ from host import Host                                          # noqa: E402
 from player import (CLASSES, Arsenal, Target, against,         # noqa: E402
                     place, turn, volley)
 from psq import Psq, PsqError, Structure, Trace                # noqa: E402
+from purse import BREAKS, Purse                                # noqa: E402
 from squirrel import SquirrelError, VMError                    # noqa: E402
 
-# How many landed volumes a monster survives. Policy, and the only one in
-# this file - see the header.
+# How many landed volumes a monster survives. Policy, and the only one this
+# file declares - `purse.py` declares the second, `BREAKS`. See the header.
 BLOWS = 3
 # How long a stage gets before the run gives up on it. 30 fps, so this is
 # four minutes, and the longest arena on the disc is nowhere near it.
@@ -104,6 +117,9 @@ COMBO = 'sssss'
 # `sfKill_Generator` counts in a local named for the job. The threshold is
 # the constant it compares that local against.
 COUNTER = re.compile(r'(\w*[Kk]ill\w*)\s*>=\s*(\d+)')
+# The player's class, as `it_db_weapon.bin` column 5 numbers it, for the six
+# `player.py` names. A kind-4 reward entry is that class's guaranteed weapon.
+PAYS = {'as': 0, 'cl': 1, 'ha': 3, 'hu': 4, 'ma': 5, 'sw': 7}
 
 
 # -- the four tables, for one quest ----------------------------------------
@@ -193,6 +209,7 @@ class Spawn:
         self.heading = marker.rotation[1]
         self.enemy = None                   # the brain, built when it fights
         self.hits = 0
+        self.broke: dict = {}               # part -> landings, -1 once off
         self.alive = True
 
     @property
@@ -229,6 +246,7 @@ class Spawner:
         self.opened: list[str] = []         # locks the script itself ended
         self.started: list[str] = []
         self.here: set = set()              # and the ones done on this stage
+        self.purse = None                   # `play` puts one here
         self.log = collections.Counter()
 
     # -- what host.py calls ------------------------------------------------
@@ -335,6 +353,10 @@ class Spawner:
             return
         s.alive = False
         self.live = [x for x in self.live if x is not s]
+        # A corpse pays before the callback runs: the monster's own `it_drop`
+        # table, out of its JSON and read the same way a reward block is.
+        if self.purse is not None:
+            self.purse.killed(s.kind)
         self.total_kills += 1
         self.latest_killed = s.id
         if self.lock is not None:
@@ -402,11 +424,12 @@ class Field:
     """
 
     def __init__(self, tree, arsenal: Arsenal, spawner: Spawner, seed=1,
-                 blows=BLOWS):
+                 blows=BLOWS, breaks=BREAKS):
         self.tree = pathlib.Path(tree)
         self.ar = arsenal
         self.sp = spawner
         self.blows = blows
+        self.breaks = breaks
         self.rng = random.Random(seed)
         self.body = place(arsenal.actor)     # the player's own capsules
         self.proto: dict = {}                # kind -> an Enemy to copy
@@ -605,14 +628,42 @@ class Field:
                 got = against(tg.parts, (s.x, s.y, s.z, s.heading),
                               world_pts, r)
                 if got and got[0][0] <= 0:
+                    c = got[0][1]
                     self.n['landed'] += 1
-                    self.n[('part', got[0][1]['part'])] += 1
+                    self.n[('part', c['part'])] += 1
+                    if c['break']:
+                        self._break(s, tg, c['part'])
                     s.hits += 1
                     if s.hits >= self.blows:
                         self.sp.kill(s)
         self.frame_in += 1
         if self.frame_in > a.lasts:
             self.attack = None
+
+    def _break(self, s: Spawn, tg: Target, part: str):
+        """A landing on a part that comes off, and what comes off it.
+
+        `region_data_brk` is the monster's breakable-part list and its
+        **order** is what a region reward's byte 7 indexes - 298 of 298
+        blocks carry exactly `0 .. n-1` for that list's length. So the part a
+        volume landed on has a number, and that number is a row of the
+        quest's own `item_reward_region.bin`.
+        """
+        s.broke.setdefault(part, 0)
+        if s.broke[part] < 0:
+            return                          # already off
+        s.broke[part] += 1
+        if s.broke[part] < self.breaks:
+            return
+        s.broke[part] = -1
+        self.n['parts broken off'] += 1
+        at = next((i for i, r in enumerate(tg.broken) if r['name'] == part),
+                  None)
+        if at is None:
+            self.n['a part with no region_data_brk row'] += 1
+            return
+        if self.sp.purse is not None:
+            self.sp.purse.broke(s.kind, at)
 
     def _monster(self, s: Spawn, world):
         e = self._enemy(s)
@@ -720,7 +771,7 @@ def _goal(host, t: Tables, stage: str, done: set, want: list, running=''):
 
 
 def play(tree, name: str, cls='sw', blows=BLOWS, seed=1, verbose=True,
-         limit=STAGE_FRAMES):
+         limit=STAGE_FRAMES, breaks=BREAKS):
     """One quest, until every stage on its list has been walked and every
     arena on those stages opened.
 
@@ -734,15 +785,23 @@ def play(tree, name: str, cls='sw', blows=BLOWS, seed=1, verbose=True,
     t = Tables(tree, name)
     sp = Spawner(t)
     host = Host(tree, quest=name, seed=seed, verbose=verbose, spawner=sp)
+    # What the quest pays, and where the player stands in the story. The
+    # block head of `item_reward.bin` is a threshold in the same number space
+    # `cfGetMainCounter` returns, and `chapter.bin` says what this quest
+    # requires - so the counter is the catalog's, not a guess.
+    purse = Purse(tree, name, cls=PAYS.get(cls, 7), seed=seed)
+    host.purse = sp.purse = purse
+    host.main_counter = purse.progress
     host.load_common()
     ar = Arsenal(tree, cls)
     out = {'quest': name, 'class': cls, 'stages': [], 'want': list(t.stages),
            'locks': len(t.locks), 'frames': 0, 'blows': blows,
            'spawner': sp, 'host': host, 'n': collections.Counter(),
+           'purse': purse, 'breaks': breaks,
            'armable': [], 'cleared': [], 'visited': [], 'done': False}
     if not t.stages:
         return out
-    field = Field(tree, ar, sp, seed=seed, blows=blows)
+    field = Field(tree, ar, sp, seed=seed, blows=blows, breaks=breaks)
     field.host = host
     sp.at = lambda: (field.player.x, field.player.z)
     sp.radius = ar.params.get('col_r', 0.5)
@@ -844,6 +903,10 @@ def play(tree, name: str, cls='sw', blows=BLOWS, seed=1, verbose=True,
     out['armable'] = sorted(armable)
     out['done'] = finished or (set(t.stages) <= set(out['stages'])
                                and armable <= cleared)
+    # A quest pays when it is over, once - `item_reward.bin` is the results
+    # screen and the item text calls it "Quest Reward" in so many words.
+    if out['done']:
+        purse.finish()
     return out
 
 
@@ -884,8 +947,10 @@ def cmd_run(tree, name='q00102', cls='sw', blows=str(BLOWS),
         parts.sort(reverse=True)
         print('  where they landed: %s'
               % ', '.join('%s %d' % (p, c) for c, p in parts[:8]))
-    print('  a monster dies on the %d landed volume%s - this run\'s policy, '
-          'not the disc\'s' % (r['blows'], '' if r['blows'] == 1 else 's'))
+    print('  a monster dies on the %d landed volume%s and a part comes off '
+          'on the %d - this run\'s policy, not the disc\'s'
+          % (r['blows'], '' if r['blows'] == 1 else 's', r['breaks']))
+    r['purse'].report()
     if sp.log:
         print('  the spawner: %s' % ', '.join(
             '%s %d' % (k, v) for k, v in sorted(sp.log.items())))
@@ -918,6 +983,9 @@ def cmd_runs(tree, want='*', cls='sw', blows=str(BLOWS), quiet='0') -> int:
     armed = opened = started = 0
     kills = spawns = 0
     routed = wanted = 0
+    zeny = paid = 0
+    took = collections.Counter()
+    why = collections.Counter()
     fails = collections.Counter()
     slips = collections.Counter()
     for name in names:
@@ -942,6 +1010,12 @@ def cmd_runs(tree, want='*', cls='sw', blows=str(BLOWS), quiet='0') -> int:
         for k in r['host'].arity:
             slips[k] += r['host'].arity[k]
         done += bool(r['done'])
+        pu = r['purse']
+        zeny += pu.zeny
+        paid += bool(pu.items)
+        took.update(pu.items)
+        for w, item, n in pu.took:
+            why[w] += n
         if r['armable']:
             fights += 1
             fought += bool(r['done'])
@@ -961,6 +1035,11 @@ def cmd_runs(tree, want='*', cls='sw', blows=str(BLOWS), quiet='0') -> int:
     print('  %d arenas armed by a quest script, %d started, %d ended by the '
           'script\'s own kill count' % (armed, started, opened))
     print('  %d monsters spawned, %d killed' % (spawns, kills))
+    print('  %d quests paid something: %s zeny and %d items of %d kinds'
+          % (paid, '{:,}'.format(zeny), sum(took.values()), len(took)))
+    if why:
+        print('    out of %s' % ', '.join(
+            '%s %d' % (k, v) for k, v in why.most_common()))
     if slips:
         print('  %d calls with the wrong number of arguments, which the host '
               'adapts: %s' % (sum(slips.values()), dict(slips.most_common(4))))
