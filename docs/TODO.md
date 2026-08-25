@@ -7,95 +7,136 @@
 
 # Next session
 
-Session 29 took the walk, which had been the weak half since session 24 and
-was gating the pay-out. The report is [`milestone_walk.md`](milestone_walk.md),
-the eighth milestone, and it has an instrument — `run.py nav` — and a picture,
-`draw.py route`. What to carry:
+Session 30 wrote the list this project needed and then spent the rest of the
+day shortening it. The list is [`parity.md`](parity.md) — **every place where
+what runs is not what shipped**, in four classes, with what retires each — and
+by the end of the session it had lost one stand-in and two readings. It also
+opened the EBOOT. What to carry:
 
-- **the body was standing under the floor.** `run.py check` had measured the
-  distance from a marker to its ground for six sessions and never its sign:
-  **36 of the 661 `appear` markers, 183 of the 2,123 `emgen_pos`, 20 `jump_`
-  and 14 `pl_q` sit more than `col_r` below their own floor**, by fifteen
-  metres on `100_03_02`. A body put there has nothing under it, falls, gets
-  put back where it fell from, and falls again for the whole run.
-  `world.stand` places a body on the ground under its marker — the ground
-  nearest the marker's own Y, because a stage has storeys — and that one rule
-  is most of the session;
-- **and it corrects two published numbers.** `run.py sweep` goes from *127 of
-  135* stages crossed on legal ground to **135 of 135**, and its largest
-  vertical move in a frame from 8.000 m to 0.109: the eight stages it called
-  *"a hole in the mesh"* were the eight whose spawn is under their own floor.
-  `fall_spd_max` is unaffected as a reading — the body was still outside the
-  level, just from underneath rather than over the edge — but nothing on the
-  disc falls any more, so that demonstration does not reproduce;
-- **a stair is not welded.** [`format_ccls.md`](format_ccls.md)'s weld holds
-  across one floor and not between two. Of the 22,020 single-use walkable
-  edges, **2,093 have another within `col_r` sharing no vertex** — a seam, not
-  an outline — and `070_01_02`'s staircase is nine components of a graph built
-  on the weld alone. `world.graph` joins them at `col_r`, which is
-  `actor.py`'s own step. The disc has no step height to declare: slab risers
-  decay smoothly to 0.9 m over 67 stages and then spike at exactly 1.0 m,
-  which is the tower's modular kit on 35 `170_*` floors, and going from 0.5 to
-  1.5 m buys no extra reachable exit anywhere;
-- **the class table has a ground probe nobody had read.** `ry_r_walk` 0.15,
-  `ry_r_run` 0.30, `ry_r_fast` 0.35, `ry_r_fall` 0.35 — the only per-gait
-  length the player has, on all six classes and no monster, keyed to exactly
-  the four locomotion states `actor.py` models. Used as the radius a body
-  looks for ground within, which is a reading and is marked as one in
-  [`params.md`](params.md);
-- **two smaller things the disc got wrong itself.** Five polyline kinds are
-  misspelled over ten stages — `chare_line`, `chara_lime`, `Lock_Line`,
-  `lock_area`, `stop_line` — and `chare_line01` on `020_02_01` is a 36-point
-  player fence nothing in this repository could see; and **the `CCLS` surface
-  code is not geometry**, since all thirteen have a median slope under four
-  degrees, which rules the codes out as a walkability flag and leaves them
-  where [`format_ccls.md`](format_ccls.md) already had them, as a terrain
-  type.
+- **the difficulty tier was a stand-in and is now the disc's.** Every monster
+  the engine spawned was record `0` of its own JSON, the weakest version of
+  itself, because nothing said which tier a quest wanted. `enemy.bin`
+  **`+0x37`** says, and it had been sitting in
+  [`format_quest.md`](format_quest.md) as *"ten-step values, unread"* since
+  session 24. Three things agree: its alphabet is the tier-key alphabet, it
+  **climbs with the chapter** (chapter 1 spawns at 0, chapters 4–5 at 10, 6–7
+  at 20, 11–14 reach 250), and **161 of 168 monsters carry the same tier in
+  `item_reward_region.bin`, 159 the same pair** — a table read by a different
+  tool for a different purpose, where a constant 0 would score 16 of 396.
+  `+0x57` is the paired higher tier, `+0x37 + 1` on 436 of 465. The tier moves
+  `hp`, `atk`, `region_lv`, the drop table and the reward block, so it reaches
+  the whole pay-out;
+- **the EBOOT is open**, [`format_self.md`](format_self.md) and
+  [`tools/self.py`](../tools/self.py): `SELF` → a 19.8 MB PowerPC 64
+  big-endian ELF, byte entropy **8.000 before and 5.945 after**, with the AES
+  written out in the standard library and checked against FIPS-197's own
+  vectors before it touches the disc. The keys stay outside the repository and
+  the tool reads scetool's ini and RPCS3's `key_vault.cpp`;
+- **and two of the phase's own items turned out to be data.** `self.py names`
+  pulls the **`AIT_*` condition-term enum** (78 names, 24-byte stride) and the
+  **AI host predicate table** (75 `(function, name)` pairs) straight out. The
+  enum lands on the disc's three id bands — 21, 19, 25 — names **65 of the 76
+  terms the tables use**, agrees with every reading
+  [`format_ai.md`](format_ai.md) took off the `.cnut`, and **settles two
+  readings [`brain.py`](../engine/brain.py) had declared as its own**:
+  `AIT_TGT_FRONT`/`_REAR` against
+  `AIT_FRONT_TGT`/`REAR_TGT`/`LEFT_TGT`/`RIGHT_TGT`, and
+  `AIT_RANGE_S`/`_M`/`_L`. The seven `checkBnnTerm` escape hatches are located
+  with an address each;
+- **three published readings were corrected by the binary, all the same way.**
+  The engine binds its interface by name: **274 of the 285 native names are
+  strings inside it**, which is what makes an absence mean something.
+  `prowl_script`, `MONS_KIND_ORGA` and the five `DEMO_S17x_A` are **absent**,
+  so they are dead references in the shipped game rather than engine
+  constants, which is what [`format_api.md`](format_api.md) had inferred. The
+  ten unnamed AI terms are absent from the `AIT_*` enum too, so the tables are
+  newer than *both* artefacts that could have named them;
+- **two ledger items were tested and both moved.**
+  [`combat_loop.md`](combat_loop.md) item 7 said *"readable — one more join,
+  against the skill table"*; the join was tried against the 634 player hit
+  records, all 29 columns of `it_db_weapon.bin` grouped by class, and
+  `it_db_ace_skill.bin`, and **none of them carries it** — so
+  `se_hitlevel_tbl`'s third word is the engine's own weapon-form enum and is
+  an EBOOT item now. Item 2 sent the search to the level-up tables and
+  **there are none**: `it_db_myorder*.bin` is the mercenary order system. The
+  ledger is three disc items and six EBOOT ones, and the EBOOT is open.
 
-**What it came to, over all 431 quests.** Against the numbers milestone 5
-published and milestone 7 reproduced: **284 quests finish against 247**, and
-of the ones that put a locked arena in front of the player **59 of 133
-against 25 of 131**. **322 of the 344 arenas the body reached were closed by
-the script's own kill count**, against 210 of 272 — 94 % against 77 %, with
-72 more arenas reached at all. Kills went 1,534 to **3,017** on the same
-`BLOWS` policy, and the pay-out with them: **689,375 zeny and 5,086 items of
-349 kinds** against 568,871 and 2,762. *The body stopped walking* went **125
-to 66**, and eleven stages account for all 66 — `070_01_02` thirteen times,
-`100_02_01` ten, `170_08_01`, `080_01_02` and `050_02_03` eight each.
+**What it came to, over all 431 quests.** The sweep was launched once the
+engine was frozen and it is the regression check: against session 29's
+numbers, **284 quests finish, 287 walk their whole stage list, 344 arenas are
+armed and 322 are closed by the script's own kill count, 3,105 monsters spawn
+and 3,017 die, and the pay-out is 689,375 zeny** — every one of those to the
+digit, and *the body stopped walking* is still 66 over the same eleven stages,
+`070_01_02` thirteen times.
 
-**And the sweep is now the slow half of a session.** It cost an hour when
-most quests gave up in the second room; quests that walk their whole list and
-fight everything on it cost more. Launch it first, not halfway through.
+**One number moved and it is the one the tier should move.** The take goes
+from **5,086 items of 349 kinds to 5,661 of 398**, over 201 quests, on
+identical kills and identical zeny. That is the reading's own prediction: a
+monster's `it_drop` and its `item_reward_region.bin` block are per-tier and
+nothing else in the loop reads `hp` or `atk`, because `BLOWS` decides death.
+Had the steering or the kill count moved, something would have been wrong.
 
-### 1. The walk, again — the three that are left.
+### 1. Ghidra, and the six ledger items that are code.
 
-The instrument now says exactly where it fails, which is the point of having
-one. Three things are known and unfixed:
+This is the session the phase list has been pointing at since session 10, and
+it is now an afternoon's setup rather than a phase. PowerPC 64 big-endian,
+image base `0x10000`, 16.1 MB of code and 3.6 MB of data. **Plant the 285
+`cf*`/`sf*` names first** — they are strings in the binary,
+[`format_api.md`](format_api.md) says what each one does from the outside, and
+they are the widest labelled surface the file has. Then
+[`combat_loop.md`](combat_loop.md)'s six:
+
+1. **the damage expression** (ledger 1) — it retires `BLOWS`, `BREAKS` and
+   most of the 28 defaulted AI predicates in one go, which is three of
+   [`parity.md`](parity.md)'s seven stand-ins;
+2. what computes the hit level (4);
+3. what `+0x35` is a strength of (3);
+4. the sign of a region's flat modifier (5);
+5. what `react_p` is a pool of (8);
+6. `se_hitlevel_tbl`'s third word (7), the weapon-form enum — and the `AIT_*`
+   table says this build ships its enums as string tables, so look for a name
+   list before looking for a switch.
+
+The two smallest cosmetic items are still there and now cheap: the table that
+maps `.anmcmd` opcode 10's effect id to a `PTB` slot, and the seven
+`checkBnnTerm` bodies, which now have addresses.
+
+### 2. The tier's other half.
+
+`+0x57` is a real second tier — `item_reward_region.bin` blocks both — and
+**what selects it is not read**. The party is the candidate: `cfIsMulti()`
+exists and every quest with rewards ships an `item_reward_multi.bin` beside
+its `item_reward.bin`. The correlation is real and not clean: 199 of the 233
+reward-carrying quests name a second tier, 34 do not, and 6 quests name one
+with no reward table at all. So this wants either the EBOOT or a table nobody
+has opened.
+
+### 3. The walk, again — the three that are left.
+
+Unchanged from session 29, and `run.py nav` still says exactly where:
 
 - **`070_01_02`'s exit.** The first riser out of its spawn room is 0.61 m over
   a 0.21 m gap, a 71-degree slope, and a wall by the mesh's own walkability
-  test. Four quests stop under it. **The body has never jumped** —
-  `jp_speed_y` 0.42 against `fall_gravity_y` −0.035 is an apex of 2.5 m — and
-  a jump is the disc's own answer to a ledge;
+  test. **The body has never jumped** — `jp_speed_y` 0.42 against
+  `fall_gravity_y` −0.035 is an apex of 2.5 m — and a jump is the disc's own
+  answer to a ledge;
 - **an unreachable exit is still chosen.** Preferring a reachable one was
-  tried, measured, and reverted: it fixed nothing and turned `q00306` from
-  finishing into pacing between two rooms, because A* says None for places a
-  body does get to. Making A* less conservative about a fence is the real
-  item;
-- **`_goal` is still the run's and not the disc's.** The body walks at a
-  marker because nothing has read what actually leads a player through a
-  stage.
+  tried, measured and reverted; making A\* less conservative about a fence is
+  the real item;
+- **`_goal` is still the run's and not the disc's** — and
+  [`parity.md`](parity.md) files it as scaffolding rather than a stand-in,
+  which is the right place for it: it is a robot playing with no hands.
 
-### 2. The effects now have a consumer that can show them.
+### 4. The effects now have a consumer that can show them.
 
-`.PTP` and `effect.bin` have been read for six sessions with nothing able to
+`.PTP` and `effect.bin` have been read for seven sessions with nothing able to
 draw them. The renderer has additive blending and a draw order, which is
 exactly what an effect needs, and [`format_ptp.md`](format_ptp.md)'s
-`(category, slot)` pair, the 69 `effect.bin` tables and `.mkc`'s emitter — a
-locator on the body — all have somewhere to go. It has a reading item
-attached: **which `.anmcmd` opcode spawns one**, which is item 6 below.
+`(category, slot)` pair, the 69 `effect.bin` tables and `.mkc`'s emitter all
+have somewhere to go. Its one reading item — which `.anmcmd` opcode spawns one
+— is item 1 above, now that the binary is open.
 
-### 3. Two lanes the renderer still ignores, both declared.
+### 5. Two lanes the renderer still ignores, both declared.
 
 - **fog.** Every stage declares one to three fog records and none is drawn.
   The colour and the near/far are legible; the density word is not a float on
@@ -109,80 +150,66 @@ attached: **which `.anmcmd` opcode spawns one**, which is item 6 below.
   127 of its 237 vertices, which is a lake edge fading out. The rasteriser
   interpolates three channels and would have to interpolate four.
 
-### 4. The three entries beside `s_combo_graph`.
+### 6. The three entries beside `s_combo_graph`.
 
 Unchanged and still the cheapest well-posed reading item. `s_combo_finish_inf`
 (132 bytes on the warrior), `s_just_combo_inf` (8) and `s_combo_motA` (64) sit
 in the same `objbin.bin` and none is read. A finisher is a node with no
 outgoing edge, and a just window is a byte pair on an edge.
 
-### 5. A generator's counts and timers, now that one runs.
+### 7. A generator's counts and timers, now that one runs.
 
 `enemy_gen.bin` `+0x14`, `+0x18`, `+0x20`, `+0x24`, `+0x28` and `+0x30`.
 `+0x28`'s `k` is 0, 5, 10, 15, 30, 60 or 90 — halves and multiples of a second
 at 30 fps — and a respawn delay is testable the moment a monster can die.
 
-### 6. The `.anmcmd` opcodes.
-
-Thirty of fifty-two, with two consumers that want particular ones: which
-opcode spawns a projectile and which `ht_arrow_tbl` row it names, and what
-turns a weapon trail on. Item 2 above wants the first of those.
-
-### 7. The endless dungeon, which is now half-read for free.
+### 8. The endless dungeon, which is now half-read for free.
 
 `yggdrasill.cpk`'s twenty tables include **the same three reward records** —
-`yggdrasill_reward_item.bin` is the sixteen-byte entry under a head one word
-wider, and 277 of 277, 278 of 278 and 326 of 326 of its columns already fit
-the reading. The head's first word descends 176, 152, 127, 102, 77, 52 down
-the file, which is a floor number. The other seventeen tables — the floors,
-the monster sets, the fever mechanic — are unopened, and the tower is 170 of
-the stage list the quests already walk.
+277 of 277, 278 of 278 and 326 of 326 of its columns already fit the reading.
+The head's first word descends 176, 152, 127, 102, 77, 52 down the file, which
+is a floor number. The other seventeen tables — the floors, the monster sets,
+the fever mechanic — are unopened, and the tower is 170 of the stage list the
+quests already walk.
 
 ### Then
 
-8. **The rest of the material record.** `+0x10` is a specular colour, named by
-   the company it keeps - the 34 materials that are not black there are
+9. **The rest of the material record.** `+0x10` is a specular colour, named by
+   the company it keeps — the 34 materials that are not black there are
    weapons, a shield, armour, a monster's plates and four birds. What is not
    read: byte 1 of `+0x04` (`0x80` on all but 17), `+0x14`, `+0x18`, `+0x1c`
-   (`0x0a`/`0x05`/`0x00` in the top byte, which would fit a specular power)
    and `+0x2c`. See [`format_cmdl.md`](format_cmdl.md).
-9. **The player's base defence and hit points**,
-   [`combat_loop.md`](combat_loop.md) ledger item 2 — the level-up tables
-   `it_db_myorder*.bin` are the next place to look, and `reward.py sources`
-   now names them as where six materials come from.
-10. **`se_hitlevel_tbl`'s third word**, 0 to 8 per class and not
-    `it_db_weapon.bin` column 5.
-11. **`stageparam.bin` past its lights**: `shadow_param`, and the two unnamed
+10. **`stageparam.bin` past its lights**: `shadow_param`, and the two unnamed
     blocks `stage_param` points at from `+0x20` and `+0x24` — `(80, 0.7, 1.7,
-    2)` and `(1, 0.6, 0.98)` on `010_01_01`. And `mot_param.bin` past its
-    motion id.
-12. **Where the minimap's scale is declared.** The band is 1.31 to 1.33 px/m
+    2)` and `(1, 0.6, 0.98)` on `010_01_01`. Both names are strings in the
+    EBOOT, which is a new way in. And `mot_param.bin` past its motion id.
+11. **Where the minimap's scale is declared.** The band is 1.31 to 1.33 px/m
     and it is not in `stageparam.bin` — which is now read field by field, so
     that is settled rather than assumed.
-13. **The `CCLS` surface codes 1 to 13.** The navigation mesh walks a body
-    over hundreds of them in a row, which is a second way in.
-14. **What picks between reward kinds 0, 2 and 3**, and what an `it_drop_db`
-    column's kind is. The three reward kinds are three versions of one column
-    - the same items, rarer, in bigger stacks - and nothing says which one a
-    run gets. In the drop tables, kinds 1, 3 and 5 gate and 0, 2, 4 and 8 do
-    not, and `prob_silver` and `prob_gold` sit next to `it_drop` in the
-    monster JSON without a reader.
+12. **The `CCLS` surface codes 1 to 13.** Session 29 ruled them out as a
+    walkability flag — all thirteen have a median slope under four degrees.
+    Session 30 found **`AIT_FLOOR_ATTR`** in the AI's own term enum, which is
+    the first thing anywhere that suggests something reads them at all.
+13. **What picks between reward kinds 0, 2 and 3**, and what an `it_drop_db`
+    column's kind is — [`parity.md`](parity.md)'s stand-in S3, and the only
+    one of the seven that is plainly ordinary disc work.
+14. **`se_hitlevel_tbl`'s third word** is no longer here; it is ledger item 7
+    and it is in the binary. See above.
 
 ---
 
 ## Deferred, with reasons
 
-- **EBOOT decryption** (Phase 3). Narrower again: the quest state machine and
-  the boss AI are script, and since session 18 the 285 native functions are
-  described rather than merely named, so what is left inside it is **the combat
-  loop and the implementations**. **Session 14 produced the first item that
-  genuinely needs it** — the table that maps `.anmcmd` opcode 10's effect id to
-  a `PTB` slot is not on the disc, and 32,600 leaves were searched for it. It
-  is a cosmetic lookup, so it still does not justify the phase on its own.
-  Session 18 added a second, of the same size: the engine holds a **name for
-  every AI term id**, because the term dispatch's fall-through calls
-  `printAitIdName`, and that string table would finish
-  [`format_ai.md`](format_ai.md)'s last ten.
+- **EBOOT decryption** (Phase 3) — **no longer deferred: done, session 30.**
+  [`tools/self.py`](../tools/self.py) takes `EBOOT.BIN` and a key file to a
+  19.8 MB PowerPC 64 big-endian ELF; see
+  [`format_self.md`](format_self.md). Session 18's reason for the phase — the
+  string table behind `printAitIdName` — came out on the first day and is in
+  [`format_ai.md`](format_ai.md); it named 65 of the 76 terms the AI tables
+  use and **did not** name the ten this repository could not name either,
+  which is a result rather than a disappointment. Session 14's reason, the
+  `.anmcmd` opcode 10 effect id, is still open and is now a disassembly item
+  rather than a decryption one.
 - **Audio and video** — no longer deferred at all. The 46 movies are read by
   [`pam.py`](../tools/pam.py) and the 274 sound banks by
   [`awb.py`](../tools/awb.py): 7,756 waveforms, 12 h 18 m, every one reached
@@ -283,10 +310,13 @@ the stage list the quests already walk.
   every script on the disc runs, with 0 VM faults. See
   [`format_psq.md`](format_psq.md) and
   [`milestone_stage.md`](milestone_stage.md).
-- The script interface: **six names that are not functions** -
-  `MONS_KIND_ORGA` and `DEMO_S174_A`..`DEMO_S178_A`, read off the root table,
-  called by nobody and defined by no `.psq`, so the engine holds them as
-  constants; **how long the host holds a blocked script**, since the thirteen
+- The script interface: **six names that are not functions is settled and the
+  answer is that they are dead** - `MONS_KIND_ORGA` and
+  `DEMO_S174_A`..`DEMO_S178_A` are read off the root table, called by nobody,
+  defined by no `.psq` and **not strings in the EBOOT either**, against 274 of
+  the 285 natives that are; so is `prowl_script`. They are dead references in
+  the shipped game. What is left of the interface is **how long the host
+  holds a blocked script**, since the thirteen
   `suspend` numbers are the disc's but the delays in `host.py`'s `RESUME` are
   this repository's policy; and about a dozen of the 285 whose argument roles
   the disc does not separate — `cfSetCameraType`'s five camera types, the second
@@ -313,14 +343,18 @@ the stage list the quests already walk.
   [`pose.md`](pose.md). `7ffa`, the emitter and the effect index are all
   settled, leaving `z07` as the only pac that asks for something its table has
   not got: [`format_effect.md`](format_effect.md).
-- The AI's own leftovers: **the seven per-boss escape hatches** -
-  `checkB01Term` and its siblings - which nine tables call on 458 instructions
-  and which nothing on the disc defines, the same shape of hole as
-  `prowl_script`; **two terms that are dead as the shared include writes
-  them**, 103 (which throws on a non-zero operand) and 115 (which is never
-  true), both of which read cleanly if the engine's own predicate returns a
-  number rather than a flag; and ten of the 76 condition terms, which the six
-  `.cnut` predate and so cannot name; what the `2xx` action block means, given
+- The AI's own leftovers, two of them now with addresses: **the seven per-boss
+  escape hatches** - `checkB01Term` and its siblings - which nine tables call
+  on 458 instructions and which nothing on the *disc* defines, are all seven
+  in the EBOOT's own predicate table (B01, B05, B09, B11, B15, B18, B19), so
+  they are a reading job rather than a search; **two terms that are dead as
+  the shared include writes them**, 103 (which throws on a non-zero operand)
+  and 115 (which is never true), both of which read cleanly if the engine's
+  own predicate returns a number rather than a flag; and **eleven of the 76
+  condition terms have no name anywhere** - `0x0e2`-`0x0fc` and `0x42a` - the
+  ten the six `.cnut` predate plus one, and session 30 showed they are missing
+  from the engine's `AIT_*` enum too, so only the dispatch itself can name
+  them; what the `2xx` action block means, given
   that its ids resolve to the same motions as the `1xx`; the `kind` byte of
   `<name>.par` and the 1000-band ids in `_coop.par`; the five `ProbList` files
   whose group ids repeat rather than ascend; and the eight `EventTable.dat`
@@ -371,6 +405,53 @@ the stage list the quests already walk.
 ---
 
 # Log
+
+## Session 30 - 2026-08-25
+
+Two things: the inventory of everything this engine invents, and the binary.
+What is here is what did not fit in [`parity.md`](parity.md) or
+[`format_self.md`](format_self.md).
+
+- **The list came first and the list did the work.** `parity.md` was written
+  to be a checklist to be shortened rather than a record of decisions, and
+  writing it out is what made the tier stand-in visible: `TIER = '0'` had been
+  a one-line comment in `purse.py` since session 28 and nobody had asked what
+  it cost. The answer was on the disc, two joins away, in a lane
+  `format_quest.md` had been printing as unread since session 24. **The
+  document found the bug, not the code.**
+- **A constant is not a null hypothesis.** The first test of the tier reading
+  looked strong — 2,277 of 2,402 monster slots name a tier that monster
+  declares, 94.8 % — and it was worthless, because writing `0` into every row
+  scores **100 %**: the base record exists on every monster, so that join
+  cannot fail. The test that worked was against a *different table with the
+  same field in it*, where a constant scores 16 of 396 and the real value
+  scores 326.
+- **Write the cipher, then check it against somebody else's numbers.** The
+  AES in `self.py` is a hundred and forty lines, and a from-scratch cipher
+  that is not checked produces plausible garbage — the exact failure this
+  phase could not afford, because its output is 19 MB of bytes nobody can
+  eyeball. `self.py check` runs FIPS-197's own vectors before it looks at the
+  disc at all.
+- **The strings were the point, again.** Sessions 8, 10 and 14 each ended with
+  *"before reaching for the disassembler, ask whether the fact is already
+  declared"*, and the EBOOT's first day is that lesson from the inside: the
+  `AIT_*` enum and the AI predicate table are plain data, `self.py names` gets
+  both in under half a second, and between them they settled more open items
+  than a week of disassembly would have.
+- **An absence is evidence only when the presences are counted.** 274 of the
+  285 native names are strings in the binary. Only because that number is
+  known does `prowl_script`'s absence mean *"a dead reference in the shipped
+  game"* rather than *"looked in the wrong place"*. The eleven that are
+  missing sort into four groups and every group has a reason.
+- **Two leads in the ledger were tested and both lost.** Item 7's *"readable —
+  one more join, against the skill table"* and item 2's *"the level-up tables
+  are the next place to look"* were written as leads and then carried forward
+  for nine sessions unexamined. Neither survived an hour of actually trying
+  it. A lead nobody spends an hour on is indistinguishable from a fact, and
+  both had been quietly counted as *readable* in every summary since.
+- **The heredoc ate the backslashes again**, on the one patch this session
+  whose source contained escapes — which is exactly what the standing note
+  says it does. It cost ten minutes and a `self.py` with real NUL bytes in it.
 
 ## Session 29 - 2026-08-24
 

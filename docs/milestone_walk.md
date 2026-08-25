@@ -316,6 +316,14 @@ close because the tables were already right.
 running over more of the disc than it could reach before: 689,375 zeny and
 5,086 items of 349 kinds.
 
+*Session 30 note: every number in this table still reproduces to the digit,
+and one of them has since moved. Reading `enemy.bin`'s difficulty tier
+([`parity.md`](parity.md), [`format_quest.md`](format_quest.md)) puts each
+corpse on the drop table its own tier names, and the take goes to **5,661
+items of 398 kinds** at the same kills and the same zeny. That the pay-out
+moved and nothing else did is what says the tier reaches exactly what it
+should.*
+
 And the failure that named this session:
 
 ```

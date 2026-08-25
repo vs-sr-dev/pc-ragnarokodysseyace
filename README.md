@@ -10,7 +10,47 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-29 (2026-08-24). **The body gets there, and it had been standing
+Sessions 1-30 (2026-08-25). **Everything this engine invents, in one list —
+and then the list started shrinking.** After eight milestones the places where
+what runs is not what shipped were declared honestly and scattered over
+thirteen files, which is the same as not being declared at all.
+[`docs/parity.md`](docs/parity.md) is the set, in four classes with what
+retires each: **seven stand-ins** (wrong by construction — the disc has the
+thing and we cannot read it), five readings, thirteen conventions and eight
+pieces of scaffolding that are not wrong at all because they stand where a
+gamepad goes. The shape of the list is the finding: **three of the seven
+stand-ins are the damage expression**, so one function retires nearly half of
+them.
+
+Writing it out is what found the next one. `TIER = '0'` had been a one-line
+comment since session 28, and it meant **every monster the engine spawned was
+the weakest version of itself**. `enemy.bin` `+0x37` says which difficulty
+tier a quest wants, and it had been printed as *"ten-step values, unread"*
+since session 24: it climbs with the chapter, and **161 of 168 monsters carry
+the same tier in a reward table read by a different tool** — 159 the same
+pair — where a constant would score 16 of 396. Driving all 431 quests again,
+every published number came back to the digit (**284 finish, 322 of 344
+arenas closed by the script's own kill count, 3,017 kills, 689,375 zeny**) and
+exactly one moved: the take goes **5,086 items of 349 kinds to 5,661 of 398**,
+because a monster's drop table is per-tier and nothing else in the loop reads
+its hit points.
+
+**And the EBOOT is open.** [`tools/self.py`](tools/self.py) takes `EBOOT.BIN`
+and a key file to a 19.8 MB PowerPC 64 big-endian ELF — the AES written out in
+the standard library, because this repository has no third-party dependency,
+and checked against FIPS-197's own vectors first. Byte entropy **8.000 before
+and 5.945 after**, and then the sharper proof: **49,283 `mflr r0` against
+49,765 `mtlr r0`** over four million words, prologues and epilogues in pairs.
+Its first day needed no disassembler at all. The `AIT_*` condition-term enum
+and the AI's own predicate table are plain data: they name **65 of the 76 AI
+terms**, agree with every reading taken off the game's own converted scripts,
+settle two the engine had declared as guesses, and locate the seven per-boss
+escape hatches. And because **274 of the 285 native names are strings in the
+binary**, an absence means something — `prowl_script` and the six named
+constants are not there, so they are dead references in the shipped game
+rather than, as this repository had inferred, engine constants.
+
+**Before that: the body gets there, and it had been standing
 under the floor.** The walk was the one half of this project that is nobody's
 reading and everybody's problem, and 125 of the 431 quest runs ended with
 *the body stopped walking*. Most of it was not steering. `hta.bin` gives every
@@ -322,6 +362,8 @@ Squirrel script  ->    3,011 files, 315k insns tools/psq.py    0 errors
                                                  resolving in its own table
 quest tables     ->      430 quests, 8,024 gens tools/quest.py  0 errors
   the monsters   ->    2,503 slots, 83 ids naming 83 monster directories
+  the difficulty ->      161 of 168 monster reward blocks at the tier their
+                       own enemy.bin row names, 159 at the same pair
 quest catalog    ->      431 quests named       tools/reward.py 0 errors
   the join       ->      431 chapter rows naming 431 pacs, and nothing else
   the objectives ->      553 of 553 naming a monster directory
@@ -337,6 +379,8 @@ the encyclopedia ->      411 of 411 materials with a tagged source
 monster AI       ->      228 files, 6,550 rules tools/ai.py     0 errors
   action tables  ->    3,269 groups, 19,707 weighted actions
   condition terms->       66 of 76 named, 27,862 of 29,100 instructions
+  the engine's own->      65 of those 76 carrying an AIT_* name out of the
+                       EBOOT, and every one agreeing with the reading
   AI parameters  ->      438 .par, 4 record kinds, every sentinel exact
   action -> motion->   1,109 of 1,423 ids name a motion in their own pac
 mercenary AI     ->       12 classes, 48 tables tools/merc.py   0 errors
@@ -360,6 +404,12 @@ CRI Atom audio   ->      274 banks, 7,756 waves tools/awb.py    0 errors
   decoding       ->    7,756 of 7,756 to WAV, and not one file encrypted
   a frame -> a wave->    7,592 of 7,608 .mkc references, the rest empty cues
 
+the EBOOT opens  ->   19.8 MB PPC64 BE ELF      tools/self.py
+  the container  ->      SELF, key_revision 0x1C, self_type APP
+  the cipher     ->      AES-128/256 in stdlib, on FIPS-197's own vectors
+  the proof      ->      byte entropy 8.000 before, 5.945 after
+  the AI names   ->       78 AIT_* terms and 75 host predicates, extracted
+
 the combat loop  ->        8 files, 9 gaps     tools/combat.py
   the hit level  ->       15 weapon kinds tiling cue ids 1000..1089 exactly
   the impact cue ->      747 of 754 player records empty, 5,245 of 5,439 not
@@ -379,7 +429,7 @@ a quest finishes ->      527 of 527 kill counts agreeing  engine/mission.py
   the ground     ->      a navigation mesh, at no extra cost  engine/world.py
 
 the scripts run  ->    3,011 of 3,011 executing  engine/squirrel.py  0 faults
-  the interface  ->      285 bound, 70 doing the work    engine/host.py
+  the interface  ->      285 bound, 71 doing the work    engine/host.py
   a stage        ->      155 loaded and initialised, 507 of 507 triggers read
   a cutscene     ->       68 of 68 running to their own setDemoEnd
   a conversation ->       13 lines, resumed through the suspend protocol
@@ -569,6 +619,7 @@ python tools/psq.py xref <dir>               whether a called name resolves
 python tools/quest.py check|list <dir>       the four tables of a quest .pac
 python tools/quest.py dump <dir> <quest>     its stages, monsters and spawners
 python tools/quest.py xref|enemies <dir>     whether the columns name anything
+python tools/quest.py tiers <dir>            the difficulty tier a quest spawns at
 
 python tools/reward.py check|xref <dir>      the catalog and the reward tables
 python tools/reward.py catalog <dir>         all 431 quests, named
@@ -613,6 +664,12 @@ python tools/params.py census|tiers <dir>     the actor parameters
 python tools/params.py classes <dir>          the six player classes compared
 python tools/params.py show|diff <dir> <name> one actor, or one variant
 python tools/params.py field <dir> <name>     where a field occurs and its range
+
+python tools/self.py check|header <EBOOT>     the container, without any key
+python tools/self.py keys <file> [rev] [type] what a key file offers
+python tools/self.py meta <EBOOT> <keys>      the metadata, decrypted
+python tools/self.py decrypt <EBOOT> <keys> <out.elf>
+python tools/self.py names <out.elf>          the AI's two name tables
 ```
 
 Point `iso.py` at your image with `--iso`, or drop it in the repository root
