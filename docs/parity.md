@@ -70,8 +70,16 @@ Every input to the real answer is on the disc and read. The weapon's attack is
 `it_db_weapon.bin` column 3; the monster's `hp` and `def` are in its own JSON,
 now at the right difficulty tier; the region's flat modifier and its six
 multipliers are in `region_data`; `cri` and `dmg_critical_factor` are in the
-class table. What is missing is the **expression**, which is
-[`combat_loop.md`](combat_loop.md) ledger item 1 and is in the EBOOT.
+class table. What was missing is the **expression**, which is
+[`combat_loop.md`](combat_loop.md) ledger item 1.
+
+**Session 31 read it** — `FUN_00622fe4`, in full, in [`eboot.md`](eboot.md) —
+and the stand-in is still here, because reading an expression and running one
+are different things. What is left before `BLOWS` and `BREAKS` can go is
+ledger item 2, the player's base attack and hit points, which item 1 turns
+out to reach through a virtual call rather than a field. So this line moves
+from *"nobody knows the formula"* to *"the formula is written down and one of
+its inputs is not"*, which is a smaller thing but not nothing.
 
 Until it is read, a monster's hit points are an *input to the run* rather than
 something the run takes down, and the kill count — which is what closes an
@@ -80,8 +88,9 @@ repository chose. **Everything downstream of a kill inherits the stand-in**:
 the arena timing, the pay-out, and the two headline numbers in
 [`milestone_walk.md`](milestone_walk.md).
 
-*Retired by:* ledger 1 (EBOOT) and ledger 2 (the player's base attack and
-defence, which may be ordinary disc work).
+*Retired by:* ledger 1 — **read, session 31** — and ledger 2, the player's
+base attack and hit points, which is now the only thing between the
+expression and a monster that dies of it.
 
 ### S3 — the pay-out draws kind 0
 
@@ -212,10 +221,13 @@ One half of the second is still a reading and is marked as one at the site:
 S, M and L say the bands are ordered and do not say the far one ends at twice
 the action's range, which is still this repository's number.
 
-Two more readings sit in [`combat_loop.md`](combat_loop.md) — the unit of the
+Two more readings sat in [`combat_loop.md`](combat_loop.md) — the unit of the
 hit record's `+0x35` and the sign of a region's flat modifier — and neither is
 listed here, because **nothing in the engine consumes them yet**. They become
-readings the moment damage exists.
+readings the moment damage exists. **One of the two will never have to
+become one**: session 31 read the damage expression and the defence term is
+subtracted, clamped to zero first, so the sign is now the binary's and not
+anybody's reading. See [`eboot.md`](eboot.md).
 
 ---
 

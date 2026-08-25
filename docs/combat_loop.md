@@ -590,10 +590,25 @@ in the weapon table carries a status id.
 What a working combat loop needs and the disc does not give. Nine items, in
 the order they would block an implementation.
 
-1. **The damage formula.** Every input is on the disc — the weapon's attack,
-   the monster's `def`, the region's flat modifier and six multipliers, `cri`
-   and `dmg_critical_factor` — and the expression combining them is not.
-   Nothing on the disc constrains it beyond the ranges. **EBOOT.**
+1. **The damage formula. Read — session 31, [`eboot.md`](eboot.md).** It is
+   `FUN_00622fe4`, and the shape is an attack term, a defence term, a
+   subtraction and a floor:
+
+   ```
+   attack  = clamp≥1( (base + add) * rate + flat )
+           * max0( the hit's power )  * max0( what the target takes )
+           * ( critical ? 1 + dmg_critical_factor : 1 )
+   defence = max0( def * rate + flat )
+   damage  = max( (attack - defence) * (1 + a per-node factor) * (1 - a cut), 1 )
+   ```
+
+   Every `add` is zero and every `rate` is one on a bare hit: they are there
+   for `MdDamageCalcEventListener`, which is handed the attack structure over
+   the attacker's list and the defence structure over the target's, in
+   between. The attacker's base attack is a **virtual call** and the target's
+   `def` is a field at `+0x2c4`, which is the disc's own split — 82 actors
+   carry `atk` and all 82 are monsters. **Not yet implemented**; see
+   [`parity.md`](parity.md).
 2. **The player's base defence and hit points.** Absent from all six class
    JSONs. The *modifier* side is now read and named — `DEF` is ability 1 and
    `MAX HP` is ability 3 of `it_db_ability.bin`, with the range each may move
@@ -615,9 +630,13 @@ the order they would block an implementation.
    sooner.**
 4. **What computes the hit level.** Three levels, both consumers agree on
    three, and the function from damage to 0/1/2 is nowhere. **EBOOT.**
-5. **The sign convention of a region's flat modifier**, and what its six
-   multipliers are six of. **EBOOT, or a runtime with a monster that has one
-   weak point.**
+5. **The sign convention of a region's flat modifier — settled, session 31.**
+   The defence term is **subtracted**, one `fsubs`, and it is clamped to zero
+   before the subtraction so a negative one cannot add. A weak point's `-450`
+   makes the subtraction smaller, which is what the reading assumed and
+   nothing proved. **What the six multipliers are six of is still open**, and
+   item 1's expression says where they would have to arrive: `d[3]` and
+   `d[4]`, the pair multiplied into the attack.
 6. **What applies a status.** No hit-record field and no weapon column carries
    a status id, and the `ab_*` vectors' four unread elements are the obvious
    place for the resistance side of it. **Readable if the id turns out to be
@@ -649,14 +668,20 @@ the order they would block an implementation.
    columns are read**: session 23 named the lifetime, the speed and the
    gravity, and checked them against the class's search radius. **Readable.**
 
-**Three of the nine are ordinary disc work and six want the EBOOT** - it was
+**Three of the nine are ordinary disc work and six wanted the EBOOT** - it was
 four and five until session 30 moved item 7 across by testing it - and every
 one of those six is one function or one enum rather than a subsystem, which is
 the same answer [`STRATEGY.md`](STRATEGY.md) has been converging on since
 session 10: what is left inside the binary is **the combat loop and the
-implementations**, and this document is the list of which ones. Since session
-30 the binary is **open** - see [`format_self.md`](format_self.md) - so the
-six are a reading job rather than a phase.
+implementations**, and this document is the list of which ones.
+
+**Session 31 opened the binary as a program and took the first of the six.**
+Item 1 is read in full and item 5's sign came with it; see
+[`eboot.md`](eboot.md) for the expression, the addresses and the method. Four
+EBOOT items are left, and each of them now has a function to start from rather
+than a search: item 4 is `FUN_006235fc`, item 7 is whatever reads the three
+block pointers `FUN_006587c8` caches, and item 2's player side is the other
+implementation of the virtual that item 1's attack term calls.
 
 ---
 
