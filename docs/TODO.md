@@ -44,46 +44,79 @@ The document is [`eboot.md`](eboot.md) and the tools are
 - **and the binary names its own types.** 1,271 length-prefixed C++ RTTI
   names, `8MdDamage` and `25MdDamageCalcEventListener` among them, each
   reachable from its class's vtables by two word searches. That is how the
-  damage module was found at all.
+  damage module was found at all;
+- **and then ledger item 2 fell as well, on the disc.** The attack term asks
+  the attacker through a virtual call, and the one implementation all 67
+  `CH*` classes share returns `parameters + 0x2b8` — the same `atk` an actor
+  JSON parses. So a player's attack is *written* into that field from a
+  sixteen-byte record indexed by job and level, and one scan of every file on
+  the disc for that shape returns six hits in one file:
+  **`misc.cpk/ccparamobj.bin`**, an `ELBN` this repository has been able to
+  open since session 19 and never looked inside. `python tools/elbn.py levels
+  extract/tree`. The level is **story progress**, on the same thresholds a
+  reward block uses, and `job_par` explains the disc's 0, 1, 3, 4, 5, 7 —
+  eight jobs alphabetically, `gunner` and `ninja` cut. **The method note is
+  the finding**: what found it was not a better search of the disc but the
+  binary saying what shape to look for.
 
 **Nothing in [`../engine`](../engine) changed and the sweep was not run.**
 The regression numbers still stand where session 30 left them.
 
-### 1. The four EBOOT items that are left, and one of them unblocks the engine.
+### 1. Write the damage into the engine, and re-run everything.
 
-The project is set up now: the Ghidra project builds in four minutes from
-[`eboot.md`](eboot.md)'s four commands, `Query.java` answers `decomp`,
-`xrefs`, `callers` and `info` without a window, and `ppc.py refs` finds any
-global's users in a second. Each of the four has a function to start from
-rather than a search.
+**This is the session that retires the biggest stand-in in the project**, and
+it is now implementation rather than reading: every input is on the disc and
+read, and the expression is in [`eboot.md`](eboot.md). What
+[`fight.py`](../engine/fight.py) has to grow:
 
-1. **the player's base attack and hit points** (ledger 2) — and this is the
-   one that matters most, because it is the last thing between the expression
-   and a monster that dies of it. Item 1's attack term does not read a field:
-   it makes a **virtual call**, `vtable + 0x10c` for the base and `+ 0x110`
-   for the add. One implementation of that pair reads the monster's `atk` at
-   parameters `+0x2b8`; the other is the player's, and whatever it reads is
-   what the six class JSONs do not carry. Find the second implementation and
-   the same object almost certainly carries `hp` and `def` beside it;
-2. **what computes the hit level** (ledger 4) — `FUN_006235fc`, which the hit
-   resolver calls just before the damage and hands the result to both the
-   damage and the reaction chooser. It starts from a **byte at `+0x103` of the
-   hit record in memory** and passes it through the same listener chain. If
-   that byte is `.anmcmd`'s `+0x35`, ledger 3 goes with it — and that is a
-   reading to prove, not to assume;
-3. **`se_hitlevel_tbl`'s third word** (ledger 7) — six references, five
-   accessors around `0x003ec7fc` and a loader at `0x006587c8` that caches
-   three block pointers at `+0x24`, `+0x28` and `+0x2c` of its owner. The
-   consumer is whatever reads those three, which is one `refs` away;
-4. **`react_p`** (ledger 8) — one reference, at `0x00ef4bb0`, and it is a
-   parameter name rather than a table name, so it goes through the same
-   `+0x244` record item 1's `def` came out of.
+1. **the two structures.** Attack `{base, flat, rate, power, power add, crit,
+   crit add, spare}` and defence `{base, flat, rate, mul, mul add, cut}`, with
+   every `add` zero and every `rate` one, because that is what the builders at
+   `0x00245870` and `0x00245678` do;
+2. **the attack side's base**, which is the actor's `atk` — from its JSON for
+   a monster, and for a player from `elbn.py levels`: `ccparamobj.bin`,
+   `<class>_lv_par`, the row chosen by story progress. The engine already
+   carries a progress number, `PROGRESS = 11000` in
+   [`purse.py`](../engine/purse.py), and 11,000 is below the first threshold,
+   so **a fresh run is row 0** — the warrior at 80 / 30 / 1,000;
+3. **the defence side's base**, the target's `def`, and the region's flat
+   modifier and multipliers, which are where `d[1]` and `d[3]`/`d[4]` have to
+   arrive - that is the open half of ledger 5 and it can be settled by
+   watching which one makes a weak point behave like one;
+4. **the subtraction, the floor of 1, and the hit's power.** Then a monster
+   dies when its `hp` runs out instead of on its third landed volume, and
+   `BLOWS` and `BREAKS` come out of [`parity.md`](parity.md).
 
-And the two cosmetic ones are still there and still cheap: the table that maps
-`.anmcmd` opcode 10's effect id to a `PTB` slot, and the seven `checkBnnTerm`
-bodies.
+Then **run the full sweep** — it is hours, so start it once the engine is
+frozen and stay off the machine. Every number in
+[`milestone_walk.md`](milestone_walk.md) is downstream of the kill count, so
+this is the one change in the project that is expected to move all of them:
+284 finishing quests, 322 of 344 arenas closed, 3,017 kills, 689,375 zeny and
+5,661 items are the *before*, and they should be quoted as such.
 
-**One loose end worth an hour.** The damage path queries the disc's own
+### 1b. The three EBOOT items still open.
+
+Each has a function to start from. `Query.java` answers `decomp`, `xrefs`,
+`callers` and `info` without a window; `ppc.py refs` finds a global's users in
+a second.
+
+- **what computes the hit level** (ledger 4) — `FUN_006235fc`, called by the
+  hit resolver just before the damage, starting from a **byte at `+0x103` of
+  the hit record in memory** and passing it through the same listener chain.
+  If that byte is `.anmcmd`'s `+0x35`, ledger 3 goes with it. That is a
+  reading to prove, not to assume;
+- **`se_hitlevel_tbl`'s third word** (ledger 7) — six references, five
+  accessors around `0x003ec7fc` and a loader at `0x006587c8` that caches three
+  block pointers at `+0x24`, `+0x28` and `+0x2c` of its owner. The consumer is
+  whatever reads those three;
+- **`react_p`** (ledger 8) — one reference, at `0x00ef4bb0`, a parameter name
+  rather than a table name, so it goes through the same `+0x244` record `def`
+  came out of.
+
+And the two cosmetic ones are still cheap: the table that maps `.anmcmd`
+opcode 10's effect id to a `PTB` slot, and the seven `checkBnnTerm` bodies.
+
+**One loose end priced at an hour.** The damage path queries the disc's own
 ability table **by row number**: `0xcc` as a final multiplier on the damage,
 `0x70` and `0x71` in the hit resolver. `it_db_ability.bin` has 233 rows and
 `combat.py abilities` names 162 of them from the 1,091 card skills that index

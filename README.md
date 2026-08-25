@@ -57,13 +57,31 @@ and not the ABI's 24**. The table is in the clear all the same:
 [`tools/ppc.py`](tools/ppc.py) walks it from `e_entry` with nothing but its own
 arithmetic to **165,596 descriptors over 69,691 functions**, in the four TOC
 windows a 256 KB TOC has to have, and the container's own section table agrees
-to the byte. With those planted the same run takes 233 seconds and has all of
+to the byte. 6,207 of those functions carry more than one descriptor and
+1,762 of the small ones are byte-identical to another, which is the linker
+folding bodies and is the one place the method reports candidates rather than
+answers. With those planted the same run takes 233 seconds and has all of
 them, and **274 of the 291 names the disc calls** come off the TOC, because a
 registration leaves its descriptor and its name in adjacent slots. From there
 it is one cross-reference: the expression is an attack term, a defence term, a
 subtraction and a floor of 1, with `MdDamageCalcEventListener` — a class the
 binary names — given both terms in between. The defence is **subtracted**,
-which the disc could not prove. See [`docs/eboot.md`](docs/eboot.md).
+which the disc could not prove.
+
+**And then the binary sent us back to the disc.** The attack term asks the
+attacker through a virtual call, and the one implementation all 67 character
+classes share returns `parameters + 0x2b8` — the same `atk` the actor JSONs
+parse. So a player's attack is not missing from the struct, it is *written*
+into it, from a sixteen-byte record indexed by job and level. One scan of
+every file on the disc for that shape returns six hits in one file:
+**`misc.cpk/ccparamobj.bin`**, an `ELBN` this repository has been able to open
+since session 19 and never looked inside. `as_lv_par` and its five siblings
+are **14 rows of `{atk, def, hp, ...}`** apiece, the row is chosen by **story
+progress** on the same thresholds a reward block uses, and `job_par`'s eight
+slots with two empty are why the disc numbers its classes 0, 1, 3, 4, 5, 7 —
+the EBOOT lists eight jobs alphabetically and `gunner` and `ninja` did not
+ship. The warrior starts at 80 / 30 / 1,000. See
+[`docs/eboot.md`](docs/eboot.md).
 
 **Before that: the body gets there, and it had been standing
 under the floor.** The walk was the one half of this project that is nobody's
@@ -431,6 +449,7 @@ the EBOOT reads  ->   69,691 functions          tools/ppc.py
   the names      ->      274 of 291 script natives, placed by the TOC
   the types      ->    1,271 C++ RTTI names, each one reachable from a vtable
   the damage     ->        FUN_00622fe4, read in full - see docs/eboot.md
+  the player     ->        atk, def and hp found on the disc, 6 x 14 rows
 
 the combat loop  ->        8 files, 9 gaps     tools/combat.py
   the hit level  ->       15 weapon kinds tiling cue ids 1000..1089 exactly
@@ -622,6 +641,7 @@ python tools/elbn.py capsules|regions <dir> <actor>  the body and its parts
 python tools/elbn.py trace <dir> [actor]     the weapon trail
 python tools/elbn.py combo <dir> [class]     the player's combo graph
 python tools/elbn.py lights <dir> [stage]    the stage's own lighting rig
+python tools/elbn.py levels <dir>            the player's atk, def and hp
 
 python tools/anmcmd.py check|survey <dir>    the animation commands
 python tools/anmcmd.py census <dir>          every opcode, with its size
