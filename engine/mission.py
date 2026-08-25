@@ -101,12 +101,15 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent
 import quest as qtables                                        # noqa: E402
 from actor import FPS, Actor, bearing                          # noqa: E402
 from brain import Brain, State                                 # noqa: E402
-from fight import MIN_RADIUS, SENTINEL, Enemy, fill            # noqa: E402
+from fight import (MIN_RADIUS, SENTINEL, Enemy, fill,          # noqa: E402
+                   load_json)
 from host import Host                                          # noqa: E402
 from player import (CLASSES, Arsenal, Target, against,         # noqa: E402
                     place, turn, volley)
 from psq import Psq, PsqError, Structure, Trace                # noqa: E402
-from purse import BREAKS, Purse                                # noqa: E402
+from damage import (Fighter, defence_terms, region_of,        # noqa: E402
+                    region_terms, resolve)
+from purse import BREAKS, PROGRESS, Purse                      # noqa: E402
 from squirrel import SquirrelError, VMError                    # noqa: E402
 
 # How many landed volumes a monster survives. Policy, and the only one this
@@ -237,7 +240,13 @@ class Spawn:
         self.heading = marker.rotation[1]
         self.enemy = None                   # the brain, built when it fights
         self.hits = 0
-        self.broke: dict = {}               # part -> landings, -1 once off
+        # Its own hit points, at its own tier, and what is left of
+        # them. `damage.py` takes them down; before session 31 this
+        # was `hits >= BLOWS` and the pool was never read.
+        self.hp = 0.0
+        self.left = 0.0
+        self.broke: dict = {}       # part -> hit points left, -1 once off
+        self.brk_hits: dict = {}    # and the landings, for the fallback
         self.alive = True
 
     @property
@@ -456,6 +465,20 @@ class Field:
         self.sp = spawner
         self.blows = blows
         self.breaks = breaks
+        # The player's own three numbers, and the monsters'. See
+        # `damage.py`: `blows` and `breaks` survive only as the
+        # fallback for an actor whose tables would not read.
+        # The row of the growth table is the **story progress** the run is
+        # at, which is the quest's own requirement out of `chapter.bin` where
+        # it has one and `PROGRESS` where it does not - the same number the
+        # purse already uses to pick its reward block, and the same number
+        # space `ccparamobj.bin`'s fourteen thresholds are written in. See
+        # `damage.py` and `eboot.md`.
+        self.me = Fighter(tree, getattr(arsenal, 'cls', 'sw'),
+                          getattr(spawner.purse, 'progress', PROGRESS)
+                          if spawner.purse is not None else PROGRESS)
+        self.me.parameters(getattr(arsenal, 'params', {}) or {})
+        self.stats: dict = {}          # (kind, tier) -> its JSON
         self.rng = random.Random(seed)
         self.body = place(arsenal.actor)     # the player's own capsules
         self.proto: dict = {}           # (kind, tier) -> an Enemy to copy
@@ -659,16 +682,71 @@ class Field:
                     c = got[0][1]
                     self.n['landed'] += 1
                     self.n[('part', c['part'])] += 1
-                    if c['break']:
-                        self._break(s, tg, c['part'])
                     s.hits += 1
-                    if s.hits >= self.blows:
-                        self.sp.kill(s)
+                    took = self._damage(s, tg, c['part'], h)
+                    if c['break']:
+                        self._break(s, tg, c['part'], took)
+                    if s.left > 0.0:
+                        s.left -= took
+                        if s.left <= 0.0:
+                            self.sp.kill(s)
+                    elif s.hits >= self.blows:
+                        self.sp.kill(s)      # only when its tables would
+                        # not read: `arm` leaves `left` at zero and says so
         self.frame_in += 1
         if self.frame_in > a.lasts:
             self.attack = None
 
-    def _break(self, s: Spawn, tg: Target, part: str):
+    def _stats(self, s: Spawn) -> dict:
+        """One monster's own parameters, at its own tier, cached by both."""
+        key = (s.kind, s.tier)
+        if key not in self.stats:
+            p = self.tree / 'monster.cpk' / s.kind / (s.kind + '.json')
+            try:
+                self.stats[key] = load_json(p, s.tier) if p.is_file() else {}
+            except (OSError, ValueError):
+                self.stats[key] = {}
+        return self.stats[key]
+
+    def arm(self, s: Spawn) -> None:
+        """Give a spawn the hit points its own JSON carries.
+
+        Done on the first landing rather than at the spawn, because a
+        monster nobody reaches never needs them and the JSON is a file read.
+        """
+        if s.hp:
+            return
+        s.hp = s.left = float(self._stats(s).get('hp', 0) or 0)
+        if s.hp <= 0.0:
+            self.n['a monster whose hp would not read'] += 1
+
+    def _region(self, tg: Target, part: str):
+        return (region_of(tg.regions, part)
+                or region_of(tg.broken, part))
+
+    def _damage(self, s: Spawn, tg: Target, part: str, h) -> float:
+        """One landed volume, through `damage.py`.
+
+        The hit's own ratio is the `.anmcmd` record's `+0x30`, which is what
+        `FUN_0060fe50` copies into the runtime record's first float and what
+        the attack builder reads as its first argument. The region supplies
+        the two terms the defence structure defaults to 0 and 1.
+        """
+        self.arm(s)
+        p = self._stats(s)
+        lv = int(p.get('region_lv', 0) or 0)
+        flat, mul = region_terms(self._region(tg, part), lv, self.me.cls)
+        d = defence_terms(float(p.get('def', 0) or 0), flat, mul)
+        crit = (self.me.critical_rate > 0.0
+                and self.rng.random() < self.me.critical_rate)
+        a = self.me.attack_on(h.sizes[1])
+        took = resolve(a, d, crit)
+        if crit:
+            self.n['critical'] += 1
+        self.n['damage dealt'] += int(took)
+        return took
+
+    def _break(self, s: Spawn, tg: Target, part: str, took: float):
         """A landing on a part that comes off, and what comes off it.
 
         `region_data_brk` is the monster's breakable-part list and its
@@ -676,20 +754,34 @@ class Field:
         blocks carry exactly `0 .. n-1` for that list's length. So the part a
         volume landed on has a number, and that number is a row of the
         quest's own `item_reward_region.bin`.
+
+        Since session 31 the part has a **pool** rather than a count:
+        `region_data_brk` carries its own hit points, an order of magnitude
+        larger than the body's, indexed by `region_lv` like everything else
+        in the record. `BREAKS` survives only for a part whose pool is zero.
         """
-        s.broke.setdefault(part, 0)
-        if s.broke[part] < 0:
-            return                          # already off
-        s.broke[part] += 1
-        if s.broke[part] < self.breaks:
-            return
-        s.broke[part] = -1
-        self.n['parts broken off'] += 1
         at = next((i for i, r in enumerate(tg.broken) if r['name'] == part),
                   None)
         if at is None:
             self.n['a part with no region_data_brk row'] += 1
             return
+        if part not in s.broke:
+            lv = int(self._stats(s).get('region_lv', 0) or 0)
+            pool = tg.broken[at].get('brk_hp', [])
+            s.broke[part] = (float(pool[max(0, min(lv, 7))])
+                             if len(pool) > lv else 0.0)
+            s.brk_hits[part] = 0
+        if s.broke[part] < 0:
+            return                          # already off
+        s.brk_hits[part] += 1
+        if s.broke[part] > 0.0:
+            s.broke[part] -= took
+            if s.broke[part] > 0.0:
+                return
+        elif s.brk_hits[part] < self.breaks:
+            return                          # its pool would not read
+        s.broke[part] = -1
+        self.n['parts broken off'] += 1
         if self.sp.purse is not None:
             self.sp.purse.broke(s.kind, at, s.tier)
 
@@ -842,12 +934,13 @@ def play(tree, name: str, cls='sw', blows=BLOWS, seed=1, verbose=True,
     out = {'quest': name, 'class': cls, 'stages': [], 'want': list(t.stages),
            'locks': len(t.locks), 'frames': 0, 'blows': blows,
            'spawner': sp, 'host': host, 'n': collections.Counter(),
-           'purse': purse, 'breaks': breaks,
+           'purse': purse, 'breaks': breaks, 'me': None,
            'armable': [], 'cleared': [], 'visited': [], 'done': False}
     if not t.stages:
         return out
     field = Field(tree, ar, sp, seed=seed, blows=blows, breaks=breaks)
     field.host = host
+    out['me'] = field.me
     sp.at = lambda: (field.player.x, field.player.z)
     sp.radius = ar.params.get('col_r', 0.5)
     stage = t.stages[0]
@@ -1005,9 +1098,19 @@ def cmd_run(tree, name='q00102', cls='sw', blows=str(BLOWS),
         parts.sort(reverse=True)
         print('  where they landed: %s'
               % ', '.join('%s %d' % (p, c) for c, p in parts[:8]))
-    print('  a monster dies on the %d landed volume%s and a part comes off '
-          'on the %d - this run\'s policy, not the disc\'s'
-          % (r['blows'], '' if r['blows'] == 1 else 's', r['breaks']))
+    me = r.get('me')
+    if me is not None:
+        print('  a monster dies of its own hp: %d damage dealt, %d of it '
+              'critical' % (n['damage dealt'], n['critical']))
+        print('    the player is %s at row %d - atk %.0f + %.0f from its '
+              'weapon, def %.0f, hp %d'
+              % (me.cls, me.level, me.atk, me.add, me.def_, me.hp))
+    if n['a monster whose hp would not read']:
+        print('    and %d landing%s on a monster whose hp would not read, '
+              'which fall back on the %d volumes this used to use'
+              % (n['a monster whose hp would not read'],
+                 '' if n['a monster whose hp would not read'] == 1 else 's',
+                 r['blows']))
     r['purse'].report()
     if sp.log:
         print('  the spawner: %s' % ', '.join(
