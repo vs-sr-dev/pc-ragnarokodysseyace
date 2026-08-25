@@ -480,6 +480,12 @@ class Field:
         self.me.parameters(getattr(arsenal, 'params', {}) or {})
         self.stats: dict = {}          # (kind, tier) -> its JSON
         self.rng = random.Random(seed)
+        # The critical roll gets a stream of its own. It is the only
+        # draw session 31 added, and `self.rng` also drives every
+        # monster's action choice - so sharing it would have shifted
+        # the whole fight and made the sweep's comparison against
+        # session 30 meaningless. Same seed, separate sequence.
+        self.luck = random.Random('critical %d' % seed)
         self.body = place(arsenal.actor)     # the player's own capsules
         self.proto: dict = {}           # (kind, tier) -> an Enemy to copy
         self.targets: dict = {}              # kind -> its col_hit capsules
@@ -738,7 +744,7 @@ class Field:
         flat, mul = region_terms(self._region(tg, part), lv, self.me.cls)
         d = defence_terms(float(p.get('def', 0) or 0), flat, mul)
         crit = (self.me.critical_rate > 0.0
-                and self.rng.random() < self.me.critical_rate)
+                and self.luck.random() < self.me.critical_rate)
         a = self.me.attack_on(h.sizes[1])
         took = resolve(a, d, crit)
         if crit:
@@ -1149,6 +1155,7 @@ def cmd_runs(tree, want='*', cls='sw', blows=str(BLOWS), quiet='0') -> int:
     why = collections.Counter()
     fails = collections.Counter()
     slips = collections.Counter()
+    blood = collections.Counter()      # what the damage expression did
     for name in names:
         try:
             r = play(tree, name, cls, int(blows), verbose=False)
@@ -1170,6 +1177,9 @@ def cmd_runs(tree, want='*', cls='sw', blows=str(BLOWS), quiet='0') -> int:
         walked += set(r['want']) <= set(r['visited'])
         for k in r['host'].arity:
             slips[k] += r['host'].arity[k]
+        for k in ('landed', 'damage dealt', 'critical', 'parts broken off',
+                  'a monster whose hp would not read'):
+            blood[k] += r['n'][k]
         done += bool(r['done'])
         pu = r['purse']
         zeny += pu.zeny
@@ -1196,6 +1206,17 @@ def cmd_runs(tree, want='*', cls='sw', blows=str(BLOWS), quiet='0') -> int:
     print('  %d arenas armed by a quest script, %d started, %d ended by the '
           'script\'s own kill count' % (armed, started, opened))
     print('  %d monsters spawned, %d killed' % (spawns, kills))
+    print('  %s volumes landed for %s damage, %d of them critical, '
+          '%d parts broken off'
+          % ('{:,}'.format(blood['landed']),
+             '{:,}'.format(blood['damage dealt']), blood['critical'],
+             blood['parts broken off']))
+    if blood['a monster whose hp would not read']:
+        print('    and %d landing%s on a monster whose hp would not '
+              'read, which fall back on %s volumes'
+              % (blood['a monster whose hp would not read'],
+                 '' if blood['a monster whose hp would not read'] == 1
+                 else 's', blows))
     print('  %d quests paid something: %s zeny and %d items of %d kinds'
           % (paid, '{:,}'.format(zeny), sum(took.values()), len(took)))
     if why:
