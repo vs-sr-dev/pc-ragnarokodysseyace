@@ -222,10 +222,13 @@ FORMS = {                 # the loads and adds that can materialise a pointer
 def functions(blob: bytes) -> tuple:
     """`(sorted entries, entry -> the TOC values its descriptors give it)`.
 
-    A function's TOC is not a guess here: the descriptor that names the
-    function names its `r2` in the same eight bytes. 6,207 of the 69,691 are
-    named by descriptors in more than one window, which is what the ABI does
-    to a function two windows both need, so an entry can carry more than one.
+    A function's TOC is usually not a guess here: the descriptor that names
+    the function names its `r2` in the same eight bytes. **6,207 of the
+    69,691 carry more than one**, and those are the exception - they are
+    smaller than average and 1,762 of the small ones are byte-identical to
+    another entry, so they are folded bodies with one identity per caller.
+    For those the descriptor does not settle `r2`, and `refs` below accepts
+    a hit under any of them.
     """
     table = opd(blob)
     tocs = {}
@@ -240,6 +243,10 @@ def refs(blob: bytes, target: int) -> list:
     Two steps and no heuristics: find the TOC slots that hold the address,
     then find the `r2`-relative instructions whose displacement lands on one
     of them, under the TOC the containing function's own descriptor gives it.
+
+    Exact for the 91 % of functions with a single descriptor. For a folded
+    body - see `functions` - any of its TOCs counts, so a hit there is a
+    candidate and wants the code read before it is believed.
     """
     import bisect
     segs = segments(blob)
