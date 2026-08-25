@@ -10,6 +10,7 @@ engine are one function that lives in here.
 
     python self.py header  <EBOOT.BIN>
     python self.py check   <EBOOT.BIN>
+    python self.py sections <EBOOT.BIN>
     python self.py keys    <key file> [revision] [self type]
     python self.py meta    <EBOOT.BIN> <key file>
     python self.py decrypt <EBOOT.BIN> <key file> <out.elf>
@@ -297,6 +298,27 @@ class Sce:
                     phentsize=phentsize, phnum=phnum, shentsize=shentsize,
                     shnum=shnum, shstrndx=shstrndx, big=self.buf[o + 5] == 2)
 
+    def shdrs(self) -> list:
+        """The section table, which the container also keeps in the clear.
+
+        `decrypt` does not write it: it lies past the last segment, so the
+        ELF that comes out is section-less and the offsets below are the
+        original file's. It is still worth reading - it says where the code
+        ends, where the read-only data begins, and where the function table
+        is, and [`ppc.py`](ppc.py) finds that last one independently. What
+        it does not give is the names: `.shstrtab` is not in the clear.
+        """
+        out, e = [], self.ehdr()
+        for i in range(e['shnum']):
+            o = self.shdr + i * e['shentsize']
+            if o + e['shentsize'] > len(self.buf):
+                break
+            (name, kind, flags, addr, off, size, link, info, align,
+             entsize) = struct.unpack_from('>IIQQQQIIQQ', self.buf, o)
+            out.append(dict(kind=kind, flags=flags, addr=addr, offset=off,
+                            size=size, entsize=entsize))
+        return out
+
     def phdrs(self) -> list:
         """The program table, read out of the SELF's own copy of it."""
         out, e = [], self.ehdr()
@@ -538,6 +560,28 @@ def cmd_check(path) -> int:
     return 0 if ok else 1
 
 
+def cmd_sections(path) -> int:
+    """The section table, out of the container, with no key involved."""
+    s = Sce(load(path), str(path))
+    e = s.ehdr()
+    rows = s.shdrs()
+    print('%d sections at %#x, %d bytes each - the names are not in the clear'
+          % (len(rows), s.shdr, e['shentsize']))
+    kinds = {0: 'null', 1: 'bits', 3: 'strtab', 8: 'nobits'}
+    for i, r in enumerate(rows):
+        what = []
+        if r['flags'] & 4:
+            what.append('code')
+        elif r['flags'] & 1:
+            what.append('writable')
+        elif r['flags'] & 2:
+            what.append('read-only')
+        print('  %2d  %-6s %-10s addr %#010x  file %#010x  %10d bytes' % (
+            i, kinds.get(r['kind'], str(r['kind'])), ' '.join(what),
+            r['addr'], r['offset'], r['size']))
+    return 0
+
+
 def cmd_keys(path, revision='', self_type='') -> int:
     sets = keysets(path)
     print('%d key sets in %s' % (len(sets), path))
@@ -737,6 +781,8 @@ def main() -> int:
             return cmd_header(*rest)
         if cmd == 'check' and len(rest) == 1:
             return cmd_check(*rest)
+        if cmd == 'sections' and len(rest) == 1:
+            return cmd_sections(*rest)
         if cmd == 'keys' and 1 <= len(rest) <= 3:
             return cmd_keys(*rest)
         if cmd == 'meta' and len(rest) == 2:
