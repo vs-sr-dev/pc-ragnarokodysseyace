@@ -7,99 +7,88 @@
 
 # Next session
 
-Session 30 wrote the list this project needed and then spent the rest of the
-day shortening it. The list is [`parity.md`](parity.md) — **every place where
-what runs is not what shipped**, in four classes, with what retires each — and
-by the end of the session it had lost one stand-in and two readings. It also
-opened the EBOOT. What to carry:
+Session 31 opened the binary as a program and took the first thing out of it.
+The document is [`eboot.md`](eboot.md) and the tools are
+[`tools/ppc.py`](../tools/ppc.py) and the two Ghidra scripts under
+[`tools/ghidra`](../tools/ghidra). What to carry:
 
-- **the difficulty tier was a stand-in and is now the disc's.** Every monster
-  the engine spawned was record `0` of its own JSON, the weakest version of
-  itself, because nothing said which tier a quest wanted. `enemy.bin`
-  **`+0x37`** says, and it had been sitting in
-  [`format_quest.md`](format_quest.md) as *"ten-step values, unread"* since
-  session 24. Three things agree: its alphabet is the tier-key alphabet, it
-  **climbs with the chapter** (chapter 1 spawns at 0, chapters 4–5 at 10, 6–7
-  at 20, 11–14 reach 250), and **161 of 168 monsters carry the same tier in
-  `item_reward_region.bin`, 159 the same pair** — a table read by a different
-  tool for a different purpose, where a constant 0 would score 16 of 396.
-  `+0x57` is the paired higher tier, `+0x37 + 1` on 436 of 465. The tier moves
-  `hp`, `atk`, `region_lv`, the drop table and the reward block, so it reaches
-  the whole pay-out;
-- **the EBOOT is open**, [`format_self.md`](format_self.md) and
-  [`tools/self.py`](../tools/self.py): `SELF` → a 19.8 MB PowerPC 64
-  big-endian ELF, byte entropy **8.000 before and 5.945 after**, with the AES
-  written out in the standard library and checked against FIPS-197's own
-  vectors before it touches the disc. The keys stay outside the repository and
-  the tool reads scetool's ini and RPCS3's `key_vault.cpp`;
-- **and two of the phase's own items turned out to be data.** `self.py names`
-  pulls the **`AIT_*` condition-term enum** (78 names, 24-byte stride) and the
-  **AI host predicate table** (75 `(function, name)` pairs) straight out. The
-  enum lands on the disc's three id bands — 21, 19, 25 — names **65 of the 76
-  terms the tables use**, agrees with every reading
-  [`format_ai.md`](format_ai.md) took off the `.cnut`, and **settles two
-  readings [`brain.py`](../engine/brain.py) had declared as its own**:
-  `AIT_TGT_FRONT`/`_REAR` against
-  `AIT_FRONT_TGT`/`REAR_TGT`/`LEFT_TGT`/`RIGHT_TGT`, and
-  `AIT_RANGE_S`/`_M`/`_L`. The seven `checkBnnTerm` escape hatches are located
-  with an address each;
-- **three published readings were corrected by the binary, all the same way.**
-  The engine binds its interface by name: **274 of the 285 native names are
-  strings inside it**, which is what makes an absence mean something.
-  `prowl_script`, `MONS_KIND_ORGA` and the five `DEMO_S17x_A` are **absent**,
-  so they are dead references in the shipped game rather than engine
-  constants, which is what [`format_api.md`](format_api.md) had inferred. The
-  ten unnamed AI terms are absent from the `AIT_*` enum too, so the tables are
-  newer than *both* artefacts that could have named them;
-- **two ledger items were tested and both moved.**
-  [`combat_loop.md`](combat_loop.md) item 7 said *"readable — one more join,
-  against the skill table"*; the join was tried against the 634 player hit
-  records, all 29 columns of `it_db_weapon.bin` grouped by class, and
-  `it_db_ace_skill.bin`, and **none of them carries it** — so
-  `se_hitlevel_tbl`'s third word is the engine's own weapon-form enum and is
-  an EBOOT item now. Item 2 sent the search to the level-up tables and
-  **there are none**: `it_db_myorder*.bin` is the mercenary order system. The
-  ledger is three disc items and six EBOOT ones, and the EBOOT is open.
+- **the damage expression is read.** It is `FUN_00622fe4`, and it is an attack
+  term, a defence term, a subtraction and a floor of 1. Every `add` is zero
+  and every `rate` is one on a bare hit, because they exist for
+  `MdDamageCalcEventListener` — the class is named in the binary — which is
+  handed the attack structure over the attacker's listener list and the
+  defence structure over the target's, in between the build and the
+  arithmetic. That is where a card or an ability gets to move a term, and it
+  is why the expression looks so plain;
+- **and it came with item 5's sign for free.** The defence term is subtracted
+  and clamped to zero first, so a weak point's `-450` makes the subtraction
+  smaller. [`combat_loop.md`](combat_loop.md) had said nothing on the disc
+  proves it is subtracted rather than added; now something does;
+- **the way in was the `.opd`, not the disassembler.** Ghidra, handed this
+  file with every default on, ran for **16 seconds and found no functions**;
+  its PowerPC64 ELF importer actually throws on it, because this build's
+  function descriptors are **8 bytes and not the ABI's 24**. `ppc.py opd`
+  walks them from `e_entry` with nothing but their own arithmetic — **165,596
+  descriptors over 69,691 functions**, in four TOC windows — and the same
+  Ghidra run then takes 233 seconds and has all of them;
+- **and 274 of the 291 names came off the TOC.** The registration calls leave
+  a descriptor pointer, a name and a Squirrel typemask in adjacent slots in
+  source order, so a descriptor followed by a name the disc calls *is* a
+  registration. `ppc.py natives` joins that to `psq.py api` — the disc says
+  which names the engine must provide, the binary says where each one is;
+- **`ppc.py refs` is the instrument the rest of this phase runs on.** Every
+  global in this build is reached as `lwz rN, d(r2)` and the descriptor names
+  the `r2`, so a cross-reference is two steps of arithmetic over four million
+  instructions and takes about a second. No disassembler is involved. It is
+  what turned every string below into a function;
+- **and the binary names its own types.** 1,271 length-prefixed C++ RTTI
+  names, `8MdDamage` and `25MdDamageCalcEventListener` among them, each
+  reachable from its class's vtables by two word searches. That is how the
+  damage module was found at all.
 
-**What it came to, over all 431 quests.** The sweep was launched once the
-engine was frozen and it is the regression check: against session 29's
-numbers, **284 quests finish, 287 walk their whole stage list, 344 arenas are
-armed and 322 are closed by the script's own kill count, 3,105 monsters spawn
-and 3,017 die, and the pay-out is 689,375 zeny** — every one of those to the
-digit, and *the body stopped walking* is still 66 over the same eleven stages,
-`070_01_02` thirteen times.
+**Nothing in [`../engine`](../engine) changed and the sweep was not run.**
+The regression numbers still stand where session 30 left them.
 
-**One number moved and it is the one the tier should move.** The take goes
-from **5,086 items of 349 kinds to 5,661 of 398**, over 201 quests, on
-identical kills and identical zeny. That is the reading's own prediction: a
-monster's `it_drop` and its `item_reward_region.bin` block are per-tier and
-nothing else in the loop reads `hp` or `atk`, because `BLOWS` decides death.
-Had the steering or the kill count moved, something would have been wrong.
+### 1. The four EBOOT items that are left, and one of them unblocks the engine.
 
-### 1. Ghidra, and the six ledger items that are code.
+The project is set up now: the Ghidra project builds in four minutes from
+[`eboot.md`](eboot.md)'s four commands, `Query.java` answers `decomp`,
+`xrefs`, `callers` and `info` without a window, and `ppc.py refs` finds any
+global's users in a second. Each of the four has a function to start from
+rather than a search.
 
-This is the session the phase list has been pointing at since session 10, and
-it is now an afternoon's setup rather than a phase. PowerPC 64 big-endian,
-image base `0x10000`, 16.1 MB of code and 3.6 MB of data. **Plant the 285
-`cf*`/`sf*` names first** — they are strings in the binary,
-[`format_api.md`](format_api.md) says what each one does from the outside, and
-they are the widest labelled surface the file has. Then
-[`combat_loop.md`](combat_loop.md)'s six:
+1. **the player's base attack and hit points** (ledger 2) — and this is the
+   one that matters most, because it is the last thing between the expression
+   and a monster that dies of it. Item 1's attack term does not read a field:
+   it makes a **virtual call**, `vtable + 0x10c` for the base and `+ 0x110`
+   for the add. One implementation of that pair reads the monster's `atk` at
+   parameters `+0x2b8`; the other is the player's, and whatever it reads is
+   what the six class JSONs do not carry. Find the second implementation and
+   the same object almost certainly carries `hp` and `def` beside it;
+2. **what computes the hit level** (ledger 4) — `FUN_006235fc`, which the hit
+   resolver calls just before the damage and hands the result to both the
+   damage and the reaction chooser. It starts from a **byte at `+0x103` of the
+   hit record in memory** and passes it through the same listener chain. If
+   that byte is `.anmcmd`'s `+0x35`, ledger 3 goes with it — and that is a
+   reading to prove, not to assume;
+3. **`se_hitlevel_tbl`'s third word** (ledger 7) — six references, five
+   accessors around `0x003ec7fc` and a loader at `0x006587c8` that caches
+   three block pointers at `+0x24`, `+0x28` and `+0x2c` of its owner. The
+   consumer is whatever reads those three, which is one `refs` away;
+4. **`react_p`** (ledger 8) — one reference, at `0x00ef4bb0`, and it is a
+   parameter name rather than a table name, so it goes through the same
+   `+0x244` record item 1's `def` came out of.
 
-1. **the damage expression** (ledger 1) — it retires `BLOWS`, `BREAKS` and
-   most of the 28 defaulted AI predicates in one go, which is three of
-   [`parity.md`](parity.md)'s seven stand-ins;
-2. what computes the hit level (4);
-3. what `+0x35` is a strength of (3);
-4. the sign of a region's flat modifier (5);
-5. what `react_p` is a pool of (8);
-6. `se_hitlevel_tbl`'s third word (7), the weapon-form enum — and the `AIT_*`
-   table says this build ships its enums as string tables, so look for a name
-   list before looking for a switch.
+And the two cosmetic ones are still there and still cheap: the table that maps
+`.anmcmd` opcode 10's effect id to a `PTB` slot, and the seven `checkBnnTerm`
+bodies.
 
-The two smallest cosmetic items are still there and now cheap: the table that
-maps `.anmcmd` opcode 10's effect id to a `PTB` slot, and the seven
-`checkBnnTerm` bodies, which now have addresses.
+**One loose end worth an hour.** The damage path queries the disc's own
+ability table **by row number**: `0xcc` as a final multiplier on the damage,
+`0x70` and `0x71` in the hit resolver. `it_db_ability.bin` has 233 rows and
+`combat.py abilities` names 162 of them from the 1,091 card skills that index
+them, so those three ids have English words waiting for them. `0x70`'s range
+is `(0, 1)`, which is a rate.
 
 ### 2. The tier's other half.
 

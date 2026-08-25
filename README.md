@@ -50,6 +50,21 @@ binary**, an absence means something — `prowl_script` and the six named
 constants are not there, so they are dead references in the shipped game
 rather than, as this repository had inferred, engine constants.
 
+**And the damage formula is read.** Handed the ELF with every default on,
+Ghidra ran for **sixteen seconds and found no functions** — its own PowerPC64
+importer throws on this file, because these function descriptors are **8 bytes
+and not the ABI's 24**. The table is in the clear all the same:
+[`tools/ppc.py`](tools/ppc.py) walks it from `e_entry` with nothing but its own
+arithmetic to **165,596 descriptors over 69,691 functions**, in the four TOC
+windows a 256 KB TOC has to have, and the container's own section table agrees
+to the byte. With those planted the same run takes 233 seconds and has all of
+them, and **274 of the 291 names the disc calls** come off the TOC, because a
+registration leaves its descriptor and its name in adjacent slots. From there
+it is one cross-reference: the expression is an attack term, a defence term, a
+subtraction and a floor of 1, with `MdDamageCalcEventListener` — a class the
+binary names — given both terms in between. The defence is **subtracted**,
+which the disc could not prove. See [`docs/eboot.md`](docs/eboot.md).
+
 **Before that: the body gets there, and it had been standing
 under the floor.** The walk was the one half of this project that is nobody's
 reading and everybody's problem, and 125 of the 431 quest runs ended with
@@ -410,6 +425,13 @@ the EBOOT opens  ->   19.8 MB PPC64 BE ELF      tools/self.py
   the proof      ->      byte entropy 8.000 before, 5.945 after
   the AI names   ->       78 AIT_* terms and 75 host predicates, extracted
 
+the EBOOT reads  ->   69,691 functions          tools/ppc.py
+  the .opd       ->  165,596 descriptors of 8 bytes, in four TOC windows
+  the check      ->        the container's own section table, to the byte
+  the names      ->      274 of 291 script natives, placed by the TOC
+  the types      ->    1,271 C++ RTTI names, each one reachable from a vtable
+  the damage     ->        FUN_00622fe4, read in full - see docs/eboot.md
+
 the combat loop  ->        8 files, 9 gaps     tools/combat.py
   the hit level  ->       15 weapon kinds tiling cue ids 1000..1089 exactly
   the impact cue ->      747 of 754 player records empty, 5,245 of 5,439 not
@@ -469,7 +491,9 @@ mercenary AI](docs/format_merc.md), [`.PTP`](docs/format_ptp.md),
 [`effect.bin`](docs/format_effect.md), [the quest
 tables](docs/format_quest.md),
 [`.mkc`](docs/format_mkc.md), [the sound banks](docs/format_awb.md),
-[the actor parameters](docs/params.md). How they fit together in a fight is
+[the actor parameters](docs/params.md), [the `SELF`
+container](docs/format_self.md) and [the EBOOT as a
+program](docs/eboot.md). How they fit together in a fight is
 [the combat loop](docs/combat_loop.md), which traces one hit end to end and
 ends in a ledger of what is still missing. What running it produced is in
 [milestone 1](docs/milestone_numbers.md), [milestone
@@ -668,8 +692,15 @@ python tools/params.py field <dir> <name>     where a field occurs and its range
 python tools/self.py check|header <EBOOT>     the container, without any key
 python tools/self.py keys <file> [rev] [type] what a key file offers
 python tools/self.py meta <EBOOT> <keys>      the metadata, decrypted
+python tools/self.py sections <EBOOT>         the section table, in the clear
 python tools/self.py decrypt <EBOOT> <keys> <out.elf>
 python tools/self.py names <out.elf>          the AI's two name tables
+
+python tools/ppc.py segments <elf>            what loads where
+python tools/ppc.py opd <elf>                 the function table, 69,691 of them
+python tools/ppc.py natives <elf> <api list>  the script names, placed
+python tools/ppc.py plant <elf> <api> <out>   what a disassembler reads
+python tools/ppc.py refs <elf> <hex address>  who reaches a global, exactly
 ```
 
 Point `iso.py` at your image with `--iso`, or drop it in the repository root
