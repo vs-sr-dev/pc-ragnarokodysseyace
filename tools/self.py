@@ -592,7 +592,32 @@ def cmd_decrypt(path, keyfile, out) -> int:
               % (i, p['vaddr'], p['filesz'], entropy(got)))
     print('  it is an ELF: %r, machine %d'
           % (blob[:4], e['machine']))
+    big = max(s.phdrs(), key=lambda p: p['filesz'])
+    got = powerpc(blob[big['offset']:big['offset'] + big['filesz']])
+    print('  and it is PowerPC: %s'
+          % ', '.join('%s %d' % (n, got[n]) for n in PROLOGUE))
+    print('     %d words; mflr and mtlr differ by %d, which is how many '
+          'functions leave by a path this does not count'
+          % (got['words'], abs(got['mflr r0'] - got['mtlr r0'])))
     return 0
+
+
+# Three instructions any PowerPC image is full of, as big-endian words. The
+# first two are a function's prologue and epilogue, so their counts must come
+# out close together - which is a much sharper test than entropy, because
+# nothing but real code produces it.
+PROLOGUE = ('mflr r0', 'mtlr r0', 'blr', 'nop')
+OPCODES = {'mflr r0': 0x7C0802A6, 'mtlr r0': 0x7C0803A6,
+           'blr': 0x4E800020, 'nop': 0x60000000}
+
+
+def powerpc(code: bytes) -> dict:
+    n = len(code) // 4
+    words = struct.unpack('>%dI' % n, code[:n * 4])
+    seen = collections.Counter(words)
+    out = {name: seen[op] for name, op in OPCODES.items()}
+    out['words'] = n
+    return out
 
 
 AIT = b'AIT_'

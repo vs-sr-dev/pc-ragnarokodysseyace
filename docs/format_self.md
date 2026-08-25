@@ -99,8 +99,23 @@ $ python tools/self.py decrypt ... eboot.elf
     segment  1      0xf80000    3652220 bytes  entropy 5.405
 ```
 
-Entropy 8.000 to **5.945** is the answer. 5.9 is what compiled PowerPC looks
-like, and the file names itself: `Squirrel 2.2.4 stable`, `objbin.cpp`,
+Entropy 8.000 to **5.945** is the answer, and the instruction census is a much
+sharper one, because nothing but real code produces it:
+
+```
+  and it is PowerPC: mflr r0 49283, mtlr r0 49765, blr 62627, nop 112475
+     4035354 words; mflr and mtlr differ by 482
+```
+
+`mflr r0` opens a PowerPC function that calls anything and `mtlr r0` closes
+it, so **the two counts have to come out close together** — and they do, 49,283
+against 49,765 over four million words, with 62,627 `blr` under them. A wrong
+key, a wrong counter or an off-by-one in the reassembly gives noise, and noise
+does not produce fifty thousand matched prologues. The primary-opcode
+histogram is the PowerPC64 one too: 31 (the integer group), 14 (`addi`), 18
+(`b`), 58 (`ld`), 32 (`lwz`), 62 (`std`).
+
+The file also names itself: `Squirrel 2.2.4 stable`, `objbin.cpp`,
 `se_hitlevel_tbl`, `cfMapJump`, `printAitIdName`, `checkB01Term`. Every one of
 those is a string some earlier session inferred the existence of from the
 outside.
