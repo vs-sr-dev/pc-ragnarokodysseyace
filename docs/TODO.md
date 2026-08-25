@@ -57,42 +57,86 @@ The document is [`eboot.md`](eboot.md) and the tools are
   reward block uses, and `job_par` explains the disc's 0, 1, 3, 4, 5, 7 —
   eight jobs alphabetically, `gunner` and `ninja` cut. **The method note is
   the finding**: what found it was not a better search of the disc but the
-  binary saying what shape to look for.
+  binary saying what shape to look for;
+- **and then the damage was written.** [`damage.py`](../engine/damage.py) is
+  `FUN_00622fe4` line for line, [`mission.py`](../engine/mission.py) takes a
+  monster's own `hp` down with it, and [`parity.md`](parity.md)'s **S1 and S2
+  are retired** — `BLOWS` and `BREAKS` survive only as the fallback for an
+  actor whose tables will not read, and the run counts that. Two decisions had
+  to be made and both are filed as readings, R4 and R5: where a region's flat
+  modifier and its six multipliers arrive in the defence structure;
+- **and the hit's ratio is `+0x30`, not `+0x35`.** Before writing anything,
+  `FUN_0060fe50` — which copies a 116-byte `.anmcmd` record into the
+  0x130-byte runtime one — settled it: it assigns `+0x103` from `+0x35`, and
+  `+0x103` is the hit level's input, while the runtime record's **first
+  float**, which is the attack builder's first argument, comes from `+0x30`.
+  [`format_anmcmd.md`](format_anmcmd.md) had already measured `+0x30` as *"a
+  ratio, near 1 whatever the actor's size"*, r = −0.04, without knowing what
+  it was for. The two fields swap jobs and `combat_loop.md`'s chain diagram
+  was corrected.
 
-**Nothing in [`../engine`](../engine) changed and the sweep was not run.**
-The regression numbers still stand where session 30 left them.
+**And the sweep was not run.** Twice attempted, twice not landed — see item 1,
+which is the first thing the next session does. The regression numbers still
+stand where session 30 left them.
 
-### 1. Write the damage into the engine, and re-run everything.
+### 1. Run the sweep. The engine is frozen and waiting for it.
 
-**This is the session that retires the biggest stand-in in the project**, and
-it is now implementation rather than reading: every input is on the disc and
-read, and the expression is in [`eboot.md`](eboot.md). What
-[`fight.py`](../engine/fight.py) has to grow:
+**This is the first thing to do and it is the only thing between session 31
+and its own result.** The damage expression is written — see the bullets
+above, [`damage.py`](../engine/damage.py) and commit `ed08e60`, which is the
+frozen engine — and **all 431 quests have not been run against it**. Two
+attempts failed for two different reasons and both are worth knowing:
 
-1. **the two structures.** Attack `{base, flat, rate, power, power add, crit,
-   crit add, spare}` and defence `{base, flat, rate, mul, mul add, cut}`, with
-   every `add` zero and every `rate` one, because that is what the builders at
-   `0x00245870` and `0x00245678` do;
-2. **the attack side's base**, which is the actor's `atk` — from its JSON for
-   a monster, and for a player from `elbn.py levels`: `ccparamobj.bin`,
-   `<class>_lv_par`, the row chosen by story progress. The engine already
-   carries a progress number, `PROGRESS = 11000` in
-   [`purse.py`](../engine/purse.py), and 11,000 is below the first threshold,
-   so **a fresh run is row 0** — the warrior at 80 / 30 / 1,000;
-3. **the defence side's base**, the target's `def`, and the region's flat
-   modifier and multipliers, which are where `d[1]` and `d[3]`/`d[4]` have to
-   arrive - that is the open half of ledger 5 and it can be settled by
-   watching which one makes a weak point behave like one;
-4. **the subtraction, the floor of 1, and the hit's power.** Then a monster
-   dies when its `hp` runs out instead of on its third landed volume, and
-   `BLOWS` and `BREAKS` come out of [`parity.md`](parity.md).
+- **the first sweep ran and was thrown away.** The critical roll drew from
+  `Field.rng`, which also drives `e.state.rand` and `e.brain.act` — every
+  monster's action choice — so every landed volume shifted the whole fight
+  downstream and the run diverged from session 30 for two reasons mixed
+  together. `self.luck` is a separate stream now and the proof it mattered is
+  that `q00102`'s monster landings on the player go 18 back to 14;
+- **the second never started.** `exit 127` from a backgrounded shell, no
+  output, an hour and a half of nothing. **The output file stays empty until
+  the very end** — `quiet=1` prints only the summary — so an empty file is
+  not evidence of progress. Launch it, then confirm the process is alive
+  before walking away, or launch it with `quiet=0`, which prints a line per
+  quest and is the honest progress bar.
 
-Then **run the full sweep** — it is hours, so start it once the engine is
-frozen and stay off the machine. Every number in
-[`milestone_walk.md`](milestone_walk.md) is downstream of the kill count, so
-this is the one change in the project that is expected to move all of them:
-284 finishing quests, 322 of 344 arenas closed, 3,017 kills, 689,375 zeny and
-5,661 items are the *before*, and they should be quoted as such.
+```
+python engine/mission.py runs extract/tree '*' sw 3 1
+```
+
+It is a couple of hours and it wants the machine to itself. **Session 30's
+numbers are the baseline**, and every one of them is expected to move,
+because `BLOWS` reached the kill count, the arena timing and the pay-out:
+
+```
+                          session 30    session 31
+  quests finished              284          ?
+  walked the whole list        287          ?
+  arenas armed                 344          ?
+  closed by the kill count     322          ?
+  monsters spawned           3,105          ?
+  killed                     3,017          ?
+  zeny                     689,375          ?
+  items                5,661 of 398         ?
+```
+
+The thrown-away sweep is not an answer but it is a direction, and it should
+be quoted as **indicative only**: 269 finished, 1,990 killed of 2,197
+spawned, 589,675 zeny, 3,826 items of 338 kinds. Everything down, which is
+what has to happen — a monster used to die in three landed volumes by decree
+and now dies of its own `hp` against a player holding the starting weapon.
+
+**Read the drop before fixing it.** The gap is S7, not the expression: the
+growth row comes from story progress and the weapon does not come from
+anywhere, so a late quest fields a level-13 body swinging a level-1 sword.
+The sweep's own new line — volumes landed, damage dealt, criticals, parts
+broken off, and the landings that fell back on `BLOWS` because an actor's
+`hp` would not read — is what says which of those is doing the damage. In
+particular **watch the parts**: `region_data_brk`'s pools are 500 to 60,000
+with a median of 5,000 against a body's 2,100, so a part should come off long
+before a boss dies and essentially never on a mob, and the thrown-away sweep
+broke **two** parts in 431 quests. That is either the under-equipped player or
+a wrong pool, and the two are told apart by looking at a boss fight.
 
 ### 1b. The three EBOOT items still open.
 

@@ -10,17 +10,17 @@ own copy of the disc.
 
 ## Status
 
-Sessions 1-30 (2026-08-25). **Everything this engine invents, in one list —
+Sessions 1-31 (2026-08-25). **Everything this engine invents, in one list —
 and then the list started shrinking.** After eight milestones the places where
 what runs is not what shipped were declared honestly and scattered over
 thirteen files, which is the same as not being declared at all.
 [`docs/parity.md`](docs/parity.md) is the set, in four classes with what
-retires each: **seven stand-ins** (wrong by construction — the disc has the
+retires each: **five stand-ins** (wrong by construction — the disc has the
 thing and we cannot read it), five readings, thirteen conventions and eight
 pieces of scaffolding that are not wrong at all because they stand where a
-gamepad goes. The shape of the list is the finding: **three of the seven
-stand-ins are the damage expression**, so one function retires nearly half of
-them.
+gamepad goes. It was seven until session 31: the shape of the list was its own
+finding — **three of the seven stand-ins were the damage expression** — and
+one function retired two of them.
 
 Writing it out is what found the next one. `TIER = '0'` had been a one-line
 comment since session 28, and it meant **every monster the engine spawned was
@@ -82,6 +82,18 @@ slots with two empty are why the disc numbers its classes 0, 1, 3, 4, 5, 7 —
 the EBOOT lists eight jobs alphabetically and `gunner` and `ninja` did not
 ship. The warrior starts at 80 / 30 / 1,000. See
 [`docs/eboot.md`](docs/eboot.md).
+
+**And then it was written into the engine.**
+[`engine/damage.py`](engine/damage.py) is `FUN_00622fe4` line for line, a
+monster dies of its own `hp`, and `BLOWS` and `BREAKS` — the third-landed-volume
+policy this project printed at the end of every run for nine sessions — are
+**retired**. Two decisions had to be made and both are filed as readings:
+where a region's flat modifier and its six multipliers arrive in the defence
+structure, the argument being that the builder's defaults are `0.0` and `1.0`
+and the disc's medians, over 315 regions and 1,890 multipliers, are `0.0` and
+`1.000`. **The 431-quest sweep has not been run against it yet** — see
+[`docs/TODO.md`](docs/TODO.md) item 1, which is the first thing the next
+session does, and which also records the two ways the attempt failed.
 
 **Before that: the body gets there, and it had been standing
 under the floor.** The walk was the one half of this project that is nobody's
@@ -443,6 +455,12 @@ the EBOOT opens  ->   19.8 MB PPC64 BE ELF      tools/self.py
   the proof      ->      byte entropy 8.000 before, 5.945 after
   the AI names   ->       78 AIT_* terms and 75 host predicates, extracted
 
+the damage runs  ->   FUN_00622fe4, line for line  engine/damage.py
+  the two terms  ->        attack - defence, and the floor is 1
+  the player     ->        ccparamobj.bin's growth row, by story progress
+  a monster dies ->        of its own hp: parity.md's S1 and S2 retired
+  the sweep      ->        not yet run against it - see docs/TODO.md item 1
+
 the EBOOT reads  ->   69,691 functions          tools/ppc.py
   the .opd       ->  165,596 descriptors of 8 bytes, in four TOC windows
   the check      ->        the container's own section table, to the byte
@@ -642,6 +660,9 @@ python tools/elbn.py trace <dir> [actor]     the weapon trail
 python tools/elbn.py combo <dir> [class]     the player's combo graph
 python tools/elbn.py lights <dir> [stage]    the stage's own lighting rig
 python tools/elbn.py levels <dir>            the player's atk, def and hp
+
+python engine/damage.py table|show <dir> [class]   the growth table
+python engine/damage.py against <dir> <monster> [class] [tier]
 
 python tools/anmcmd.py check|survey <dir>    the animation commands
 python tools/anmcmd.py census <dir>          every opcode, with its size
