@@ -110,8 +110,27 @@ building side, which is why it is a chain and a ledger rather than a format.
 
 ## Phase 3 — The EBOOT as oracle
 
-Decrypt the SELF (`key_revision 0x001C`, public retail keys) to a PPC64
-big-endian ELF and open it in Ghidra.
+**The container is open, session 30.** [`tools/self.py`](../tools/self.py)
+takes `EBOOT.BIN` and a key file to a 19.8 MB PowerPC 64 big-endian ELF -
+`key_revision 0x001C`, `self_type APP`, byte entropy 8.000 before and 5.945
+after, and the file names itself: `Squirrel 2.2.4 stable`, `objbin.cpp`,
+`se_hitlevel_tbl`, `cfMapJump`, `printAitIdName`. The AES is written out in
+the tool and checked against FIPS-197's own vectors, because this repository
+has no third-party dependency and a from-scratch cipher that is not checked
+produces plausible garbage. See [`format_self.md`](format_self.md).
+
+**Two of the phase's named items were data and fell out the same day.** The
+`AIT_*` condition-term enum - 78 names, the table `printAitIdName` prints
+from - gives 65 of the 76 term ids the AI tables use the engine's own name,
+confirms every reading [`format_ai.md`](format_ai.md) took off the `.cnut`
+and settles two that [`brain.py`](../engine/brain.py) had declared as its own;
+and the AI host predicate table locates all seven `checkBnnTerm` escape
+hatches. Neither needed a disassembler, which is this project's oldest lesson
+arriving one more time.
+
+**What is left is code**, and that is what Ghidra is for: PowerPC 64
+big-endian, image base `0x10000`, and the 285 `cf*`/`sf*` names as the first
+labels to plant.
 
 Unlike on the sister project, this is not a deferrable curiosity: the EBOOT is
 where the combat loop lives, and it is where the **285 native functions**
