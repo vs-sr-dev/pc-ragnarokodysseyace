@@ -90,8 +90,21 @@ MIN_RADIUS = 0.05           # what `hitbox.py obj` already uses for a hit
 
 
 def load_json(path, record='0') -> dict:
+    """One record of a parameter file, as the game would see it.
+
+    A `.json` is a base record keyed `'0'` and variants that **merge over
+    it** - [`params.md`](../docs/params.md) counted 440 of the 980 non-base
+    records introducing a field the base never sets, so a reader that takes
+    the variant alone silently drops most of the table. A monster's variants
+    are its difficulty tiers, which is what `enemy.bin` `+0x37` names; a
+    record the file does not carry falls back to the base.
+    """
     with open(path, encoding='utf-8') as fh:
-        return json.load(fh)[record]
+        doc = json.load(fh)
+    out = dict(doc.get('0', {}))
+    if record != '0':
+        out.update(doc.get(str(record), {}))
+    return out
 
 
 # -- the animation an action names -----------------------------------------
@@ -181,14 +194,19 @@ def closing_distance(m: Monster, pr: float, radius: float) -> float:
 class Enemy:
     """A monster standing somewhere, playing something."""
 
-    def __init__(self, tree, name, x=0.0, y=0.0, z=0.0, heading=0.0):
+    def __init__(self, tree, name, x=0.0, y=0.0, z=0.0, heading=0.0,
+                 tier='0'):
         self.tree = pathlib.Path(tree)
         self.m = Monster(tree, name)
         self.brain = Brain(self.m)
         self.state = State()
         self.x, self.y, self.z, self.heading = x, y, z, heading
+        # Which record of its own table this monster is standing here as.
+        # A quest's `enemy.bin` row names it - see `quest.py`'s `tiers` -
+        # and it moves `hp`, `atk`, `region_lv` and the drop table.
+        self.tier = str(tier)
         p = self.tree / 'monster.cpk' / self.m.kind / (self.m.kind + '.json')
-        self.p = load_json(p) if p.is_file() else {}
+        self.p = load_json(p, self.tier) if p.is_file() else {}
         self.radius = self.p.get('col_r', 1.0)
         self.turn_speed = self.p.get('rot_y_spd', 8.0)
         self.speed = self.p.get('run_sp', 0.1)

@@ -80,8 +80,8 @@ one namespace.
 +0x08  u32   0x0202FFFF on all 1,386 rows
 +0x0c  ×8    eight monster slots, `01 hh h0 00`, 0xFFFFFFFF for empty
 +0x2c  u8×8  eight counts, one per slot, 99 where the slot is empty
-+0x34  u8    at +0x37: 0, 10, 20, 30, 40, 250
-+0x54  u8    at +0x57: 0xFF, or 1, 11, 21, 31, 41 …
++0x34  u8    at +0x37: the difficulty tier this room spawns at
++0x54  u8    at +0x57: its paired higher tier, or 0xFF
 ```
 
 **`+0x2c` is eight bytes and not two lanes, one byte per slot.** The tell is
@@ -92,7 +92,57 @@ number of generators aimed at the slot on **2,275 of 2,503**, is exactly double
 it on another 91, where each generator produces two, and is ragged on the
 remaining 137. So 99 is the empty sentinel and the field is a population.
 
-`+0x37`'s ten-step values and `+0x57`'s `10k + 1` are unread.
+### `+0x37` is the difficulty tier, and `+0x57` is its partner
+
+A monster's `.json` is a base record keyed `0` with variants merged over it,
+and [`params.md`](params.md) reads those variants as **difficulty tiers**:
+for every even key `n` with a partner `n+1`, the two are the same monster at a
+higher `region_lv`, with `hp` exactly ×1.5 on 138 of 168 pairs. `+0x37` takes
+23 values over the 1,386 rows and **21 of them are a record key some monster
+on the disc declares** — only 90 and 99 are not, on 19 rows between them —
+while `+0x57` is `+0x37 + 1` on **436 of the 465 rows that set it** and
+`0xFF` on the other 921.
+
+The alphabet alone would be weak. Two joins are not, and neither shares a
+file, a reader or an assumption with this table.
+
+**It climbs with the story.** `chapter.bin` says which chapter a quest belongs
+to, and the tier its rooms spawn at ascends with it — Kendall's τ against the
+catalog's own progress value is **0.65**:
+
+```
+$ python tools/quest.py tiers extract/tree
+  chapter  1   0 x8 30 x1
+  chapter  4   0 x2 10 x6 11 x1 12 x1
+  chapter  6   10 x9 20 x1
+  chapter  8   20 x8 30 x2
+  chapter 11   20 x2 40 x1 250 x3
+  chapter 14   10 x7 20 x1 30 x1 250 x4
+  chapter 20   200 x7 210 x7 220 x7 230 x7
+```
+
+**And another table already carries the same number.** Session 28 settled that
+the third word of an `item_reward_region.bin` block head is the monster's
+difficulty tier, 194 of 194 against the JSONs — and that table ships **one
+block per tier**. Over the 168 monsters it blocks, **161 share a tier with
+their own `enemy.bin` row and 159 name exactly the same pair**; 326 of 396
+blocks sit at a tier the row names, against 16 for a constant 0. Two tables
+written for different purposes agree on which monster is standing in which
+room at which strength.
+
+`+0x37` also holds still where a designer would hold it still: **368 of the
+430 quests write one tier on every stage they visit**.
+
+What is *not* read is **which of the two a run takes**. The obvious candidate
+is the party — `cfIsMulti()` exists and every quest with rewards ships an
+`item_reward_multi.bin` beside its `item_reward.bin` — and the correlation is
+real but not clean: of the 233 quests with reward tables 199 name a second
+tier and 34 do not, and 6 quests name one with no reward table at all. So the
+second tier is a fact about the row and its selector is not on the table.
+
+The engine reads `+0x37`. It moves a monster's `hp`, `atk` and `region_lv`,
+its `it_drop` table and which `item_reward_region.bin` block pays for a
+broken part — see [`parity.md`](parity.md), where it retired a stand-in.
 
 ## `enemy_gen.bin` — one row per spawner
 

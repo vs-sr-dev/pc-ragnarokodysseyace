@@ -52,6 +52,12 @@ Three things here are the run's and the rest is the disc's:
 
 Everything else is the table's: the item, the count, the chance, which part a
 region slot is, and which drop table a monster carries.
+
+**And one of the three used to be four.** Which *difficulty tier* a monster
+pays out at was this file's `TIER = '0'` until session 30, and it is now the
+disc's: a quest's `enemy.bin` row names the tier its rooms spawn at, and the
+same number picks the monster's `it_drop` and the `item_reward_region.bin`
+block. See [`../tools/quest.py`](../tools/quest.py)'s `tiers`.
 """
 from __future__ import annotations
 
@@ -71,8 +77,10 @@ import reward                                                  # noqa: E402
 BREAKS = 2
 # Where the story counter starts, which is `host.py`'s own floor.
 PROGRESS = 11000
-# The monster JSON record the rest of the engine reads - `fight.py`'s
-# `load_json` default. A monster drops what its own tier drops.
+# The monster JSON record to fall back to when nothing names a tier. It is
+# not a policy any more: a quest's `enemy.bin` row names the tier its rooms
+# spawn at - see `quest.py`'s `tiers` - and the engine passes it in. This is
+# what a monster met outside a quest is.
 TIER = '0'
 
 _ITEMS: dict = {}
@@ -95,8 +103,12 @@ def card_of(tree, quest: str):
     return _CARDS[key].get(quest)
 
 
-def drops_of(tree, kind: str):
-    """A monster's own drop table, off its JSON's `it_drop`."""
+def drops_of(tree, kind: str, tier: str = TIER):
+    """A monster's own drop table, off the `it_drop` of the tier it is at.
+
+    The record is the base merged with the tier, the way the game reads one,
+    and a tier that carries no `it_drop` of its own inherits the base's.
+    """
     p = pathlib.Path(tree) / 'monster.cpk' / kind / (kind + '.json')
     if not p.is_file():
         return None
@@ -104,12 +116,15 @@ def drops_of(tree, kind: str):
         rec = json.loads(p.read_text(encoding='utf-8', errors='replace'))
     except ValueError:
         return None
-    tier = rec.get(TIER) or next((v for v in rec.values()
-                                  if isinstance(v, dict) and 'it_drop' in v),
-                                 None)
-    if not isinstance(tier, dict) or 'it_drop' not in tier:
+    got = dict(rec.get('0') or {})
+    if str(tier) != '0':
+        got.update(rec.get(str(tier)) or {})
+    if 'it_drop' not in got:
+        got = next((v for v in rec.values()
+                    if isinstance(v, dict) and 'it_drop' in v), None) or {}
+    if 'it_drop' not in got:
         return None
-    return reward.drop_table(tree, int(tier['it_drop']))
+    return reward.drop_table(tree, int(got['it_drop']))
 
 
 class Purse:
@@ -149,12 +164,12 @@ class Purse:
                                    {})[b.head[2]] = b
             # A region block's third head word is the monster's **difficulty
             # tier**, in the same numbering its own JSON keys use - 194 of
-            # 194 monster blocks name tiers that monster declares. So the
-            # block to take is the tier the fight is playing, which is
-            # `fight.py`'s record 0, or the lowest the table offers.
-            for kind, got in by_kind.items():
-                want = int(TIER) if int(TIER) in got else min(got)
-                self.regions[kind] = got[want]
+            # 194 monster blocks name tiers that monster declares, and the
+            # table ships one block per tier. So the block to take is the
+            # tier the fight is playing, which `enemy.bin` now names: 159 of
+            # 168 monsters here carry exactly the pair their own row does.
+            # The whole set is kept and `broke` picks out of it.
+            self.regions = by_kind
         self._drops: dict = {}
         self._paid = False
 
@@ -182,27 +197,37 @@ class Purse:
             self.add(e.item, e.count, 'the quest')
         return [e for _, e in got]
 
-    def broke(self, kind: str, part: int) -> list:
+    def broke(self, kind: str, part: int, tier: str = TIER) -> list:
         """A breakable part came off: the quest's own override for that slot.
 
         `part` is the index into the monster's `region_data_brk`, which is
         exactly what byte 7 of a region entry holds - 298 of 298 blocks carry
-        the values `0 .. n-1` and no others.
+        the values `0 .. n-1` and no others. `tier` picks between the blocks
+        the table ships for this monster; where it names none, the lowest.
         """
-        b = self.regions.get(kind)
-        if b is None:
+        got = self.regions.get(kind)
+        if not got:
             self.log['a part broke and no region table names it'] += 1
             return []
+        want = int(tier) if int(tier) in got else min(got)
+        if int(tier) not in got:
+            self.log['a part broke at a tier its table does not block'] += 1
+        b = got[want]
         got = reward.draw(b, self.rng, lambda k, a, w=part: k == w)
         for _, e in got:
             self.add(e.item, e.count, 'a broken part')
         return [e for _, e in got]
 
-    def killed(self, kind: str) -> list:
-        """A monster died: its own `it_drop` table, gates and all."""
-        if kind not in self._drops:
-            self._drops[kind] = drops_of(self.tree, kind)
-        d = self._drops[kind]
+    def killed(self, kind: str, tier: str = TIER) -> list:
+        """A monster died: its own `it_drop` table, gates and all.
+
+        `tier` is the difficulty record the quest spawned it at, and it is
+        part of the key because two rooms of one quest may want two tiers.
+        """
+        key = (kind, str(tier))
+        if key not in self._drops:
+            self._drops[key] = drops_of(self.tree, kind, tier)
+        d = self._drops[key]
         if d is None:
             self.log['a monster died and carries no drop table'] += 1
             return []

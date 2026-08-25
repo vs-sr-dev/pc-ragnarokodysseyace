@@ -66,7 +66,11 @@ with every run:
 
 Nothing else in the loop is a policy. The spawn points are markers, the
 monsters are the table's, the fences are polylines, the counting is the
-script's own and the threshold is the script's own.
+script's own and the threshold is the script's own - and since session 30 so
+is **which of a monster's difficulty tiers is standing there**, which used to
+be a flat record 0. `enemy.bin` `+0x37` names it and it moves `hp`, `atk`,
+`region_lv` and the drop table: see
+[`../tools/quest.py`](../tools/quest.py)'s `tiers`.
 
 ## And now it pays
 
@@ -145,9 +149,21 @@ class Tables:
                                       if (d / t).is_file()})
         self.stages = self.q.stages
         self.slots = self.q.slots()
+        self.tiers = self.q.tiers()
         self.gens = self.q.generators()
         self.locks = self.q.locks()
         self.kinds = qtables.monsters(self.tree)
+
+    def tier(self, stage: str) -> str:
+        """The difficulty record this quest's rooms on that stage spawn at.
+
+        `enemy.bin` `+0x37`, which is a record key of the monster's own
+        `.json` - see [`../tools/quest.py`](../tools/quest.py)'s `tiers` for
+        what says so. `'0'` where the stage has no row, which is what a
+        monster met outside a quest is.
+        """
+        lo, _ = self.tiers.get(stage, (0, None))
+        return str(lo)
 
     def generators(self, stage: str) -> list:
         return [g for g in self.gens if g['stage'] == stage]
@@ -202,8 +218,10 @@ class Tables:
 class Spawn:
     """One monster, standing on the marker its generator names."""
 
-    def __init__(self, gen: dict, mid: int, kind: str, marker, world=None):
+    def __init__(self, gen: dict, mid: int, kind: str, marker, world=None,
+                 tier: str = '0'):
         self.gen, self.id, self.kind = gen, mid, kind
+        self.tier = str(tier)               # its `enemy.bin` row's `+0x37`
         self.marker = marker
         self.x, self.y, self.z = marker.position
         # A monster stands on the ground under its marker, not at the
@@ -366,7 +384,7 @@ class Spawner:
         # A corpse pays before the callback runs: the monster's own `it_drop`
         # table, out of its JSON and read the same way a reward block is.
         if self.purse is not None:
-            self.purse.killed(s.kind)
+            self.purse.killed(s.kind, s.tier)
         self.total_kills += 1
         self.latest_killed = s.id
         if self.lock is not None:
@@ -407,7 +425,8 @@ class Spawner:
             if m is None:
                 self.log['generator names no marker'] += 1
                 return
-            s = Spawn(g, mid, kind, m, self.world)
+            s = Spawn(g, mid, kind, m, self.world,
+                      tier=self.t.tier(self.stage))
             if self.at_once and len(self.live) >= self.at_once:
                 self.log['held back by cfSetEnemyMax'] += 1
                 return
@@ -439,7 +458,7 @@ class Field:
         self.breaks = breaks
         self.rng = random.Random(seed)
         self.body = place(arsenal.actor)     # the player's own capsules
-        self.proto: dict = {}                # kind -> an Enemy to copy
+        self.proto: dict = {}           # (kind, tier) -> an Enemy to copy
         self.targets: dict = {}              # kind -> its col_hit capsules
         self.player = None
         self.attack = None                   # what the player is swinging
@@ -470,16 +489,18 @@ class Field:
         An `Enemy` reads the AI tables, the model and the animation index,
         which is two thirds of a second - too much to pay per monster when a
         lock puts eight of the same kind on the floor. The heavy half is
-        shared and the state that a fight moves is not.
+        shared and the state that a fight moves is not. The key is the kind
+        **and its tier**, because the tier is what the numbers on it are.
         """
         if s.enemy is not None:
             return s.enemy
-        if s.kind not in self.proto:
+        key = (s.kind, s.tier)
+        if key not in self.proto:
             try:
-                self.proto[s.kind] = Enemy(self.tree, s.kind)
+                self.proto[key] = Enemy(self.tree, s.kind, tier=s.tier)
             except (SystemExit, StopIteration, OSError, ValueError):
-                self.proto[s.kind] = None
-        p = self.proto[s.kind]
+                self.proto[key] = None
+        p = self.proto[key]
         if p is None or p.actor is None:
             return None
         e = Enemy.__new__(Enemy)
@@ -670,7 +691,7 @@ class Field:
             self.n['a part with no region_data_brk row'] += 1
             return
         if self.sp.purse is not None:
-            self.sp.purse.broke(s.kind, at)
+            self.sp.purse.broke(s.kind, at, s.tier)
 
     def _monster(self, s: Spawn, world):
         e = self._enemy(s)
@@ -958,6 +979,11 @@ def cmd_run(tree, name='q00102', cls='sw', blows=str(BLOWS),
           % (name, CLASSES[cls][0], r['frames'], r['frames'] / FPS))
     print('  route wanted   %s' % ' -> '.join(r['want']))
     print('  route walked   %s' % ' -> '.join(r['visited']))
+    # The difficulty tier each room spawns at, which is the disc's and not
+    # this file's - `enemy.bin` `+0x37`, and `+0x57` where it names a second.
+    print('  the tier       %s'
+          % ', '.join('%s %d%s' % (st, lo, '' if hi is None else '/%d' % hi)
+                      for st, (lo, hi) in sorted(t.tiers.items())))
     print('  %d locks in the quest, %d started, %d the script ended itself: %s'
           % (r['locks'], len(sp.started), len(sp.opened),
              ', '.join(sp.opened) or '-'))

@@ -41,6 +41,7 @@ Usage:
   python quest.py dump <dir> <quest>   the four tables of one quest
   python quest.py xref <dir>           do the columns name what they must?
   python quest.py enemies <dir>        every monster id, and where it is used
+  python quest.py tiers <dir>          the difficulty tier a quest spawns at
 """
 from __future__ import annotations
 
@@ -56,6 +57,10 @@ from ech import Ech                                            # noqa: E402
 TABLES = ('piecelist.bin', 'enemy.bin', 'enemy_gen.bin', 'piecelock.bin')
 SLOTS = range(3, 11)                       # enemy.bin's eight monster lanes
 NONE = 0xFFFFFFFF
+# The two difficulty tiers an `enemy.bin` row names, as byte offsets into it.
+# They are record keys of the monster's own `.json` - see `Quest.tiers`.
+TIER_LO, TIER_HI = 0x37, 0x57
+NO_TIER = 0xFF                             # +0x57 on 921 of the 1,386 rows
 
 
 def monster_id(lane: bytes):
@@ -121,6 +126,42 @@ class Quest:
         for i in range(len(t.rows) if t else 0):
             out[t.string(i, 0)] = [monster_id(t.rows[i][c * 4:c * 4 + 4])
                                    for c in SLOTS]
+        return out
+
+    def tiers(self) -> dict:
+        """stage -> the difficulty tier its monsters spawn at, and its partner.
+
+        `enemy.bin` `+0x37` is a **record key of the monster's own `.json`**,
+        which [`params.md`](../docs/params.md) reads as a difficulty tier: a
+        monster is one base record with variants merged over it, and for
+        every even key `n` with a partner `n+1` the two are the same monster
+        at a higher `region_lv`. `+0x57` is that partner, or `0xFF`.
+
+        Three things say so and none of them is the alphabet alone:
+
+        - **it climbs with the chapter.** Chapter 1 spawns at 0, chapters 4
+          and 5 at 10, 6 and 7 at 20, 8 and 9 at 20 and 30, and 11 to 14
+          reach 250 - Kendall's tau against `chapter.bin`'s own story
+          progress is 0.65;
+        - **it agrees with a table nobody joined it to.** A block of
+          `item_reward_region.bin` carries a tier in its head's third word,
+          settled in session 28 against the JSONs, and the table ships **one
+          block per tier**: over the 168 monsters it blocks, **161 share a
+          tier with their own `enemy.bin` row and 159 name exactly the same
+          pair**. 326 of 396 blocks sit at a tier the row names, against 16
+          for a constant 0;
+        - **`+0x57` is `+0x37 + 1`** on 436 of the 465 rows that carry one,
+          which is exactly the pairing the JSON keys are laid out in.
+
+        What is *not* read is which of the two a run takes. See
+        [`format_quest.md`](../docs/format_quest.md).
+        """
+        out, t = {}, self.enemy
+        for i in range(len(t.rows) if t else 0):
+            row = t.rows[i]
+            hi = row[TIER_HI]
+            out[t.string(i, 0)] = (row[TIER_LO],
+                                   None if hi == NO_TIER else hi)
         return out
 
     def generators(self) -> list:
@@ -230,6 +271,118 @@ def cmd_enemies(root) -> int:
           % (len(use), sum(1 for v in use if v in known),
              sum(1 for v in known if v not in use)))
     return 0
+
+
+def cmd_tiers(root) -> int:
+    """Is `enemy.bin` `+0x37` the difficulty tier? Three answers.
+
+    The first is the alphabet, which is suggestive and no more. The second
+    and third are joins against files this one shares nothing with:
+    `chapter.bin`, which says where in the story a quest sits, and
+    `item_reward_region.bin`, which carries the same tier in its own head.
+    """
+    import json                                               # noqa: PLC0415
+
+    import reward                                             # noqa: PLC0415
+
+    root = pathlib.Path(root)
+    known = monsters(root)
+    keys = set()
+    for name in known.values():
+        p = root / 'monster.cpk' / name / (name + '.json')
+        if p.is_file():
+            keys.update(int(k) for k in
+                        json.loads(p.read_text(encoding='utf-8',
+                                               errors='replace')))
+    seen: collections.Counter = collections.Counter()
+    pairs: collections.Counter = collections.Counter()
+    per = {}
+    for q in _pacs(root):
+        got = q.tiers()
+        per[q.name] = got
+        for lo, hi in got.values():
+            seen[lo] += 1
+            pairs[(lo, hi)] += 1
+    print('%d monsters declare %d distinct record keys' % (len(known),
+                                                           len(keys)))
+    print('+0x37 takes %d values over %d rows; %d of them are a record key '
+          'somewhere on the disc'
+          % (len(seen), sum(seen.values()),
+             sum(1 for v in seen if v in keys)))
+    print('  not a key anywhere: %s'
+          % (', '.join(str(v) for v in sorted(seen) if v not in keys)
+             or 'none'))
+    n_hi = sum(v for (lo, hi), v in pairs.items() if hi is not None)
+    n_up = sum(v for (lo, hi), v in pairs.items() if hi == lo + 1)
+    print('  +0x57 is set on %d rows and is +0x37 plus one on %d of them'
+          % (n_hi, n_up))
+    same = sum(1 for g in per.values()
+               if g and len({lo for lo, _ in g.values()}) == 1)
+    print('  %d of %d quests write one tier on every stage they visit'
+          % (same, sum(1 for g in per.values() if g)))
+
+    # -- the story
+    band: dict = collections.defaultdict(collections.Counter)
+    for c in reward.catalog(root):
+        g = per.get(c.quest)
+        if g:
+            band[c.chapter][max(lo for lo, _ in g.values())] += 1
+    print('\nthe tier a chapter spawns at')
+    for ch in sorted(band):
+        print('  chapter %2d   %s'
+              % (ch, ' '.join('%d x%d' % kv
+                              for kv in sorted(band[ch].items()))))
+
+    # -- the other table that already carries a tier
+    n: collections.Counter = collections.Counter()
+    for q in _pacs(root):
+        p = root / 'quest.cpk' / (q.name + '.pac') / 'item_reward_region.bin'
+        if not p.is_file():
+            continue
+        got = q.tiers()
+        want: dict = collections.defaultdict(set)
+        for stage, ids in q.slots().items():
+            lo, hi = got.get(stage, (None, None))
+            for mid in ids:
+                if mid is None or lo is None:
+                    continue
+                want[mid].add(lo)
+                if hi is not None:
+                    want[mid].add(hi)
+        here: dict = collections.defaultdict(set)
+        for b in reward.blocks(p, False):
+            if b.monster is not None:
+                here[b.monster].add(b.head[2])
+                n['blocks'] += 1
+                n['block at a named tier'] += b.head[2] in want.get(
+                    b.monster, ())
+                n['block at 0'] += b.head[2] == 0
+        for mid, tiers in here.items():
+            if mid not in want:
+                continue
+            n['monsters'] += 1
+            n['a tier in common'] += bool(tiers & want[mid])
+            n['the same pair'] += tiers == want[mid]
+    print('\nitem_reward_region.bin carries a tier of its own, in the third '
+          'word of a block head')
+    print('  %d of %d blocks sit at a tier enemy.bin names for that monster, '
+          'against %d of %d for a constant 0'
+          % (n['block at a named tier'], n['blocks'], n['block at 0'],
+             n['blocks']))
+    print('  %d of %d monsters share a tier with their enemy.bin row, and %d '
+          'name exactly the same pair'
+          % (n['a tier in common'], n['monsters'], n['the same pair']))
+    return 0 if n['a tier in common'] * 20 >= n['monsters'] * 19 else 1
+
+
+def _pacs(root):
+    """Every quest, opened one directory at a time - `collect` walks the
+    whole tree, which is minutes rather than seconds."""
+    qdir = pathlib.Path(root) / 'quest.cpk'
+    for p in sorted(qdir.iterdir()):
+        if re.fullmatch(r'q\d+\.pac', p.name) and p.is_dir():
+            yield Quest(p.name[:-4], {t: (p / t).read_bytes()
+                                      for t in TABLES if (p / t).is_file()})
 
 
 def cmd_xref(root) -> int:
@@ -347,6 +500,8 @@ def main() -> int:
         return cmd_xref(rest[0])
     if cmd == 'enemies':
         return cmd_enemies(rest[0])
+    if cmd == 'tiers':
+        return cmd_tiers(rest[0])
     print('unknown command: ' + cmd)
     return 1
 
