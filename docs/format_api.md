@@ -627,10 +627,49 @@ MONS_KIND_ORGA
 
 `setDemoID(DEMO_S177_A, 0)` is `quest.cpk/q07607.pac/010_01_01.psq`, where
 every other quest script writes the number; `MONS_KIND_ORGA` is a monster kind
-in a mercenary debug function. So **the root table carries named constants as
-well as functions**, and these six are the only ones the scripts still reach
-for. They are the whole of it: 25 names are read off `this` and the other 19
-are the reading script's own globals.
+in a mercenary debug function. This document read that as **the root table
+carrying named constants as well as functions**, and these six being the only
+ones the scripts still reach for. They are the whole of it: 25 names are read
+off `this` and the other 19 are the reading script's own globals.
+
+### The EBOOT says the reading was wrong, and they are dead
+
+Session 30 opened the binary ([`format_self.md`](format_self.md)) and it binds
+its interface by name, in the clear. **274 of the 285 native names in this
+document are NUL-terminated strings inside it** — which is the check that says
+the list is the engine's list and not an artefact of how the scripts were
+read. None of the six is:
+
+```
+prowl_script     absent      MONS_KIND_ORGA   absent
+DEMO_S174_A      absent      DEMO_S175_A      absent
+DEMO_S176_A      absent      DEMO_S177_A      absent
+DEMO_S178_A      absent
+```
+
+So the engine does not hold them as constants. `setDemoID(DEMO_S177_A, 0)`
+reads a slot nothing ever filled and passes null, and `prowl_script()` is a
+tail call into nothing — **dead references in the shipped game**, not a hole
+in this repository's reading. The six `.cnut` were converted from a
+`prowl_script` the conversion did not carry, and one quest script was written
+against a constant somebody removed.
+
+### The eleven that are absent, and why each is
+
+The absences are informative rather than worrying, and they fall into four
+groups:
+
+- **`isRecoverPoison`, `isRecoverParalyz`, `isRecoverFaint`** — the engine
+  spells them `recoverPoison`, `recoverParalyz`, `recoverFaint`, in its own
+  AI predicate table. The `is` is the `.cnut`'s, not the engine's;
+- **`Vec3` and `EffData`** are classes rather than functions, and
+  `050_02_03` defines its own `Vec3` — which is the one name this document
+  already knew is defined twice;
+- **`SoundManager_getInstance`, `getSampleFloatArray3`, `getSampleFloatArray4`,
+  `getSampleIntArray2`, `cfTestVec3`** are a method on a receiver and four
+  helpers, registered under a name this flat list cannot see;
+- **`cfShopCannon`** is simply not there. One call site, and nothing in the
+  binary answers it.
 
 ## The library the interface sits under
 

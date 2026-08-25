@@ -168,6 +168,56 @@ STARTS = RULE | RULE2               # either flag opens a rule
 # name this reader prints, the plain and the `0x8000` forms, and the host
 # call the dispatch makes. `{b}` is the operand and `{r}` is the operand in
 # hundredths, which is how every distance is written.
+# The engine's own name for a condition term, out of the EBOOT's `AIT_*`
+# enum - `tools/self.py names`. It is a **debug table**, not a reading: the
+# 78 entries land on the disc's own id bands three times over, 21 then 19
+# then 25 then the boss block, and every one of them agrees with what the
+# six `.cnut` say the term does. Eleven ids the tables use are not in it -
+# 0xe2..0xfc and 0x42a - which is the same "the tables are newer than the
+# code that named them" this file already found in the `.cnut`.
+AIT = {
+    0x001: 'AIT_ALWAYS', 0x002: 'AIT_TOTAL_TIME',
+    0x003: 'AIT_OTHER_ZAKO', 0x004: 'AIT_OTHER_BOSS',
+    0x005: 'AIT_WALL_RANGE', 0x006: 'AIT_FLOOR_ATTR',
+    0x007: 'AIT_PLAYER_CHK', 0x008: 'AIT_RANDOM',
+    0x009: 'AIT_TYPE', 0x00a: 'AIT_ACT_TIME1',
+    0x00b: 'AIT_ACT_TIME2', 0x00c: 'AIT_ACT_TIME3',
+    0x00d: 'AIT_ACT_TIME4', 0x00e: 'AIT_ACT_TIME5',
+    0x00f: 'AIT_ACT_TIME6', 0x010: 'AIT_ACT_TIME7',
+    0x011: 'AIT_ACT_TIME8', 0x012: 'AIT_BOSS_TIME',
+    0x013: 'AIT_OTHER_ZAKO_ZERO', 0x014: 'AIT_BOSS_TO_TGT',
+    0x015: 'AIT_SAME_KIND', 0x065: 'AIT_HP_CHK',
+    0x066: 'AIT_DAMAGED', 0x067: 'AIT_DOWNED',
+    0x068: 'AIT_ANGRY', 0x069: 'AIT_ST_POISON',
+    0x06a: 'AIT_RCV_POISON', 0x06b: 'AIT_RCV_PARALYZ',
+    0x06c: 'AIT_RCV_FAINT', 0x06d: 'AIT_PARTS_DESTROY',
+    0x06e: 'AIT_LAST_ACT', 0x06f: 'AIT_ACT_SUCCESS',
+    0x070: 'AIT_ANGRY_REQ', 0x071: 'AIT_STAGGER_CHK',
+    0x072: 'AIT_REACT', 0x073: 'AIT_PARTS_DMG',
+    0x074: 'AIT_TO_ACTIVE', 0x075: 'AIT_ROT_FAILED',
+    0x076: 'AIT_ACT_FAILED', 0x077: 'AIT_ANGRY_TIME',
+    0x0c9: 'AIT_TGT_HP_CHK', 0x0ca: 'AIT_TGT_JOB',
+    0x0cb: 'AIT_TGT_GROUND', 0x0cc: 'AIT_TGT_ATTACK',
+    0x0cd: 'AIT_TGT_GUARD', 0x0ce: 'AIT_TGT_SWAY',
+    0x0cf: 'AIT_TGT_JUMP', 0x0d0: 'AIT_RANGE_S',
+    0x0d1: 'AIT_RANGE_M', 0x0d2: 'AIT_RANGE_L',
+    0x0d3: 'AIT_RANGE', 0x0d4: 'AIT_TGT_DMP_CHK',
+    0x0d5: 'AIT_TGT_FRONT', 0x0d6: 'AIT_TGT_REAR',
+    0x0d7: 'AIT_FRONT_TGT', 0x0d8: 'AIT_REAR_TGT',
+    0x0d9: 'AIT_LEFT_TGT', 0x0da: 'AIT_RIGHT_TGT',
+    0x0db: 'AIT_LOCK_RANGE', 0x0dc: 'AIT_TGT_POS_Y',
+    0x0dd: 'AIT_TGT_AREA_CHK', 0x0de: 'AIT_TGT_OBJECT',
+    0x0df: 'AIT_TGT_DAMAGE', 0x0e0: 'AIT_TGT_DOWN',
+    0x0e1: 'AIT_SCL_RANGE', 0x3e9: 'AIT_B15_UP_REQ',
+    0x3ea: 'AIT_B15_POS_UP', 0x3eb: 'AIT_B15_PARTS',
+    0x3ec: 'AIT_B15_LAST_CNG', 0x3ed: 'AIT_B15_LAST_BRK',
+    0x3f3: 'AIT_B09_POS_FLY', 0x3fd: 'AIT_B11_MODE',
+    0x3fe: 'AIT_B11_MV_SLOW', 0x3ff: 'AIT_B11_MV_FAST',
+    0x41b: 'AIT_B05_01_LEGION', 0x425: 'AIT_B01_02_SPELL',
+    0x426: 'AIT_B18_TIRE', 0x427: 'AIT_B19_TIRE',
+}
+
+
 TERMS = {
     0x001: ('always', '', 'never', 'true'),
     0x002: ('total_time', '<= {b}s', '> {b}s', 'getTotalTime'),

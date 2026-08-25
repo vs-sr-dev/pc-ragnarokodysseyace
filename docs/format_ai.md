@@ -286,6 +286,70 @@ AI_Z01_Orc      ai_type != 2,  ai_type == 1 or ai_type == 0
 `getAngleTypeAtTarget()` cannot return 217 and 218 at once, and
 `checkRangeParam()` cannot be 0 and 2 at once.
 
+### The engine's own name for a term — session 30
+
+The EBOOT is open ([`format_self.md`](format_self.md)), and the first thing it
+gave up is the table this document has wanted since session 18: the `AIT_*`
+enum `printAitIdName` prints from, **78 names on a 24-byte stride**.
+
+```
+$ python tools/self.py names eboot.elf
+78 AIT_* condition-term names
+  0x001  AIT_ALWAYS
+  0x002  AIT_TOTAL_TIME
+  ...
+  0x005  AIT_WALL_RANGE
+  0x006  AIT_FLOOR_ATTR
+  ...
+  0x0d0  AIT_RANGE_S
+  0x0d1  AIT_RANGE_M
+  0x0d2  AIT_RANGE_L
+  0x0d5  AIT_TGT_FRONT
+  0x0d6  AIT_TGT_REAR
+  0x0d7  AIT_FRONT_TGT
+  0x0d8  AIT_REAR_TGT
+  0x0d9  AIT_LEFT_TGT
+  0x0da  AIT_RIGHT_TGT
+```
+(the tool prints all 78; [`ai.py`](../tools/ai.py) holds them as `AIT`)
+
+**The join is the band structure, three times over.** The enum is a flat run
+of names; the disc's term ids come in bands — `0x001`–`0x015`, `0x065`–`0x077`,
+`0x0c9`–`0x0e1`, then the boss block. Laid end to end the bands are **21, 19
+and 25 long and the enum's first three runs are 21, 19 and 25**, and the boss
+names that follow are five `B15`, one `B09`, three `B11`, one `B05`, one
+`B01`, one `B18` and one `B19` against ids 1001–1005, 1011, 1021–1023, 1051,
+1061, 1062 and 1063 — **the same seven functions in the same order**, which
+[`ai.py`](../tools/ai.py) had already worked out from the `.cnut` alone.
+
+Three coincidences of that size are not a coincidence. And what falls out is
+this document's own homework marked:
+
+- **every one of the 65 named ids agrees with the reading taken off the
+  `.cnut`.** `AIT_HP_CHK` is `getHpRate`, `AIT_STAGGER_CHK` is the stagger
+  count, `AIT_SCL_RANGE` is the range divided by the scale, `AIT_TGT_SWAY` is
+  the target dodging. Nothing had to be revised;
+- **`0x0d5`/`0x0d6` are `AIT_TGT_FRONT`/`AIT_TGT_REAR` and `0x0d7`–`0x0da` are
+  `AIT_FRONT_TGT`/`REAR_TGT`/`LEFT_TGT`/`RIGHT_TGT`.** That settles the
+  reading [`brain.py`](../engine/brain.py) declared as its own and could not
+  prove: *to* the target is where the target sits in my frame, *at* the target
+  is where I sit in its. Two bands and four, named in the engine's word order;
+- **`0x0d0`–`0x0d2` are `AIT_RANGE_S`, `_M` and `_L`** — three ordered bands,
+  which is the other reading `brain.py` declared. What the engine's names do
+  *not* say is where the far band ends, so the "twice the range" half of that
+  reading stands unproved;
+- **`0x077` is `AIT_ANGRY_TIME`**, which gives timer id 119 a name it never
+  had: it is how long the monster has been angry;
+- **two ids get a first name**: `0x005` `AIT_WALL_RANGE` and `0x006`
+  `AIT_FLOOR_ATTR`. Neither is used by any of the 144 tables, which is why
+  nothing had found them — a distance to a wall and a floor attribute, and
+  the second is the only place on this disc that suggests the `CCLS` surface
+  codes are read by anything at all.
+
+Thirteen of the 78 names are used by no table, and **eleven of the 76 ids the
+tables do use have no name** — which is the next section, and the shape of it
+just got sharper.
+
 ### The ten terms the dispatch does not carry
 
 `0x0e2`–`0x0e6`, `0x0e9`, `0x0f0`, `0x0fa`–`0x0fc`, 1,094 instructions between
@@ -310,6 +374,15 @@ after all. The ten that remain are characterised only by their operands:
 
 The 226/227/228 cluster reads as a query about *other* monsters — a radius, an
 action they are performing and a count — but nothing on the disc says so.
+
+**And nothing in the EBOOT says so either**, which is session 30's
+contribution to this list and is worth stating as a result rather than as a
+disappointment. The `AIT_*` enum stops at `AIT_SCL_RANGE` = `0x0e1`; these ten
+are `0x0e2` and up. So the ten terms are missing from the shared `.cnut`
+include **and** from the shipped engine's own debug name table, and the
+eleventh, `0x42a`, is missing from the enum too while `b19_00`'s script names
+it. The tables are newer than both artefacts that could have named them, and
+the only thing left that can is the dispatch itself, in code.
 
 ### What one monster reads like
 
@@ -540,7 +613,10 @@ is a shared default that two monsters override.
 
 - **The seven per-boss escape hatches.** `checkB01Term` and its six siblings
   are host functions, not script: nine tables call thirteen term ids on 458
-  instructions and **nothing on the disc defines any of them**. `b18` and
+  instructions and **nothing on the disc defines any of them**. Session 30
+  located all seven in the EBOOT's own predicate table — B01, B05, B09, B11,
+  B15, B18, B19, with a function address each — so what is left is reading
+  seven small functions rather than finding them. `b18` and
   `b19` implement theirs for their own variants - `AI_B01_OrcKing_2` uses term
   1061 and ships no `.cnut` of its own - so the implementation is once per
   boss family, inside the binary. Same shape of hole as `prowl_script`;
@@ -548,8 +624,10 @@ is a shared default that two monsters override.
   by running it: 103 throws on a non-zero operand and 115 is never true. Both
   read cleanly if the engine's `isDowned` and `getPartsDamageCount` return
   numbers rather than flags, which is what their names say;
-- **Ten of the 76 terms**, 1,094 instructions, listed above. They are not in
-  the `.cnut` dispatch because the tables are the newer artefact. (`ai.py ops`
+- **Ten of the 76 terms**, 1,094 instructions, listed above, plus `0x42a`.
+  They are not in the `.cnut` dispatch because the tables are the newer
+  artefact, and session 30 showed they are not in the EBOOT's `AIT_*` enum
+  either. (`ai.py ops`
   counts 77 codes; the seventy-seventh is the all-zero word that ends a
   file.)
 - **What the `2xx` action block means.** The ids resolve to the same `at*`

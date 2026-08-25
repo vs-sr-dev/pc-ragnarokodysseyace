@@ -598,9 +598,17 @@ the order they would block an implementation.
    JSONs. The *modifier* side is now read and named — `DEF` is ability 1 and
    `MAX HP` is ability 3 of `it_db_ability.bin`, with the range each may move
    in — and `it_db_equip.bin` turns out to be costumes and not armour. What is
-   missing is the **starting value** the modifiers apply to. **Still readable
-   from the disc if it is in a table at all; the level-up tables are the next
-   place to look.**
+   missing is the **starting value** the modifiers apply to. Session 30 went
+   looking where this line pointed and there is no level-up table on the disc:
+   `it_db_myorder*.bin` is the mercenary-order system, not a growth curve, and
+   the six class JSONs and the six class `objbin.bin` between them carry no
+   `hp` and no `def`. Two things did turn up and they narrow it rather than
+   close it — the class table carries **`sp` = 1000 on all six**, so a pool of
+   that shape is written down where `hp` is not, and it carries `hp_rec` 3
+   every `hp_rec_interval` 6 frames, which is a regeneration **in absolute hit
+   points**. With ability 3 free to move MAX HP by ±8000, that puts the base
+   in the thousands. **Still readable if it is in a table at all, and now more
+   likely to be a constant in the EBOOT.**
 3. **What `+0x35` is a strength of** — stagger points or a multiplier on a
    damage-derived value. §5 gives the measurement that separates them and the
    disc does not contain it. **A runtime settles this; the EBOOT settles it
@@ -618,7 +626,20 @@ the order they would block an implementation.
    6, 7, 8 across the fifteen entries, per class rather than global, and it
    must be what a weapon or a skill declares to pick its block. It is not
    `it_db_weapon.bin` column 5, whose six values are a different space.
-   **Readable — one more join, against the skill table.**
+   **Session 30 tried the join this line called for and it lost.** The value
+   sets are `as` {0,5}, `cl` {0,2,7,8}, `hs` {0,1}, `ht` {0}, `mg` {0,3,4,5,6},
+   `sw` {0} — the first entry of every class is 0 — and nothing carries them:
+   not any of the 116 bytes of the 634 player `.anmcmd` hit records, not any
+   of the 29 columns of `it_db_weapon.bin` grouped by class, and not
+   `it_db_ace_skill.bin`, whose 42 rows are the six classes' special attacks
+   and whose own per-class column takes a different constant each
+   (`sw` 0, `hs` 1, `as` 2, `mg` 3, `cl` 4, `ht` 5 — a *sixth* class
+   numbering on this disc). The bases the third word sits beside are
+   `KATAR`/`SOMERSAULT`, `MACE`/`SHIELD`/`HOLY`/`GODFIST`, `DRILL`/`SCREW`,
+   `ARROW`, `STAFF`/`FIRE`/`GRAVITY`/`THUNDER`/`ICE` and `SWORD`, so the
+   selector is *which attack form is active*, and no data file on the disc
+   declares one. **Reclassify: EBOOT.** It is the engine's own weapon-form
+   enum, which is the same answer as item 4 and for the same reason.
 8. **`react_p`'s currency.** A pool of the same order as `stg_p[3]`,
    independently tuned, named by one tension table and consumed by nothing
    else the disc shows. **EBOOT.**
@@ -628,11 +649,14 @@ the order they would block an implementation.
    columns are read**: session 23 named the lifetime, the speed and the
    gravity, and checked them against the class's search radius. **Readable.**
 
-Four of the nine are ordinary disc work and five want the EBOOT — and all five
-of those are one function each rather than a subsystem, which is the same
-answer [`STRATEGY.md`](STRATEGY.md) has been converging on since session 10:
-what is left inside the binary is **the combat loop and the implementations**,
-and this document is the list of which ones.
+**Three of the nine are ordinary disc work and six want the EBOOT** - it was
+four and five until session 30 moved item 7 across by testing it - and every
+one of those six is one function or one enum rather than a subsystem, which is
+the same answer [`STRATEGY.md`](STRATEGY.md) has been converging on since
+session 10: what is left inside the binary is **the combat loop and the
+implementations**, and this document is the list of which ones. Since session
+30 the binary is **open** - see [`format_self.md`](format_self.md) - so the
+six are a reading job rather than a phase.
 
 ---
 
