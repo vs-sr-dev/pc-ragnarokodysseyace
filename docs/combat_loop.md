@@ -28,8 +28,8 @@ read separately, and [`combat.py`](../tools/combat.py) is those joins —
   a motion plays              CNOM
   a frame fires a volume      .anmcmd op 0/27  ─┐
       shape, bone, vectors                      │
-      power  +0x35                              │
-      size   +0x30                              │
+      +0x35 -> the hit level                   │
+      +0x30 -> the damage's ratio               │
       cue    +0x48  (monsters only)             │
                                                 ▼
                                            col_hit capsules      ELBN objbin
@@ -99,8 +99,27 @@ sound" — is true of the monsters and empty on the players, and counting all
 Two populations an order of magnitude apart. [`format_anmcmd.md`](format_anmcmd.md)
 establishes that the byte rises with the charge level within a class and with
 the cue's size suffix across the disc, so it is a strength; **what it is a
-strength of is still open**, and §5 gives the two candidate readings and the
-measurement that separates them.
+strength of** was open for ten sessions and §5 gave the two candidate readings.
+
+**Session 31 settled it, and it is neither of them.** `FUN_0060fe50` copies a
+116-byte `.anmcmd` record into the 0x130-byte runtime one field by field, and
+it assigns `+0x103` from `+0x35`. `+0x103` is what `FUN_006235fc` — the
+function the hit resolver calls to get the value it names *level* — reads
+first. So **`+0x35` is the hit level's input**, which makes it ledger item 4's
+business and not the damage's. It is a strength of the *reaction*.
+
+### And `+0x30` is the damage's own ratio
+
+The same copy assigns the runtime record's **first float** from `+0x30`, and
+that float is the attack builder's first argument — `a[4]`, the term the
+attack is multiplied by. [`format_anmcmd.md`](format_anmcmd.md) had already
+measured `+0x30` without knowing what it was: *"a ratio, near 1 whatever the
+actor's size"*, median 1.00, **r = −0.04** against actor size where `+0x2C`
+scores 0.75. It is the same on both sides — player median 1.00 with a p25 of
+0.55 and a max of 10, monster median 1.00 with a max of 80 — which is what a
+per-move damage ratio should look like and is exactly what `+0x35` does not
+look like. Two fields, two jobs, and the one that was named *size* is the one
+the damage uses.
 
 ---
 
@@ -318,6 +337,16 @@ The second is the one to build; the first is the one the byte's name would
 suggest if it had one. Nothing on the disc separates them, and a runtime does:
 put a body on the mesh, fire the record, and see whether a level-1 sword takes
 twelve hits or one to make a boss flinch.
+
+**Session 31 narrowed it from the other end.** `+0x35` reaches the runtime hit
+record at `+0x103`, and `FUN_006235fc` — the function the hit resolver calls
+just before the damage, whose result it names *level* and hands to both the
+damage and the reaction chooser — starts from that byte, turns it into a
+float, passes it through the same listener chain the damage terms go through
+(base, add, rate) and returns an int. So the byte **is** run through a
+modifier chain rather than added raw, which is the second reading's shape; and
+it is the *hit level's* input, which is ledger item 4. Whether the level it
+produces is also what indexes `stg_p` is the piece that is left.
 
 ### Hit-stop, and a split that is exactly the naming convention
 
@@ -590,7 +619,9 @@ in the weapon table carries a status id.
 What a working combat loop needs and the disc does not give. Nine items, in
 the order they would block an implementation.
 
-1. **The damage formula. Read — session 31, [`eboot.md`](eboot.md).** It is
+1. **The damage formula. Read and run — session 31,**
+   [`eboot.md`](eboot.md) **and** [`damage.py`](../engine/damage.py)**.**
+   It is
    `FUN_00622fe4`, and the shape is an attack term, a defence term, a
    subtraction and a floor:
 
@@ -607,10 +638,11 @@ the order they would block an implementation.
    the attacker's list and the defence structure over the target's, in
    between. The attacker's base attack is a **virtual call** and the target's
    `def` is a field at `+0x2c4`, which is the disc's own split — 82 actors
-   carry `atk` and all 82 are monsters. **Not yet implemented**; see
-   [`parity.md`](parity.md).
-2. **The player's base attack, defence and hit points. Read — session 31,
-   [`eboot.md`](eboot.md).** They are `misc.cpk/ccparamobj.bin`, an `ELBN`
+   carry `atk` and all 82 are monsters. [`damage.py`](../engine/damage.py) is
+   it, line for line, and a monster now dies of its own `hp`:
+   [`parity.md`](parity.md)'s S1 and S2 are retired.
+2. **The player's base attack, defence and hit points. Read and run —
+   session 31, [`eboot.md`](eboot.md).** They are `misc.cpk/ccparamobj.bin`, an `ELBN`
    this repository has been able to open since session 19 and never looked
    inside: six tables called `as_lv_par`, `cl_lv_par`, `hs_lv_par`,
    `ht_lv_par`, `mg_lv_par` and `sw_lv_par`, 224 bytes each, which is **14
@@ -651,12 +683,16 @@ the order they would block an implementation.
    what shape to look for**: sixteen bytes, `{f32, f32, u32}`, indexed twice.
    One scan of every file on the disc for that shape returns six hits and they
    are all in one file.
-3. **What `+0x35` is a strength of** — stagger points or a multiplier on a
-   damage-derived value. §5 gives the measurement that separates them and the
-   disc does not contain it. **A runtime settles this; the EBOOT settles it
-   sooner.**
+3. **What `+0x35` is a strength of — half settled, session 31.** It is not the
+   damage's: `FUN_0060fe50` copies it to the runtime record's `+0x103` and the
+   damage's ratio comes from `+0x30` instead. `+0x103` is what item 4's
+   function reads, and that function runs it through the same base/add/rate
+   chain the damage terms use rather than adding it raw — which is §5's second
+   reading. **What is left is whether the value it produces is also what
+   indexes `stg_p`.**
 4. **What computes the hit level.** Three levels, both consumers agree on
-   three, and the function from damage to 0/1/2 is nowhere. **EBOOT.**
+   three, and the function from damage to 0/1/2 is nowhere. **EBOOT —
+   `FUN_006235fc`, located session 31, not yet read out.**
 5. **The sign convention of a region's flat modifier — settled, session 31.**
    The defence term is **subtracted**, one `fsubs`, and it is clamped to zero
    before the subtraction so a negative one cannot add. A weak point's `-450`

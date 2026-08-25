@@ -23,12 +23,14 @@ So: one page, four classes, and a rule for each about what retires it.
 **A stand-in** is wrong by construction. The disc has the thing, this
 repository cannot read it, and a number stands where it goes. A stand-in
 produces a value the game would not produce. **These are the parity blockers**
-and there are seven.
+and there are five. There were seven until session 31, which read the damage
+expression out of the EBOOT and then ran it.
 
 **A reading** is an interpretation of a field the disc really does have,
 adopted because it fits, with no second witness yet. It may well be right;
-nothing here proves it. Three — it was five when this page was written, and
-the EBOOT retired two of them the same day.
+nothing here proves it. Five — it was five when this page was written, the
+EBOOT retired two of them the same day, and running the damage expression
+introduced two more.
 
 **A convention** is a choice the disc does not make at all and an
 implementation must. There is no right answer to recover — only a
@@ -44,59 +46,68 @@ leftovers.
 
 ---
 
-## 1. Stand-ins — seven, and three of them are one missing function
+## 1. Stand-ins — five, and two of them went in session 31
 
 | | what | where | what it stands in for |
 |---|---|---|---|
-| S1 | `BLOWS = 3` | [`mission.py`](../engine/mission.py) | the damage formula |
-| S2 | `BREAKS = 2` | [`purse.py`](../engine/purse.py) | the same, for a part |
+| ~~S1~~ | ~~`BLOWS = 3`~~ | **retired, session 31** | the damage formula, now read and run |
+| ~~S2~~ | ~~`BREAKS = 2`~~ | **retired, session 31** | the same, for a part |
 | S3 | reward kind 0 | [`purse.py`](../engine/purse.py) | what picks between kinds 0, 2 and 3 |
 | S4 | `RESUME`'s frame counts | [`host.py`](../engine/host.py) | how long the host holds a blocked script |
 | S5 | 214 of 285 script calls return 0 | [`host.py`](../engine/host.py) | their implementations |
 | S6 | 28 of 47 AI predicates answer with a default | [`brain.py`](../engine/brain.py) | the state of a fight that tracks damage |
 | S7 | `PROGRESS = 11000` | [`purse.py`](../engine/purse.py) | a save file |
 
-### S1, S2 — a monster dies on its third landed volume
+### S1, S2 — retired, session 31
 
-The most conspicuous invention in the repository and the one the run prints
-every time it finishes:
+For nine sessions the most conspicuous invention in the repository was the
+line the run printed every time it finished:
 
 ```
 a monster dies on the 3 landed volumes and a part comes off on the 2 -
 this run's policy, not the disc's
 ```
 
-Every input to the real answer is on the disc and read. The weapon's attack is
-`it_db_weapon.bin` column 3; the monster's `hp` and `def` are in its own JSON,
-now at the right difficulty tier; the region's flat modifier and its six
-multipliers are in `region_data`; `cri` and `dmg_critical_factor` are in the
-class table. What was missing is the **expression**, which is
-[`combat_loop.md`](combat_loop.md) ledger item 1.
+Every input to the real answer was on the disc and read — the weapon's attack
+in `it_db_weapon.bin` column 3, the monster's `hp` and `def` in its own JSON
+at its own tier, the region's flat modifier and its six multipliers in
+`region_data`, `cri` and `dmg_critical_factor` in the class table. What was
+missing was the **expression**.
 
-**Session 31 read it** — `FUN_00622fe4`, in full, in [`eboot.md`](eboot.md) —
-**and then read item 2 as well**: the player's base attack, defence and hit
-points are `misc.cpk/ccparamobj.bin`, six tables of fourteen rows, chosen by
-story progress, and `python tools/elbn.py levels extract/tree` prints them.
-So every input to the expression is now on the disc and read, and the
-expression is written down.
+**Session 31 read it and wrote it.** `FUN_00622fe4` is in
+[`eboot.md`](eboot.md) with an address on every term and in
+[`damage.py`](../engine/damage.py) line for line; ledger item 2 — the
+player's own `atk`, `def` and `hp` — turned out to be `ccparamobj.bin` on the
+disc, six tables of fourteen rows chosen by story progress. The run now
+prints what it dealt instead of what it decided:
 
-The stand-in is still here, because **reading a formula and running one are
-different things**. What is left is implementation: the engine has to build
-the two structures, apply the listener chain, subtract, and let a monster's
-own `hp` come down. That is a session's work and it wants the full sweep
-afterwards, since `BLOWS` reaches the kill count, the arena timing and the
-pay-out.
+```
+a monster dies of its own hp: 4905 damage dealt, 1 of it critical
+  the player is sw at row 0 - atk 80 + 52 from its weapon, def 30, hp 1000
+```
 
-Until it is read, a monster's hit points are an *input to the run* rather than
-something the run takes down, and the kill count — which is what closes an
-arena, and which the script counts for itself — is driven by a threshold this
-repository chose. **Everything downstream of a kill inherits the stand-in**:
-the arena timing, the pay-out, and the two headline numbers in
-[`milestone_walk.md`](milestone_walk.md).
+`BLOWS` and `BREAKS` still exist in the source and are **no longer policy**:
+they are the fallback for an actor whose own tables will not read, and the
+run counts how often that happens rather than hiding it.
 
-*Retired by:* nothing further to read. Ledger 1 and ledger 2 were both read
-in session 31; what remains is writing it into
-[`fight.py`](../engine/fight.py) and re-running all 431 quests.
+**Two readings came with it**, and they are the only part of the expression
+that is not settled — see [§2](#2-readings--three-the-engine-acts-on), R4 and
+R5. The binary shows the defence structure's flat term defaulting to `0.0`
+and its multiplier to `1.0`; the disc shows `region_data`'s flat modifier at
+`0.0` on the median of 315 regions and its six multipliers at `1.000` on the
+median of 1,890. The neutral values match and the six multipliers are six
+where the classes are six, so that is where the two region numbers are put.
+It is an argument, not a proof.
+
+**And retiring these two sharpened S7**, which is the useful kind of result.
+The player's row in the growth table is chosen by story progress, so a
+chapter-14 quest run at the `PROGRESS = 11000` floor fields a level-0 player
+against level-14 monsters: a thirteen-quest sample killed **7 of 50** and
+closed **0 of 9** arenas. Taking the row from the quest's own progress
+requirement — which is what the purse already does for its reward block —
+that becomes **61 of 82** and **7 of 14**. What is left of the gap is the
+**weapon**: the run equips the class's starting weapon because the disc does
+not say what a player would be carrying, and that is save state. See S7.
 
 ### S3 — the pay-out draws kind 0
 
@@ -175,7 +186,27 @@ that for a quest that has one; where a quest requires nothing, `PROGRESS =
 This is a small stand-in with a clean shape: it stands in for **save-game
 state**, which is not on the disc at all because it is written by the game.
 
-*Retired by:* a save file, or a decision that the floor is part of a new game.
+**Session 31 made it bigger, by retiring S1.** Story progress does not only
+pick a reward block any more: `ccparamobj.bin` turns it into the row of the
+growth table the player's `atk`, `def` and `hp` come off, on fourteen
+thresholds from 12,000 to 24,000 — the same number space, ceiling included.
+So the floor is now the difference between a level-0 player and a level-13
+one, and it shows: a chapter-14 sample at the floor kills 7 of 50 and closes
+0 of 9 arenas, against 61 of 82 and 7 of 14 when the row comes from the
+quest's own requirement. The run takes the requirement wherever a quest has
+one, so the floor only bites on the quests that ask for nothing.
+
+**And it has a second half now, which is new.** The growth table is the
+player's *base*; the attack it is added to is the **weapon**, and the run
+equips the class's starting weapon because a save file is the only thing that
+would say otherwise. On a late quest that is a level-13 body swinging a
+level-1 sword, which is the whole of what is left between this engine's kill
+count and the disc's.
+
+*Retired by:* a save file, or a decision about what a new game carries — and
+the second is now the cheaper half, because `it_db_weapon.bin` column 2 is a
+tier and the quests hand weapons out in a `kind 4` reward the purse already
+reads.
 
 ### And one that was retired, in session 30
 
@@ -192,7 +223,7 @@ time; what was missing was a list saying it mattered.
 
 ---
 
-## 2. Readings — three the engine acts on
+## 2. Readings — five the engine acts on
 
 A reading is a claim about what a disc field *means*. It can be wrong without
 anything crashing, which is what makes it worth listing separately from a
@@ -203,6 +234,8 @@ convention.
 | R1 | `ry_r_walk/run/fast/fall` | the radius a body looks for ground within | four radii, four locomotion states, all six classes, no monster |
 | R2 | a heading of zero | faces `+Z` | `010_01_01`'s spawn then faces its exit and not the wall |
 | R3 | model space | is stage space, `+Z` forward | a run cycle then carries the body forwards |
+| R4 | `region_data`'s flat modifier | the defence structure's flat term | its median over 315 regions is `0.0`, which is that term's default |
+| R5 | `region_data`'s six multipliers | the defence structure's multiplier, by class | its median over 1,890 is `1.000`, which is that term's default, and six is six |
 
 R1 is session 29's and it is the newest. `ry_r` abbreviates something the disc
 never spells out; that a per-gait length growing with speed is a ground probe
@@ -227,13 +260,22 @@ One half of the second is still a reading and is marked as one at the site:
 S, M and L say the bands are ordered and do not say the far one ends at twice
 the action's range, which is still this repository's number.
 
-Two more readings sat in [`combat_loop.md`](combat_loop.md) — the unit of the
-hit record's `+0x35` and the sign of a region's flat modifier — and neither is
-listed here, because **nothing in the engine consumes them yet**. They become
-readings the moment damage exists. **One of the two will never have to
-become one**: session 31 read the damage expression and the defence term is
-subtracted, clamped to zero first, so the sign is now the binary's and not
-anybody's reading. See [`eboot.md`](eboot.md).
+R4 and R5 arrived with the damage expression and they are the only part of it
+that is not the binary's. `FUN_00622fe4`'s defence structure has six slots and
+`FUN_00245678` fills them `{def, 0.0, 1.0, 1.0, 0.0, 0.0}`; a region carries a
+flat modifier whose median over 315 regions is `0.0` and six multipliers whose
+median over 1,890 is `1.000`, with 581 of them exactly `1.0`. **The disc's
+neutral values are the builder's defaults**, and the six multipliers are six
+where the classes are six. That is the argument for putting them in slots 1
+and 3, and it is an argument.
+
+Two other readings sat in [`combat_loop.md`](combat_loop.md) — the unit of the
+hit record's `+0x35` and the sign of a region's flat modifier — and **neither
+had to become a reading**. The sign is the binary's: the defence term is
+subtracted, clamped to zero first. And `+0x35` is not the damage's business at
+all — `FUN_0060fe50` copies it to the runtime record's `+0x103`, which is what
+the *hit level* is computed from, while the damage's ratio comes from `+0x30`.
+See [`eboot.md`](eboot.md).
 
 ---
 

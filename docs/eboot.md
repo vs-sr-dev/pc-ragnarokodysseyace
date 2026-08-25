@@ -92,6 +92,12 @@ Three things say the walk stopped in the right place.
   the span a signed 16-bit `r2` displacement reaches. A 256 KB TOC has to be
   addressed in four windows, and each window's functions get their own run of
   descriptors.
+- **The container's own section table agrees, to the byte.** The `SELF` keeps
+  a 32-entry section header table in the clear past the last segment —
+  `self.py sections` prints it, names excepted, because `.shstrtab` is not in
+  the clear — and its section 23 is `addr 0x00fd01d8`, `1,324,768 bytes`.
+  That is 165,596 × 8. The walk and the table were never told about each
+  other.
 
 **And a caveat that came out of using this, not out of writing it.** 6,207 of
 the 69,691 entries carry more than one descriptor, with different TOC values —
@@ -107,12 +113,6 @@ two resolve its three slots to a plausible guard byte, object pointer and
 `ppc.py refs` accepts a hit under **any** of a function's TOCs, which is right
 for finding candidates and can over-report on the 9 % that are folded. Every
 address in this document was confirmed by reading the code it points at.
-- **The container's own section table agrees, to the byte.** The `SELF` keeps
-  a 32-entry section header table in the clear past the last segment —
-  `self.py sections` prints it, names excepted, because `.shstrtab` is not in
-  the clear — and its section 23 is `addr 0x00fd01d8`, `1,324,768 bytes`.
-  That is 165,596 × 8. The walk and the table were never told about each
-  other.
 
 Fed those 69,691 entries, the same Ghidra run that found nothing finds
 everything:
@@ -521,8 +521,23 @@ Not settled, and each now has a place to stand rather than a search:
   base attack is a virtual call, so the player's implementation of it is
   reachable and the same object will carry the rest.
 
-And one thing this does not do at all: **nothing in
-[`../engine`](../engine) has changed.** `BLOWS` and `BREAKS` are still
-stand-ins in a running engine; what this session bought is the expression they
-stand in for, in a form that can be implemented and checked. See
-[`parity.md`](parity.md).
+And then it was written into the engine. [`damage.py`](../engine/damage.py)
+is the expression line for line and
+[`mission.py`](../engine/mission.py) takes a monster's own `hp` down with it,
+so **`BLOWS` and `BREAKS` are retired** — see [`parity.md`](parity.md). Two
+things had to be decided to do it and both are marked as readings there: where
+a region's flat modifier and its six multipliers arrive in the defence
+structure. The argument is that the builder's defaults are `0.0` and `1.0` and
+the disc's medians, over 315 regions and 1,890 multipliers, are `0.0` and
+`1.000`.
+
+One more thing came out of the writing, and it is the sharpest thing this
+session found about what is *still* missing. The player's row in the growth
+table is chosen by story progress, so at `PROGRESS = 11000` — the save-file
+stand-in — a chapter-14 quest fields a level-0 player: a thirteen-quest sample
+killed **7 of 50** and closed **0 of 9** arenas. Taking the row from the
+quest's own progress requirement, which is what the purse already does for its
+reward block, that becomes **61 of 82** and **7 of 14**. The gap that is left
+is the **weapon**: a level-13 body swinging a level-1 sword, because nothing
+on the disc says what a player would be carrying. Retiring one stand-in made
+another one legible, which is what the list is for.
