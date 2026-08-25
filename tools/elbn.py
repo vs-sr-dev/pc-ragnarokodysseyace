@@ -124,6 +124,7 @@ that is where the AI's own tables are.
     regions   a monster's body regions, joined to the bones and the drops
     trace     `trace_par.bin`, the weapon trail: its textures and its bones
     combo     `s_combo_graph`, the player's combo tree, and two checks on it
+    levels    `ccparamobj.bin`: the player's own atk, def and hp, by class
     lights    `stage_param`: the stage's own lighting rig, named light by light
 """
 
@@ -1263,6 +1264,113 @@ def cmd_lights(root, want: str = '*') -> int:
     return 0
 
 
+def cmd_levels(root, want: str = '*') -> int:
+    """`ccparamobj.bin`: the player's base attack, defence and hit points.
+
+    [`combat_loop.md`](../docs/combat_loop.md) ledger item 2 asked where the
+    six player classes get the three numbers their JSONs do not carry, and
+    session 30 concluded there was no growth curve on the disc. There is, and
+    it is here, under the engine's own names.
+
+    The EBOOT is what found it. The damage expression asks the attacker for
+    its attack through a virtual call; the one implementation every character
+    class shares returns `parameters + 0x2b8`, which is the `atk` the actor
+    JSONs parse - so a player's `atk` is not absent, it is *written* into the
+    same field by something else. That something reads a record of
+    `{f32 atk, f32 def, u32 hp, u32 ap}` at `table[job][level]`, sixteen bytes
+    to a row, and this file is the table.
+
+    Four things check, and none of them was arranged:
+
+    - **the header and the table agree.** `<class>_par` is eight bytes reading
+      `(14, offset)`, and the offset is `<class>_lv_par`, whose 224 bytes are
+      14 rows of 16;
+    - **`job_par` has eight slots and two of them are zero.** The six that are
+      not are the job ids `it_db_weapon.bin` column 5 uses - 0, 1, 3, 4, 5, 7 -
+      which is a numbering this repository has carried since session 21 without
+      knowing why it skipped 2 and 6. The EBOOT carries eight job names in one
+      run, alphabetically: `assassin`, `cleric`, `gunner`, `hummer`, `hunter`,
+      `mage`, `ninja`, `sword`. The holes are `gunner` and `ninja`;
+    - **the level comes from story progress.** The last entry is fourteen
+      `(threshold, level)` pairs, 12000 to 24000 every 1000 with 0 at the
+      floor - and [`format_reward.md`](../docs/format_reward.md) reads a reward
+      block's head as *"a story-progress threshold: 0, or 11000..24000"*. Same
+      space, same ceiling;
+    - **the growth stops before the table does.** Rows 10 to 13 repeat row 9
+      on all six classes, so the last four levels move nothing.
+    """
+    hits = [(path, blob) for path, blob in collect(root, 'ccparamobj.bin')
+            if path.rsplit('/', 1)[-1] == 'ccparamobj.bin']
+    if not hits:
+        print('no ccparamobj.bin under %s' % root)
+        return 1
+    path, blob = hits[0]
+    f = Elbn(blob, path)
+    by = f.by_name()
+    who = {'as': 'assassin', 'cl': 'cleric', 'hs': 'hammersmith',
+           'ht': 'hunter', 'mg': 'mage', 'sw': 'warrior'}
+    order = ('sw', 'hs', 'as', 'ht', 'mg', 'cl')
+    print(path)
+    print('  %d entries; the six classes, their headers and their tables'
+          % f.count)
+
+    rows: dict = {}
+    agree = 0
+    for k in order:
+        head, table = by.get('%s_par' % k), by.get('%s_lv_par' % k)
+        if head is None or table is None:
+            print('  %s: missing' % k)
+            continue
+        n, at = struct.unpack_from('>II', f.buf, HEADER + head.offset)
+        if n * 16 == table.size and at == table.offset:
+            agree += 1
+        rows[k] = [struct.unpack_from('>ffII', f.buf,
+                                      HEADER + table.offset + i * 16)
+                   for i in range(table.size // 16)]
+    print('  the header says (count, offset) and the table is that long, on '
+          '%d of %d' % (agree, len(order)))
+
+    for group in (order[:3], order[3:]):
+        print()
+        print('  lv  ' + '  '.join('%-27s' % who[k] for k in group))
+        print('      ' + '  '.join('%-27s' % '   atk    def      hp     4th'
+                                   for _ in group))
+        for i in range(max(len(rows[k]) for k in group)):
+            line = []
+            for k in group:
+                a, d, h, ap = rows[k][i]
+                line.append('%6.1f %6.1f %7d %7d' % (a, d, h, ap))
+            print('  %2d  ' % i + '  '.join('%-27s' % x for x in line))
+
+    flat = {k: next((i for i in range(len(v) - 1, 0, -1)
+                     if v[i] != v[i - 1]), 0) for k, v in rows.items()}
+    print()
+    print('  the last row that differs from the one above it: %s' %
+          ', '.join('%s %d' % (k, flat[k]) for k in order))
+
+    job = by.get('job_par')
+    if job is not None:
+        slots = struct.unpack_from('>8I', f.buf, HEADER + job.offset)
+        name = {e.offset: e.name for e in f.entries}
+        print()
+        print('  job_par, eight slots:')
+        for i, w in enumerate(slots):
+            print('    %d  %-8s %s' % (i, '%#06x' % w,
+                                       name.get(w, '- no class -')))
+
+    root_e = by.get('s_job_data')
+    if root_e is not None:
+        ws = struct.unpack_from('>6I', f.buf, HEADER + root_e.offset)
+        n, at = ws[2] + 1, ws[3]
+        print()
+        print('  s_job_data points at job_par (%#x) and at %d '
+              '(threshold, level) pairs at %#x:' % (ws[1], n, at))
+        for i in range(n):
+            t, lv = struct.unpack_from('>Ii', f.buf, HEADER + at + i * 8)
+            print('    progress >= %6d  ->  row %d' % (t, lv))
+    return 0
+
+
 def cmd_combo(root, want: str = '*') -> int:
     """The player's combo graph, and two checks on it.
 
@@ -1393,6 +1501,8 @@ def main() -> int:
         return cmd_lights(*rest)
     if cmd == 'combo':
         return cmd_combo(rest[0], *rest[1:2])
+    if cmd == 'levels':
+        return cmd_levels(rest[0], *rest[1:2])
     print(f'unknown command: {cmd}')
     return 1
 

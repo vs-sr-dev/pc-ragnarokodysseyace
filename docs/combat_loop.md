@@ -609,7 +609,25 @@ the order they would block an implementation.
    `def` is a field at `+0x2c4`, which is the disc's own split — 82 actors
    carry `atk` and all 82 are monsters. **Not yet implemented**; see
    [`parity.md`](parity.md).
-2. **The player's base defence and hit points.** Absent from all six class
+2. **The player's base attack, defence and hit points. Read — session 31,
+   [`eboot.md`](eboot.md).** They are `misc.cpk/ccparamobj.bin`, an `ELBN`
+   this repository has been able to open since session 19 and never looked
+   inside: six tables called `as_lv_par`, `cl_lv_par`, `hs_lv_par`,
+   `ht_lv_par`, `mg_lv_par` and `sw_lv_par`, 224 bytes each, which is **14
+   rows of `{f32 atk, f32 def, u32 hp, u32}`**, with a `<class>_par` header
+   beside each reading `(14, offset)` and agreeing on all six. The warrior
+   starts at 80 / 30 / 1,000 and ends at 160 / 83 / 2,800; the mage's hit
+   points start at 700 and the hammersmith's at 1,250 — *in the thousands*,
+   which is what the line below predicted. The row is chosen by **story
+   progress**: fourteen thresholds, 12,000 to 24,000 every 1,000, in the same
+   number space [`format_reward.md`](format_reward.md) reads a reward block's
+   head in. And `job_par`'s eight slots, two of them empty, are why the disc
+   numbers its classes 0, 1, 3, 4, 5, 7: the EBOOT lists eight job names
+   alphabetically and `gunner` and `ninja` did not ship. `python tools/elbn.py
+   levels extract/tree`.
+
+   *The reasoning that got there, kept because it was wrong in an instructive
+   way:* Absent from all six class
    JSONs. The *modifier* side is now read and named — `DEF` is ability 1 and
    `MAX HP` is ability 3 of `it_db_ability.bin`, with the range each may move
    in — and `it_db_equip.bin` turns out to be costumes and not armour. What is
@@ -624,6 +642,15 @@ the order they would block an implementation.
    points**. With ability 3 free to move MAX HP by ±8000, that puts the base
    in the thousands. **Still readable if it is in a table at all, and now more
    likely to be a constant in the EBOOT.**
+
+   It was in a table, and not in the EBOOT. The search had looked at the files
+   whose names sounded right — `it_db_myorder*`, the class JSONs, the class
+   `objbin.bin` — and the table was in a container this repository could
+   already open, carrying names it had already surveyed, that nobody had read.
+   **What found it was not a better search of the disc but the binary saying
+   what shape to look for**: sixteen bytes, `{f32, f32, u32}`, indexed twice.
+   One scan of every file on the disc for that shape returns six hits and they
+   are all in one file.
 3. **What `+0x35` is a strength of** — stagger points or a multiplier on a
    damage-derived value. §5 gives the measurement that separates them and the
    disc does not contain it. **A runtime settles this; the EBOOT settles it

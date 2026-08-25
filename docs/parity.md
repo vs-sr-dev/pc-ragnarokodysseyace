@@ -74,12 +74,18 @@ class table. What was missing is the **expression**, which is
 [`combat_loop.md`](combat_loop.md) ledger item 1.
 
 **Session 31 read it** — `FUN_00622fe4`, in full, in [`eboot.md`](eboot.md) —
-and the stand-in is still here, because reading an expression and running one
-are different things. What is left before `BLOWS` and `BREAKS` can go is
-ledger item 2, the player's base attack and hit points, which item 1 turns
-out to reach through a virtual call rather than a field. So this line moves
-from *"nobody knows the formula"* to *"the formula is written down and one of
-its inputs is not"*, which is a smaller thing but not nothing.
+**and then read item 2 as well**: the player's base attack, defence and hit
+points are `misc.cpk/ccparamobj.bin`, six tables of fourteen rows, chosen by
+story progress, and `python tools/elbn.py levels extract/tree` prints them.
+So every input to the expression is now on the disc and read, and the
+expression is written down.
+
+The stand-in is still here, because **reading a formula and running one are
+different things**. What is left is implementation: the engine has to build
+the two structures, apply the listener chain, subtract, and let a monster's
+own `hp` come down. That is a session's work and it wants the full sweep
+afterwards, since `BLOWS` reaches the kill count, the arena timing and the
+pay-out.
 
 Until it is read, a monster's hit points are an *input to the run* rather than
 something the run takes down, and the kill count — which is what closes an
@@ -88,9 +94,9 @@ repository chose. **Everything downstream of a kill inherits the stand-in**:
 the arena timing, the pay-out, and the two headline numbers in
 [`milestone_walk.md`](milestone_walk.md).
 
-*Retired by:* ledger 1 — **read, session 31** — and ledger 2, the player's
-base attack and hit points, which is now the only thing between the
-expression and a monster that dies of it.
+*Retired by:* nothing further to read. Ledger 1 and ledger 2 were both read
+in session 31; what remains is writing it into
+[`fight.py`](../engine/fight.py) and re-running all 431 quests.
 
 ### S3 — the pay-out draws kind 0
 

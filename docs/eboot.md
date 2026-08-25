@@ -91,8 +91,22 @@ Three things say the walk stopped in the right place.
   `0x112b800`, `0x113b7e0` and `0x114b784` — 64 KB apart, which is exactly
   the span a signed 16-bit `r2` displacement reaches. A 256 KB TOC has to be
   addressed in four windows, and each window's functions get their own run of
-  descriptors. 6,207 entries carry more than one, which is what happens to a
-  function two windows both need.
+  descriptors.
+
+**And a caveat that came out of using this, not out of writing it.** 6,207 of
+the 69,691 entries carry more than one descriptor, with different TOC values —
+4,260 with two, 1,241 with three, 706 with all four. They are smaller than
+average (mean 84 bytes against 161, and 3 % of them reach 256 bytes against
+15 %), and **1,762 of the small ones are byte-identical to another entry**, so
+identical-code folding is certainly at work: one body, several callers, and a
+descriptor per identity. What `r2` such a body sees is therefore **not settled
+by its descriptor**, and `FUN_001b0cb0` — a lazy singleton that really does
+read `lwz r11, -0x5044(r2)` — is the case that shows it: of its four TOCs,
+two resolve its three slots to a plausible guard byte, object pointer and
+`atexit` callback, and two resolve them to a float and to noise. So
+`ppc.py refs` accepts a hit under **any** of a function's TOCs, which is right
+for finding candidates and can over-report on the 9 % that are folded. Every
+address in this document was confirmed by reading the code it points at.
 - **The container's own section table agrees, to the byte.** The `SELF` keeps
   a 32-entry section header table in the clear past the last segment —
   `self.py sections` prints it, names excepted, because `.shstrtab` is not in
@@ -356,6 +370,113 @@ and both callers place that record at a fixed offset in the parameter object:
 meet on the number the damage function reads.
 
 ---
+
+---
+
+# The player's numbers, and the file they were in all along
+
+**Ledger item 2**, and the binary found it on the disc rather than in itself.
+
+The attack term's base is a **virtual call**, `vtable + 0x10c`, and that looked
+like the split: the monster reads a field, the player computes from the
+weapon. It is not the split. Bounding each vtable by its own length and
+reading slot `+0x10c` out of all 1,169 typeinfo objects gives **three
+implementations**, and one of them covers **all 67 `CH*` classes** — the six
+player classes and every monster together:
+
+```c
+double CHCharacter::attack(Actor *this) {          /* 0x002471bc */
+    if (this->parameters == 0) return 0.0;
+    return *(float *)(this->parameters + 0x2b8);   /* atk */
+}
+double CHCharacter::attackAdd(Actor *this) {       /* 0x0024a098 */
+    ...                                            /* +0x2c0 */
+}
+```
+
+`+0x2b8` is `atk` and `+0x2c0` is the offset the parameter reader **skips** —
+`atk` at record `0x74`, `cri` at `0x78`, `def` at `0x80`, and nothing parsed at
+`0x7c`. So a player's `atk` is not absent from the struct. It is *written* into
+it by something that is not the JSON, and the setters say so plainly:
+
+```
+0x0064a82c  stfs f1,0x2b8(r3)   stfs f1,0x9c(r3)   blr     set atk
+0x0064a838  stfs f1,0x2c4(r3)   stfs f1,0xa8(r3)   blr     set def
+0x0064a844  stfs f1,0x2c0(r3)   stfs f1,0xa4(r3)   blr     set atk add
+0x0064a850  stfs f1,0x244(r3)   stfs f1,0x28(r3)   blr     set hit points
+```
+
+Four setters, twelve bytes each, and each writes the field **twice** — once at
+`+0x244` and once at `+0x28`, exactly `0x21c` apart. That is the parameter
+object holding two copies of the same record, the parsed defaults and the
+resolved values, which is the pair `FUN_0064b3d8` walks side by side.
+
+Three callers set them, and one is the answer:
+
+```c
+FUN_006dba28() -> setHp    /* rec + 8, an int   */
+FUN_006dba88() -> setAtk   /* rec + 0, a float  */
+FUN_006dbaac() -> setDef   /* rec + 4, a float  */
+
+int record(this, job, level) {           /* FUN_006db9fc */
+    return *(int *)(this->table[job] + 4) + level * 0x10;
+}
+```
+
+**A sixteen-byte record, indexed by job and by level.** That is a growth
+curve, and `combat_loop.md` item 2 had concluded there was none on the disc.
+
+## `misc.cpk/ccparamobj.bin`
+
+There is. It is an `ELBN` — a format this repository has read since session 19
+— and it had been sitting in the survey with its contents unread, under the
+engine's own names:
+
+```
+$ python tools/elbn.py levels extract/tree
+misc.cpk/ccparamobj.bin
+  19 entries; the six classes, their headers and their tables
+  the header says (count, offset) and the table is that long, on 6 of 6
+
+  lv  warrior                      hammersmith                  assassin
+         atk    def      hp     4th     atk    def      hp     4th     atk    def      hp     4th
+   0    80.0   30.0    1000    1000   125.0   35.0    1250     850    80.0   30.0     800    1200
+   9   160.0   83.0    2800    2800   190.0   80.0    3500    2200   140.0   68.0    2200    3300
+  13   160.0   83.0    2800    2800   190.0   80.0    3500    2200   140.0   68.0    2200    3300
+```
+
+`as_par`, `cl_par`, `hs_par`, `ht_par`, `mg_par`, `sw_par` are eight bytes
+each and read `(14, offset)`; `as_lv_par` and its five siblings are 224 bytes
+each, which is 14 rows of 16. **The header and the table agree on all six.**
+
+Item 2 asked for *"the starting value the modifiers apply to"* and said, from
+`hp_rec` and ability 3's ±8000, that it had to be **in the thousands**. It is:
+700 for the mage, 1,250 for the hammersmith.
+
+Three more things fall out, and none of them was arranged.
+
+- **`job_par` has eight slots and two are zero** — `as`, `cl`, —, `hs`, `ht`,
+  `mg`, —, `sw`. Those are the job ids `it_db_weapon.bin` column 5 uses,
+  **0, 1, 3, 4, 5, 7**, a numbering this repository has carried since session
+  21 without knowing why it skips 2 and 6. The EBOOT answers that too: eight
+  job names sit in one run at `0x00f01f30`, alphabetically — `assassin`,
+  `cleric`, **`gunner`**, `hummer`, `hunter`, `mage`, **`ninja`**, `sword`.
+  The two holes are the two jobs that did not ship.
+- **The level is story progress, bucketed.** `s_job_data` points at fourteen
+  `(threshold, row)` pairs: 12,000 to 24,000 every 1,000, with 0 at the floor.
+  [`format_reward.md`](format_reward.md) reads a reward block's head as *"a
+  story-progress threshold: 0, or 11000..24000"* — **the same number space and
+  the same ceiling**, read off a different table by a different tool three
+  sessions ago. So the player levels with the story and not with kills, which
+  is what a game with no experience table on its disc had to be doing.
+- **The growth stops before the table does.** Row 9 is the last that differs
+  from the one above it, on all six classes, so progress 21,000 to 24,000
+  moves nothing. The curve ends four rows early.
+
+The fourth column is a reading and is marked as one: it runs the same curve,
+it equals `hp` exactly on the warrior, the hunter and the cleric and differs
+on the other three, so it is a second pool — and the only other pool the game
+names is `it_db_ability.bin` ability 4, *Raises MAX AP*.
 
 ## How to rebuild all of this
 

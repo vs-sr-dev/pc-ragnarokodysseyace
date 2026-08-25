@@ -137,6 +137,18 @@ tables, `s_breathing_prob`, `eff_hitlevel_tbl`, `se_hitlevel_tbl`. That is the
 same territory the JSON in [`params.md`](params.md) covers, in a second file
 per class. *The records* below reads both it and the monsters' side.
 
+And one of the "13 more files" turned out to be the one the combat loop had
+been missing for ten sessions. **`misc.cpk/ccparamobj.bin` is the player's own
+growth curve**: `as_lv_par`, `cl_lv_par`, `hs_lv_par`, `ht_lv_par`,
+`mg_lv_par` and `sw_lv_par`, 224 bytes each — 14 rows of `{f32 atk, f32 def,
+u32 hp, u32}` — with an eight-byte `<class>_par` header beside each reading
+`(14, offset)`, a `job_par` of eight slots with two empty, and a
+`(threshold, row)` table that picks the row by story progress. It answers
+[`combat_loop.md`](combat_loop.md) ledger item 2, the survey had listed its
+names since session 19, and what said to look at it was the EBOOT. Tool:
+`python tools/elbn.py levels extract/tree`; the reading is in
+[`eboot.md`](eboot.md).
+
 ## The vocabulary
 
 318 names. The largest populations, with the file they live in — which is what
