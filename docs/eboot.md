@@ -181,6 +181,17 @@ shape and not planted by anything. That is what one name buys: the two
 Squirrel entry points either side of it, and `FUN_009ceda4(item, count)` in
 between, which is the engine's real add-an-item.
 
+**And a planted name is three hops from the code, not one.** `cfIsMulti`, at
+`0x009d9440`, is a binding that calls `FUN_009cecc8`, which calls
+`FUN_00a553cc`, which is **sixteen bytes and does nothing but tail-call**
+`FUN_006af784`. The whole `0x00a4`–`0x00a5` band is thunks of that shape:
+`FUN_00a410cc` and `FUN_00a4480c` are two more onto the same target. So
+`callers` on a planted native answers with bindings and thunks — `cfIsMulti`'s
+predicate has **four** callers at the top of the chain and **forty-eight** at
+the bottom, and only the bottom number is about the game. Follow a native down
+until the function is bigger than sixty-four bytes before believing any
+cross-reference count.
+
 ## The binary names its own types
 
 1,271 length-prefixed C++ type names are in the file, which is GCC's RTTI with

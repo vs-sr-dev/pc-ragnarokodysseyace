@@ -201,6 +201,17 @@ reward-carrying quests name a second tier, 34 do not, and 6 quests name one
 with no reward table at all. So this wants either the EBOOT or a table nobody
 has opened.
 
+**Session 32 opened the EBOOT half and left the address.** The predicate
+behind `cfIsMulti` is **`FUN_006af784`** and it has **48 callers** in the game
+code — the party flag is consulted everywhere, so its mere existence proves
+nothing and the question is *which* caller reads a room's `+0x37` against its
+`+0x57`. Start from `enemy.bin`'s reader rather than from the flag. Getting
+there cost three queries because the name sits three hops up: `cfIsMulti`
+(`0x009d9440`, a Squirrel binding) → `FUN_009cecc8` → `FUN_00a553cc`, a
+16-byte thunk → `FUN_006af784`. **Ask `callers` of the bottom function, never
+of the planted name** — the top of that chain answers `4` and the bottom `48`.
+See [`eboot.md`](eboot.md).
+
 ### 3. The walk, again — the three that are left.
 
 Unchanged from session 29, and `run.py nav` still says exactly where:
