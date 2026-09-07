@@ -492,6 +492,45 @@ and both callers place that record at a fixed offset in the parameter object:
 `atk`, `cri`, `def` in that order — the offsets are the compiler's, and they
 meet on the number the damage function reads.
 
+**Session 32 read the whole loop out**, because a function that names one
+field per call is a name-to-offset table written in instructions.
+`python tools/ppc.py params <elf>` walks it: `lwz r5, -X(r2)` names the field,
+the `bl` after it does the work, the first store into `r29` after that call is
+where the value lands, and the store's opcode is the type. **46 fields, from
+`+0x00` to `+0xdc`**, and the five above come back identical, which is the
+check. The pairing rule is one call ahead of what it looks like — the compiler
+hoists the next name's load above the current store — and reading it the naive
+way shifts every field by one, which is exactly the kind of error that looks
+like a result.
+
+```
+  +0x000  f32  hp          +0x06c  u32  wall_stop   +0x0ac  f32  ab_ef_s
+  +0x008  f32  sz / col_r  +0x070  f32  wall_dmg    +0x0b0  f32  stg_dec_s
+  +0x014  f32  jsl_h       +0x074  f32  atk         +0x0b4  f32  stg_dec_l
+  +0x018  f32  guard_r     +0x078  f32  cri         +0x0b8  u32  flash_c
+  +0x01c  f32  shadow_r    +0x080  f32  def         +0x0bc  u32  ab_poison_dmg_if
+  +0x020  u32  react_p     +0x08c  f32  spin_blow_r +0x0c0  f32  ab_poison_dmg
+  +0x024  f32  weight      +0x090  f32  spin_blow_y +0x0c4  u32  ab_dpoison_dmg_if
+  +0x028  f32  gr_brk      +0x094  f32  spin_blow_grav       ... and the rest
+  +0x030  f32  acc         +0x0a8  u32  bound_se    +0x0dc  u32  ab_freeze_min_f
+```
+
+Two things this settles and one it does not.
+
+- **`react_p` is a `u32` at `+0x20` of the record**, so `+0x264` of the
+  parameter object — [`combat_loop.md`](combat_loop.md)'s ledger item 8 now
+  has an address where it had a name. What *consumes* it is still open: 37
+  functions touch `+0x264` off a non-stack base and nothing yet says which of
+  them is holding a parameter object;
+- **the record is one of several.** These 46 are the scalars; the vectors are
+  read by `FUN_0064af4c` in a different shape — `addi r5, off(r31)` for the
+  destination, the name in `r7`, and an element count in `r6`, which is how
+  `stg_p` arrives at `+0x100` with **four** elements. That function is the
+  obvious next `params` reader to teach the tool;
+- **and one offset is still ambiguous**: `sz` and `col_r` both land on
+  `+0x008` because the loop's prologue does not follow the pairing rule. The
+  tool prints the clash rather than picking a winner.
+
 ---
 
 ---

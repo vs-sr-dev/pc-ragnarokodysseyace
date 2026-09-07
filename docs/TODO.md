@@ -158,9 +158,19 @@ a second.
   accessors around `0x003ec7fc` and a loader at `0x006587c8` that caches three
   block pointers at `+0x24`, `+0x28` and `+0x2c` of its owner. The consumer is
   whatever reads those three;
-- **`react_p`** (ledger 8) — one reference, at `0x00ef4bb0`, a parameter name
-  rather than a table name, so it goes through the same `+0x244` record `def`
-  came out of.
+- **`react_p`** (ledger 8) — **half done in session 32.** It is a `u32` at
+  `+0x20` of the `+0x244` record, so `+0x264` of the parameter object, and the
+  way that was read is now a tool: `python tools/ppc.py params <elf>` walks the
+  reader's own instructions and prints **46 field names against their offsets
+  and types**, reproducing the five `eboot.md` had. What is left is the
+  *consumer*: 37 functions touch `+0x264` off a non-stack base and nothing yet
+  says which of them holds a parameter object. The pair at `0x005f8bbc` and
+  `0x005fa37c` is the first place to look — they touch `atk` and `cri`'s
+  offsets too, and `0x005fa940` is the shield call in the damage path. And the
+  vectors are a second reader, `FUN_0064af4c`, in a different shape — the
+  destination as `addi r5, off(r31)`, the name in `r7`, an element count in
+  `r6` — which is where `stg_p[4]` lands at `+0x100`; teaching `params` that
+  shape maps the rest of the object.
 
 ~~And the two cosmetic ones are still cheap~~ — **one is left**: the table
 that maps `.anmcmd` opcode 10's effect id to a `PTB` slot. **The seven

@@ -12,6 +12,7 @@ disc's own vocabulary on top of it.
     python ppc.py natives  <elf> <api list>
     python ppc.py plant    <elf> <api list> <out.tsv>
     python ppc.py refs     <elf> <hex address>
+    python ppc.py params   <elf> [hex address of a reader]
 
 `<api list>` is the output of `psq.py api extract/tree` - the names the 3,011
 scripts on the disc actually call. That is the join: **the disc says which
@@ -300,6 +301,80 @@ def cmd_refs(path, target) -> int:
     return 0
 
 
+PARAM_READER = 0x0064b3d8   # the one function that parses an actor's parameters
+STORES = {52: 'f32', 36: 'u32', 38: 'u8', 44: 'u16'}
+
+
+def params(blob: bytes, at: int = PARAM_READER, span: int = 0x2000) -> list:
+    """The parameter record's field names against their offsets.
+
+    `FUN_0064b3d8` reads an actor's parameters one field per call, with the
+    field's **name** in `r5` and the default block and the resolved block in
+    `r28` and `r29`. So the function is a name-to-offset table written in
+    instructions: `lwz r5, -X(r2)` names the field, the `bl` after it does the
+    work, and the first store into `r29` after that call is where the value
+    lands. The store's opcode is the type.
+
+    The pairing is one call ahead of what it looks like - the compiler hoists
+    the next name's load above the current store - which is why the rule is
+    *the store after the next branch* and not *the next store*.
+    """
+    segs = segments(blob)
+    rows = opd(blob)['rows']
+    toc = next((t for e, t in rows if e == at), None)
+    if toc is None:
+        raise ValueError('%#010x is not a function descriptor entry' % at)
+
+    def word(va):
+        off = offset(segs, va, 4)
+        return struct.unpack_from('>I', blob, off)[0] if off is not None else 0
+
+    ins = []
+    for va in range(at, at + span, 4):
+        w = word(va)
+        if w == 0x4E800020:                       # blr, so the function ends
+            break
+        d = w & 0xFFFF
+        ins.append((va, w, w >> 26, (w >> 21) & 31, (w >> 16) & 31,
+                    d - 0x10000 if d & 0x8000 else d))
+    out = []
+    for i, (va, w, op, rs, ra, d) in enumerate(ins):
+        if not (op == 32 and ra == 2 and rs == 5):
+            continue
+        text = offset(segs, word(toc + d), 1)
+        name = _cstr(blob, text) if text is not None else None
+        j = i
+        while j < len(ins) and not (ins[j][2] == 18 and ins[j][1] & 1):
+            j += 1
+        while j < len(ins) and not (ins[j][2] in STORES and ins[j][4] == 29):
+            j += 1
+        if j < len(ins):
+            out.append((ins[j][5], STORES[ins[j][2]], name or '?', d))
+    return out
+
+
+def cmd_params(path, at=None) -> int:
+    blob = load(path)
+    where = PARAM_READER if at is None else int(at, 16)
+    rows = params(blob, where)
+    print('%d fields read by the function at %#010x' % (len(rows), where))
+    if where == PARAM_READER:
+        print('  the record it fills sits at +0x244 of the parameter object')
+    seen = {}
+    for off, kind, name, slot in sorted(rows, key=lambda r: (r[0], r[3])):
+        seen.setdefault(off, []).append(name)
+        print('  +%#05x  %-4s  %-22s  r2%+#x' % (off, kind, name, slot))
+    clash = {o: n for o, n in seen.items() if len(n) > 1}
+    if clash:
+        print()
+        print('  %d offsets carry two names, which is the pairing rule '
+              'failing at' % len(clash))
+        print('  the head of the loop rather than two fields sharing a slot:')
+        for o in sorted(clash):
+            print('    +%#05x  %s' % (o, ', '.join(clash[o])))
+    return 0
+
+
 def cmd_segments(path) -> int:
     blob = load(path)
     h = header(blob)
@@ -392,6 +467,8 @@ def main() -> int:
             return cmd_plant(*rest)
         if cmd == 'refs' and len(rest) == 2:
             return cmd_refs(*rest)
+        if cmd == 'params' and len(rest) in (1, 2):
+            return cmd_params(*rest)
     except ValueError as exc:
         print('error: %s' % exc)
         return 1
