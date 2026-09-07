@@ -157,6 +157,16 @@ the bounds: 2,654 of the 2,721 magnitudes fall inside the floor and ceiling
 their ability declares, the same ratio the first slot alone gave over a third
 of the sample.
 
+**And column 1 of that row is what the card costs to equip.** It takes ten
+values and only ten — `5` on 353 cards, `10` on 272, then 15, 20, 25, 30, 35,
+40, 45, 50 on 3 — which is a cost ladder and not a measurement. A player's
+guide is where the reading came from and the disc is what confirms it: armour
+carries a slot budget and *"some cards take up 5, 10, 15 slots"*, and this
+column is that number, in the game's own steps. Column 38 is a second ladder
+beside it, `5000` to `50000`, equal to column 1 × 1000 on **976 of the 1,091**
+and deliberately off it on the other 115 — a price, tuned per card, where the
+slot cost is not.
+
 ## Open
 
 - What column 2 of the fixed header is for. It is zero on all 4,941 files, so
