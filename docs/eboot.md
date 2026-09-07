@@ -317,7 +317,7 @@ The two constants in it are `1.0` and `0.0`, read out of TOC `0x113b7e0` at
   damage  =  max( damage, 1 )
 ```
 
-and then, once, an ability: if the attacker's ability holder answers to id
+and then, once, an ability: if the **target's** ability holder answers to id
 `0xcc`, `damage = max((value + 1) * damage, 0)`. `it_db_ability.bin` has 233
 rows, so `0xcc` is one of them; the hit resolver above queries `0x70` and
 `0x71` the same way. **The engine indexes the disc's own ability table by row
@@ -339,10 +339,30 @@ sixteen-slot row — see [`combat_loop.md`](combat_loop.md) §3, which now names
   quarters of the damage under `(value + 1) * damage`. Five are defensive and
   the sixth is `+0.2` beside a `-9999` on DEF.
 
-**That last one disagrees with this document.** The decompilation above reads
-the holder as the *attacker's*; every value the disc puts in the row only
-makes sense on the *target's*. It is one virtual call and it is the first
-thing to check the next time the decompiler is open.
+**And the last one sent the session back to the decompiler**, because this
+document had the holder as the *attacker's* and every value on the disc only
+made sense on the *target's*. The disc was right and the note was wrong, and
+the function says so without ambiguity. Its two actors are parameters 2 and
+4, and each is named by what is built out of it: the attack structure is
+filled from `param_2` and walked over `param_2 + 0x1c0`'s listener list at
+`vtable + 8`, the defence structure from `param_4` over `param_4 + 0x1c0` at
+`vtable + 0xc`. **`param_2` is the attacker and `param_4` is the target**, and
+the `0xcc` query reads `param_4 + 0x248`. A card that lessens damage received
+is held by whoever receives it.
+
+Two more things came off the same read, both on the target's side and both
+after the floor of 1.
+
+- **A shield gets the damage before the health bar does.** If `param_4 +
+  0x26c` is non-null and a predicate on it passes, `FUN_005fa940(obj,
+  &damage)` is handed the damage **by address** and may lower it; the result
+  record then carries `result[2] = damage - what is left`, which is what the
+  shield took, and `result[3]` is 1 or 2 according to what the call returned.
+  So the engine reports absorption as its own field rather than folding it in.
+- **The finished record goes back over the attacker's listeners**, `param_2 +
+  0x1c0` again at `vtable + 0x1c`, after the damage is written. The first pass
+  is where a card moves a term; this one is where it *learns what happened* —
+  drain, on-hit accumulation and a counter all need exactly this.
 
 Four of those lines are worth naming separately.
 

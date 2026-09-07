@@ -281,12 +281,15 @@ of the seventy-one the join could not name.
   `Extend Resistance` −0.3, `Protagonist Revision` −0.05 — and the sixth,
   `Machismo Stance`, is **+0.2** beside a `1:-9999`, a build that guts DEF and
   takes a fifth more. Against `damage = max((value + 1) * damage, 0)` that
-  reads exactly: −0.25 is three quarters of the damage taken. **And it
-  contradicts the binary's reading**: `eboot.md` records the query as going to
-  the *attacker's* ability holder, and every value on the disc only makes
-  sense on the *target's*. The disc is not the authority here and neither
-  document is being changed on the other's word — the decompiler settles it,
-  and it is a TODO item rather than a conclusion.
+  reads exactly: −0.25 is three quarters of the damage taken. **And the disc
+  caught an error in the binary's reading.** [`eboot.md`](eboot.md) had the
+  query going to the *attacker's* ability holder; six card values that only
+  make sense on the target's sent the session back to the decompiler, and the
+  function names its own two actors — the attack structure is built from
+  `param_2` and the defence structure from `param_4`, so `param_4 + 0x248` is
+  the **target's**. The note was wrong and is corrected. It is the first time
+  in this project that a reading of the disc has overturned one of the EBOOT's
+  rather than the other way round.
 
 **So `DEF` is ability 1 and `MAX HP` is ability 3**, and what the disc gives
 is the *modifier* side of both, with the range each is allowed to move in.

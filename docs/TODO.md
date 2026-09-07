@@ -178,10 +178,18 @@ all along. `it_db_skill.bin` columns 5..36, `-1` for an empty slot and not a
 terminator — row 550 leaves a gap and fills a later slot, which is the proof.
 See [`combat_loop.md`](combat_loop.md) §3 and [`eboot.md`](eboot.md).
 
-**And it left one question for the decompiler.** `eboot.md` records the
-`0xcc` query as going to the **attacker's** ability holder; all six values on
-the disc only make sense on the **target's**. One virtual call settles it, and
-it is the cheapest of the EBOOT items above.
+**And it sent one question to the decompiler, which answered it in a minute.**
+`eboot.md` had the `0xcc` query going to the **attacker's** ability holder;
+all six values on the disc only make sense on the **target's**. The function
+settles it in its own structure — the attack term is built from `param_2` and
+walked over `param_2 + 0x1c0`, the defence term from `param_4` over
+`param_4 + 0x1c0`, and the `0xcc` query reads `param_4 + 0x248`. **The disc
+was right and the EBOOT note was wrong**, which is the first time round that
+way in this project. Both documents are corrected, and the same read gave two
+more lines free: the target's `+0x26c` shield is handed the damage by address
+and its share is reported in the result record's own field, and the finished
+record goes back over the *attacker's* listeners at `vtable + 0x1c`, which is
+where a drain or an on-hit counter would live.
 
 ### 2. The tier's other half.
 
