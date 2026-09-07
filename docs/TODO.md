@@ -75,68 +75,89 @@ The document is [`eboot.md`](eboot.md) and the tools are
   it was for. The two fields swap jobs and `combat_loop.md`'s chain diagram
   was corrected.
 
-**And the sweep was not run.** Twice attempted, twice not landed — see item 1,
-which is the first thing the next session does. The regression numbers still
-stand where session 30 left them.
+**And the sweep ran, at last.** All 431 quests against the written damage
+expression, and the numbers are in item 1 with what they turned out to mean —
+which is not what this section predicted.
 
-### 1. Run the sweep. The engine is frozen and waiting for it.
+### 1. The sweep ran, and it found a spawn path the engine does not have.
 
-**This is the first thing to do and it is the only thing between session 31
-and its own result.** The damage expression is written — see the bullets
-above, [`damage.py`](../engine/damage.py) and commit `ed08e60`, which is the
-frozen engine — and **all 431 quests have not been run against it**. Two
-attempts failed for two different reasons and both are worth knowing:
-
-- **the first sweep ran and was thrown away.** The critical roll drew from
-  `Field.rng`, which also drives `e.state.rand` and `e.brain.act` — every
-  monster's action choice — so every landed volume shifted the whole fight
-  downstream and the run diverged from session 30 for two reasons mixed
-  together. `self.luck` is a separate stream now and the proof it mattered is
-  that `q00102`'s monster landings on the player go 18 back to 14;
-- **the second never started.** `exit 127` from a backgrounded shell, no
-  output, an hour and a half of nothing. **The output file stays empty until
-  the very end** — `quiet=1` prints only the summary — so an empty file is
-  not evidence of progress. Launch it, then confirm the process is alive
-  before walking away, or launch it with `quiet=0`, which prints a line per
-  quest and is the honest progress bar.
+Everything went down, as it had to, and one number went to zero:
 
 ```
-python engine/mission.py runs extract/tree '*' sw 3 1
+                          session 30    session 32
+  quests finished              284          268
+  walked the whole list        287          274
+  arenas armed                 344          299
+  closed by the kill count     322          240
+  monsters spawned           3,105        2,177
+  killed                     3,017        1,963
+  zeny                     689,375      588,575
+  items                5,661 of 398   3,732 of 336
+
+  and the new line:  40,483 volumes landed for 2,654,745 damage,
+                     1,225 critical, 441 landings whose hp would not read,
+                     and 0 parts broken off.
 ```
 
-It is a couple of hours and it wants the machine to itself. **Session 30's
-numbers are the baseline**, and every one of them is expected to move,
-because `BLOWS` reached the kill count, the arena timing and the pay-out:
+**Read the zero first.** `region_data_brk`'s pools are 500 to 60,000 and a
+part should come off a boss long before the boss dies, so zero in 431 quests
+is not a tuning problem. It is this: **the engine has one way to start a
+fight and the disc has at least two.** Everything in
+[`mission.py`](../engine/mission.py) spawns through a `piecelock` — the arena
+— and on the disc:
 
 ```
-                          session 30    session 31
-  quests finished              284          ?
-  walked the whole list        287          ?
-  arenas armed                 344          ?
-  closed by the kill count     322          ?
-  monsters spawned           3,105          ?
-  killed                     3,017          ?
-  zeny                     689,375          ?
-  items                5,661 of 398         ?
+  430 quests carry a generator in enemy_gen.bin
+  156 of them carry a piecelock
+  274 do not, and 116 of those 274 field a boss
 ```
 
-The thrown-away sweep is not an answer but it is a direction, and it should
-be quoted as **indicative only**: 269 finished, 1,990 killed of 2,197
-spawned, 589,675 zeny, 3,826 items of 338 kinds. Everything down, which is
-what has to happen — a monster used to die in three landed volumes by decree
-and now dies of its own `hp` against a player holding the starting weapon.
+So **the 2,177 monsters this sweep spawned contain no bosses at all**, no
+volume ever lands on a breakable part, and 274 quests finish by walking their
+stage list with nothing in it. That also explains the two counts that fell
+without the damage touching them: fewer arenas armed and fewer closed, because
+a quest that never fights never reaches the rooms behind the fight.
 
-**Read the drop before fixing it.** The gap is S7, not the expression: the
-growth row comes from story progress and the weapon does not come from
-anywhere, so a late quest fields a level-13 body swinging a level-1 sword.
-The sweep's own new line — volumes landed, damage dealt, criticals, parts
-broken off, and the landings that fell back on `BLOWS` because an actor's
-`hp` would not read — is what says which of those is doing the damage. In
-particular **watch the parts**: `region_data_brk`'s pools are 500 to 60,000
-with a median of 5,000 against a body's 2,100, so a part should come off long
-before a boss dies and essentially never on a mob, and the thrown-away sweep
-broke **two** parts in 431 quests. That is either the under-equipped player or
-a wrong pool, and the two are told apart by looking at a boss fight.
+**The worked example is `q00109`, which is one boss and nothing else.** Its
+`enemy_gen.bin` has a single row — `emgen02` at `emgen_pos02` of `010_02_03`,
+slot 1, `b01_00`, the Orc King — with **no kill callback and no end
+callback**, and the quest has **no `piecelock` at all**. It pays an *Orc King
+Card*, an *Orc King's Claw* and a *King's Breastplate*, so the fight is
+certainly meant to happen. `python engine/mission.py run extract/tree q00109`
+walks both stages in 269 frames, spawns nothing, and reports *the quest
+finished*.
+
+**What starts that generator is the next session's first question**, and the
+evidence is already narrow:
+
+- **it is not `cfSetEnableEmGen`.** That call exists, the host implements it,
+  and `psq.py sites` puts all 240 of its calls in **29 distinct stage
+  scripts** — a minority mechanism, and `q00109` is not among them;
+- **it is not the stage's own trigger, in this quest.** `010_02_03` carries
+  exactly two trigger volumes, and the one that runs
+  `callQuestScript("sfEnmGenStart()")` is named **`pl_q00207`** — it belongs
+  to a different quest, the quest's own copy of `010_02_03.psq` does not
+  define `sfEnmGenStart` at all, and nothing turns that volume on;
+- **the demo is the candidate.** `010_02_03.psq`'s `sfQuestDemoInit` calls
+  `setDemoID(10120, 0)` or `10110` according to `cmnIsQuestClear()`, and a
+  boss quest is introduced by a cutscene. If the demo's end is what enables
+  the generator, the engine needs the demo table, not another script call;
+- **or `enemy_gen.bin` says so itself.** Six of its fifteen lanes are still
+  unread — `+0x14`, `+0x20`, `+0x24`, `+0x28`, `+0x30` — and an
+  *enabled-at-stage-entry* flag would live in one of them. **Start here**: it
+  costs a histogram over 8,024 rows split by whether a lock covers the row,
+  and if one lane separates the two populations the question is answered
+  without the EBOOT.
+
+### 1a. And 441 landings could not read a monster's hit points.
+
+A separate gap, and a small one, but it is the last thing keeping `BLOWS`
+alive: 441 of the 40,483 landings fell back on the three-volume policy because
+the actor's `hp` would not read. That is about one landing in ninety, and
+`parity.md` counts the fallback rather than hiding it. Which actors, and why —
+a missing `objbin.bin`, a missing `region_lv`, or a monster with no parameter
+block at all — is one grouped count away.
+
 
 ### 1b. The three EBOOT items still open.
 

@@ -316,6 +316,17 @@ close because the tables were already right.
 running over more of the disc than it could reach before: 689,375 zeny and
 5,086 items of 349 kinds.
 
+*Session 32 note: none of these numbers survives the damage expression, and
+that is the point of having written them down. With `BLOWS` retired and a
+monster dying of its own `hp` — [`damage.py`](../engine/damage.py) — the same
+sweep gives 268 finished, 274 walked, 299 arenas armed, 240 closed, 2,177
+spawned, 1,963 killed, 588,575 zeny and 3,732 items of 336 kinds, over 40,483
+landed volumes for 2,654,745 damage. **The fall is not the expression.** Zero
+parts broke off in 431 quests, and the reason is that 274 of the 430 quests
+that carry a generator carry no `piecelock` for it — 116 of them fielding a
+boss — so this engine, which spawns only through an arena, never fought a
+boss at all. See [`TODO.md`](TODO.md) item 1.*
+
 *Session 30 note: every number in this table still reproduces to the digit,
 and one of them has since moved. Reading `enemy.bin`'s difficulty tier
 ([`parity.md`](parity.md), [`format_quest.md`](format_quest.md)) puts each
