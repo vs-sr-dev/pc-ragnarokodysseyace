@@ -320,9 +320,29 @@ The two constants in it are `1.0` and `0.0`, read out of TOC `0x113b7e0` at
 and then, once, an ability: if the attacker's ability holder answers to id
 `0xcc`, `damage = max((value + 1) * damage, 0)`. `it_db_ability.bin` has 233
 rows, so `0xcc` is one of them; the hit resolver above queries `0x70` and
-`0x71` the same way, and `0x70`'s range in that table is `(0, 1)`, which is a
-rate. **The engine indexes the disc's own ability table by row number**, in
-the clear, in the damage path.
+`0x71` the same way. **The engine indexes the disc's own ability table by row
+number**, in the clear, in the damage path.
+
+**And session 32 read all three off the disc.** The join that names an ability
+is the card skill that carries it, and it had been reading one slot of a
+sixteen-slot row — see [`combat_loop.md`](combat_loop.md) §3, which now names
+225 of the 233 rows instead of 162. What the three turn out to be:
+
+- **`0x70` is the extra hit's share of the damage and `0x71` is the chance it
+  happens**, a coefficient and a coin, which is why the resolver takes them
+  together and the expression has no room for either. The ten
+  `Double Attack Lv.1..10` hold `0x70` at 1.0 and walk `0x71` from 0.10 to
+  0.55; a TGS 2011 demo skill, never translated, spells the pair out in
+  Japanese as a *duplication coefficient* and an *occurrence probability*;
+- **`0xcc` is a rate on the damage its holder takes.** Six skills name it, and
+  `-0.25` on *Mold Armor*, whose text is *"Lessens damage received"*, is three
+  quarters of the damage under `(value + 1) * damage`. Five are defensive and
+  the sixth is `+0.2` beside a `-9999` on DEF.
+
+**That last one disagrees with this document.** The decompilation above reads
+the holder as the *attacker's*; every value the disc puts in the row only
+makes sense on the *target's*. It is one virtual call and it is the first
+thing to check the next time the decompiler is open.
 
 Four of those lines are worth naming separately.
 

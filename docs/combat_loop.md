@@ -219,7 +219,7 @@ is no stat in the table at all.
 
 The stats are two tables further on, and they are named in the game's own
 English. **`it_db_skill.bin` is the card skills** — 1,091 rows pairing with
-1,091 names and 1,091 descriptions — and its column 5 is an index into
+1,091 names and 1,091 descriptions — and it indexes
 **`it_db_ability.bin`, which is one row per stat the game lets an item move**:
 
 ```
@@ -229,22 +229,64 @@ English. **`it_db_skill.bin` is the card skills** — 1,091 rows pairing with
   +0x0C  u32   two u16, a kind
 ```
 
+**A skill names up to sixteen of them, not one.** Columns 5 to 36 of the
+176-byte skill row are sixteen `(ability, magnitude)` slots, and `-1` is an
+*empty slot* rather than a terminator: `Guardian of Utgardar` (row 550) fills
+three, leaves two empty and fills a sixth. Session 32 corrected this — the
+join used to read column 5 alone — and the correction is worth more than the
+count suggests. Reading one slot names **162** abilities; reading sixteen
+names **225 of 233**, and the ones it adds include every id the damage
+expression asks for by number. The disc's own text is the check: each
+`Double Attack Lv.n` fills three slots, `112` at 1.0, `113` climbing 0.05 a
+level, and `9` at −0.05 — and its description is *"Inflicts additional damage
+when attacking. Critical attack rate is lowered."* Two sentences, three
+slots, ability 9 already known to be the critical rate.
+
 The ability table carries no name — but every skill that names it carries one,
-so the join gives all 162 used abilities their words back
-(`combat.py abilities`):
+so the join gives all 225 used abilities their words back
+(`combat.py abilities`, `n` counting the skills that name each one):
 
 ```
     id    floor  ceiling     kind    n  what a skill calls it
-     0     -150      250  0x20003   91  Raises ATK.
-     1    -9999      250  0x20003   25  Raises DEF.
-     3    -8000     8000  0x20003   41  Raises MAX HP.
-     4    -8000     8000  0x20003   22  Raises MAX AP.
-     5     -0.9        1  0x20003   25  Raises base tension level.
-     8     -100      200  0x20003   24  Raises resistance to knockback, launch
-     9       -1        1  0x20003   28  Raises percentage chance of a critical
-    10     -0.5      0.3  0x40003   16  Raises critical attack damage.
-    34     -150      500  0x20003   15  Raises DEF when guarding.
+     0     -150      250  0x20003  125  Raises ATK.
+     1    -9999      250  0x20003   72  Raises DEF.
+     3    -8000     8000  0x20003   84  Raises MAX HP.
+     4    -8000     8000  0x20003   33  Raises MAX AP.
+     5     -0.9        1  0x20003   30  Raises base tension level.
+     8     -100      200  0x20003   33  Raises resistance to knockback, launch
+     9       -1        1  0x20003   78  Raises percentage chance of a critical
+    10     -0.5      0.3  0x40003   38  Raises critical attack damage.
+   112        0        1  0x40003   25  the extra hit's share of the damage
+   113        0        1  0x30003   20  the chance that extra hit happens
+   204       -1        1  0x40003    6  a rate on the damage the holder takes
 ```
+
+The last three are there because **the damage expression asks for them by
+number** — see [`eboot.md`](eboot.md) — and until session 32 they were three
+of the seventy-one the join could not name.
+
+- **112 and 113 are one pair, and the disc says so in Japanese.** Skill 268 is
+  a TGS 2011 demo skill whose description was never translated:
+  *「ダブルアタック複製係数1.0 ダブルアタック発生確率0.4」* — a double-attack
+  **duplication coefficient** of 1.0 and an **occurrence probability**. Its
+  slots are `112:1.0` and `113:0.5`, so the words land on the fields in order
+  and the probability is the one that moved after the demo. The ten
+  `Double Attack Lv.1..10` hold 112 at 1.0 and walk 113 from 0.10 to 0.55;
+  `Twin Strike` is 0.4 of the damage at 0.5 chance, `Seismic Wave` is 1.5 at
+  0.3. **So the hit resolver's two queries are a coin and a share**, which is
+  why the expression itself has no room for them.
+- **204 is what the target takes, not what the attacker deals.** Six skills
+  name it and five are defensive — `Mold Armor` −0.25 *"Lessens damage
+  received"*, `Shadow Veil` −0.6 to −0.3, `Underworld Protection` −0.15,
+  `Extend Resistance` −0.3, `Protagonist Revision` −0.05 — and the sixth,
+  `Machismo Stance`, is **+0.2** beside a `1:-9999`, a build that guts DEF and
+  takes a fifth more. Against `damage = max((value + 1) * damage, 0)` that
+  reads exactly: −0.25 is three quarters of the damage taken. **And it
+  contradicts the binary's reading**: `eboot.md` records the query as going to
+  the *attacker's* ability holder, and every value on the disc only makes
+  sense on the *target's*. The disc is not the authority here and neither
+  document is being changed on the other's word — the decompiler settles it,
+  and it is a TODO item rather than a conclusion.
 
 **So `DEF` is ability 1 and `MAX HP` is ability 3**, and what the disc gives
 is the *modifier* side of both, with the range each is allowed to move in.
@@ -257,15 +299,17 @@ rather than closes: a class JSON has none of the three, the weapon table has
 `atk` and no `def`, and nothing found so far carries a starting `DEF` or
 `MAX HP` for a level-1 character.
 
-**968 of the 993 magnitudes lie inside their ability's range**, which is what
-says column 6 of the skill table is the magnitude and columns 1 and 2 of the
-ability table are its bounds. Of the 25 that do not, **eighteen are one
-ability**: 175's values are `170001` to `170040`, which are ids in the skill
-band and not magnitudes at all, and its range `(0, 41)` bounds the low part of
-them. The field means what the ability says it means — the selector trap
-again, in a table that had looked uniform. The remaining seven are single
-skills that exceed their own cap, which a cap on the accumulated total
-allows.
+**2,654 of the 2,721 magnitudes lie inside their ability's range**, which is
+what says the second word of a slot is the magnitude and columns 1 and 2 of
+the ability table are its bounds — and the ratio held when the sixteen slots
+tripled the sample, which is the real check on the slot reading. Of the 67
+that do not, **forty-three are one ability**: 175's values are `170001` to
+`170040`, which are ids in the skill band and not magnitudes at all, and its
+range `(0, 41)` bounds the low part of them. The field means what the ability
+says it means — the selector trap again, in a table that had looked uniform.
+A further 165 magnitudes belong to abilities whose range is `(0, 0)`, which is
+a flag and not a quantity. The remaining two dozen are single skills that
+exceed their own cap, which a cap on the accumulated total allows.
 
 ---
 
@@ -764,8 +808,10 @@ Eight things, none of which needed a new format:
 - **the player's attack is `it_db_weapon.bin` column 3** and its kind is column
   5, which partitions 450 rows into six classes of 75;
 - **`it_db_ability.bin` is one row per stat an item can move**, `DEF` at 1 and
-  `MAX HP` at 3, named by the 1,091 card skills that index it — and
-  `it_db_equip.bin`, the obvious place to have looked for armour, is costumes;
+  `MAX HP` at 3, named by the 1,091 card skills that index it — **sixteen
+  slots each, which names 225 of the 233 rows** and among them the three the
+  damage expression asks for by number — and `it_db_equip.bin`, the obvious
+  place to have looked for armour, is costumes;
 - **record 1 of a player class is an empowered state**, plainly: no hit-stun,
   no stun, faster, better resistances — and record 2 is a global locomotion
   variant identical on all six;

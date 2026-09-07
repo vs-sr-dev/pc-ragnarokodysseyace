@@ -143,6 +143,20 @@ it_db_weapon.bin, first columns beside the name
 Column 0 is the item id, and the six-figure values in columns 6–7 are ids into
 `it_db_skill.bin`.
 
+And that table's own row is worth stating, because it is a shape a lane
+classifier will get wrong. **`it_db_skill.bin`'s 176-byte row carries sixteen
+`(ability, magnitude)` slots at columns 5..36** — a `u32` index into
+`it_db_ability.bin` beside the `f32` it moves that stat by — and **`-1` marks
+an empty slot rather than the end of the list**. The two readings agree on
+1,090 rows out of 1,091 and disagree on the one that matters: row 550,
+`Guardian of Utgardar`, fills three slots, leaves two empty and fills a sixth.
+Stopping at the first `-1` costs one ability there and, across the table,
+sixty-three of the 233 rows their only English name — see
+[`combat_loop.md`](combat_loop.md) §3. The check that the slots are real is
+the bounds: 2,654 of the 2,721 magnitudes fall inside the floor and ceiling
+their ability declares, the same ratio the first slot alone gave over a third
+of the sample.
+
 ## Open
 
 - What column 2 of the fixed header is for. It is zero on all 4,941 files, so

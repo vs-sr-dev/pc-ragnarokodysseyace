@@ -160,12 +160,28 @@ a second.
 And the two cosmetic ones are still cheap: the table that maps `.anmcmd`
 opcode 10's effect id to a `PTB` slot, and the seven `checkBnnTerm` bodies.
 
-**One loose end priced at an hour.** The damage path queries the disc's own
-ability table **by row number**: `0xcc` as a final multiplier on the damage,
-`0x70` and `0x71` in the hit resolver. `it_db_ability.bin` has 233 rows and
-`combat.py abilities` names 162 of them from the 1,091 card skills that index
-them, so those three ids have English words waiting for them. `0x70`'s range
-is `(0, 1)`, which is a rate.
+~~**One loose end priced at an hour.**~~ **Closed in session 32, and it cost
+twenty minutes.** The damage path queries the disc's ability table by row
+number, and the three ids now have the game's own English:
+
+- **`0x70` is the extra hit's damage share, `0x71` the chance it lands** — the
+  `Double Attack` family holds the first at 1.0 and walks the second from 0.10
+  to 0.55, and an untranslated TGS 2011 skill names the pair outright;
+- **`0xcc` is a rate on the damage its holder takes** — `Mold Armor`'s −0.25
+  against *"Lessens damage received"*.
+
+**What paid for it was fixing the join, not searching harder.** A card skill
+carries **sixteen** `(ability, magnitude)` slots and `combat.py abilities` was
+reading the first, so the disc's vocabulary covered 162 of the 233 rows; it
+now covers **225**, and the three above were in the 63 that had been invisible
+all along. `it_db_skill.bin` columns 5..36, `-1` for an empty slot and not a
+terminator — row 550 leaves a gap and fills a later slot, which is the proof.
+See [`combat_loop.md`](combat_loop.md) §3 and [`eboot.md`](eboot.md).
+
+**And it left one question for the decompiler.** `eboot.md` records the
+`0xcc` query as going to the **attacker's** ability holder; all six values on
+the disc only make sense on the **target's**. One virtual call settles it, and
+it is the cheapest of the EBOOT items above.
 
 ### 2. The tier's other half.
 
@@ -688,16 +704,20 @@ in a milestone report.
   the row is `(index, floor, ceiling, kind)` with the index equal to the row
   on all 233. It carries no name — but `it_db_skill.bin`'s 1,091 card skills
   index it and pair positionally with 1,091 names and 1,091 descriptions, so
-  the join gives **all 162 used abilities the game's own English**.
+  the join gives **225 of the 233 the game's own English**. A skill row holds
+  **sixteen** `(ability, magnitude)` slots, not one — session 32's correction,
+  and what named the three ids the damage expression indexes by number.
 - **`DEF` is ability 1 and `MAX HP` is ability 3**, which is where the
   player's two missing numbers enter the loop. The card system reaches every
   quantity [`combat_loop.md`](combat_loop.md) describes: ability 9 is the
   critical rate, 10 its bonus, 8 the knockback and stun resistance, 5 the base
   tension level, 34 the defence while guarding. The **base** values are still
   not located, so ledger item 2 narrows rather than closes.
-- **968 of the 993 magnitudes lie inside their ability's range**, which is
-  what says the skill's column 6 is the magnitude and the ability's two floats
-  are its bounds. **Eighteen of the 25 that do not are one ability**: 175's
+- **2,654 of the 2,721 magnitudes lie inside their ability's range**, which is
+  what says the second word of a slot is the magnitude and the ability's two
+  floats are its bounds — and the ratio survived the sample tripling, which is
+  the check on the slot reading. **Forty-three of the 67 that do not are one
+  ability**: 175's
   values are `170001` to `170040`, ids in the skill band and not magnitudes,
   and its range `(0, 41)` bounds the low part of them. The selector trap
   again, in a table that had looked uniform.

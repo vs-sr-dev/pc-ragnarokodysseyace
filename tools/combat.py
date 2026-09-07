@@ -26,9 +26,11 @@ Six of them, and each is one table meeting another:
   five**; column 3 is the attack the player's JSON has not got;
 - **`abilities`** - `it_db_ability.bin` against the 1,091 card skills that
   name it. The table is a **stat and its bounds** and carries no name of its
-  own; the skills give all 162 of them the game's own English, so `DEF`,
+  own; the skills give 225 of the 233 the game's own English, so `DEF`,
   `MAX HP`, the critical rate and the knockback resistance are named where the
-  combat loop needs them;
+  combat loop needs them. A skill row holds **sixteen** `(ability, magnitude)`
+  slots and reading only the first named 162 - the other 63 include the three
+  ids the damage expression indexes by number, `0x70`, `0x71` and `0xcc`;
 - **`stop`** - `dmg_stop_mul`, which is zero on 23 monsters and non-zero on 59,
   and the 23 are exactly the `b*`. A boss takes no hit-stop;
 - **`tension`** - the four `s_tension_revise_*` curves, printed six abreast
@@ -69,6 +71,8 @@ from elbn import Elbn                                          # noqa: E402
 HEADER = 16               # the ELBN shell, so a payload offset can be read
 CLASSES = ('as', 'cl', 'hs', 'ht', 'mg', 'sw')
 PLAYER_BAND = range(1000, 1090)
+SKILL_SLOT0 = 5           # `it_db_skill.bin`: the first ability slot
+SKILL_SLOTS = 16          # and how many `(ability, magnitude)` pairs
 
 
 # --------------------------------------------------------------------------
@@ -310,7 +314,15 @@ def cmd_abilities(root, limit=40) -> int:
     An ability is a **stat the game lets an item move**, and the row is
     `(index, floor, ceiling, kind)`. It carries no name - but every card skill
     names one, and the skill text is the game's own English for what that stat
-    is, so the join gives all 162 of them their words back."""
+    is, so the join gives them their words back.
+
+    A skill names up to **sixteen** of them. Columns 5..36 of the skill row
+    are sixteen `(ability, magnitude)` slots and `-1` is an empty slot, not a
+    terminator - `Guardian of Utgardar` (row 550) fills three, leaves two
+    empty and fills a sixth. Reading only the first slot, which is what this
+    command used to do, names 162 abilities; reading all sixteen names
+    **225 of 233**, and the ones it adds are the ones the damage expression
+    asks for by number."""
     root = pathlib.Path(root)
     ab = _ech(root, 'it_db_ability.bin')
     sk = _ech(root, 'it_db_skill.bin')
@@ -323,23 +335,34 @@ def cmd_abilities(root, limit=40) -> int:
     def fl(t, r, i):
         return struct.unpack_from('>f', t.row(r), 4 * i)[0]
 
+    def slots(r):
+        """The skill's `(ability, magnitude)` pairs, empties skipped."""
+        return [(w(sk, r, c), fl(sk, r, c + 1))
+                for c in range(SKILL_SLOT0, SKILL_SLOT0 + 2 * SKILL_SLOTS, 2)
+                if w(sk, r, c) >= 0]
+
     print(f'{ab.rows} abilities, {sk.rows} skills, '
           f'{len(name)} names, {len(text)} texts')
     print('  the ability index is the row on all '
           f'{sum(w(ab, r, 0) == r for r in range(ab.rows))} of {ab.rows}')
     users = collections.defaultdict(list)
+    lone = {}
     for r in range(sk.rows):
-        a = w(sk, r, 5)
-        if 0 <= a < ab.rows:
-            users[a].append(r)
+        got = slots(r)
+        for a, m in got:
+            users[a].append((r, m))
+            if len(got) == 1:
+                lone.setdefault(a, r)
     print(f'  {len(users)} of them are named by at least one skill')
+    print(f'  a skill fills {min(len(slots(r)) for r in range(sk.rows))} to '
+          f'{max(len(slots(r)) for r in range(sk.rows))} of its '
+          f'{SKILL_SLOTS} slots')
 
     inside = outside = flag = 0
     stray = []
     for a, rows in users.items():
         lo, hi = fl(ab, a, 1), fl(ab, a, 2)
-        for r in rows:
-            v = fl(sk, r, 6)
+        for r, v in rows:
             if lo == hi == 0:
                 flag += 1
             elif lo <= v <= hi:
@@ -360,16 +383,30 @@ def cmd_abilities(root, limit=40) -> int:
             print(f'  ... and {len(users) - shown} more')
             break
         shown += 1
-        first = text[users[a][0]] if users[a][0] < len(text) else ''
+        # A skill that names this ability and nothing else describes it
+        # exactly; one that names four describes all four at once.
+        r = lone.get(a, users[a][0][0])
+        first = text[r] if r < len(text) else ''
         line = (first or '').replace('\n', ' ').strip()[:44]
         print(f'  {a:4} {fl(ab, a, 1):8g} {fl(ab, a, 2):8g} '
-              f'{w(ab, a, 3):#8x} {len(users[a]):4}  {line}')
+              f'{w(ab, a, 3):#8x} {len({r for r, _ in users[a]}):4}  {line}')
+
+    print()
+    print('  the three the damage expression asks for by number')
+    for a, what in ((0x70, 'the extra hit\'s share of the damage'),
+                    (0x71, 'the chance it happens at all'),
+                    (0xcc, 'a rate on the damage the holder takes')):
+        ex = ', '.join(f'{name[r]}={m:g}'
+                       for r, m in users[a][:3] if r < len(name))
+        print(f'    {a:#5x} ({a:3})  ({fl(ab, a, 1):g}, {fl(ab, a, 2):g})  '
+              f'{len({r for r, _ in users[a]}):2} skills  {what}')
+        print(f'              {ex}')
 
     if stray:
         print()
         print('  the magnitudes that fall outside, and why they are not one')
         by_ability = collections.Counter(a for a, _, _, _, _ in stray)
-        for a, n in by_ability.most_common():
+        for a, n in by_ability.most_common(8):
             ex = [s for s in stray if s[0] == a][:2]
             what = ', '.join(f'{v:g}' for _, _, v, _, _ in ex)
             print(f'    ability {a:3}  x{n:<3} e.g. {what}   '
