@@ -142,12 +142,32 @@ evidence is already narrow:
   `setDemoID(10120, 0)` or `10110` according to `cmnIsQuestClear()`, and a
   boss quest is introduced by a cutscene. If the demo's end is what enables
   the generator, the engine needs the demo table, not another script call;
-- **or `enemy_gen.bin` says so itself.** Six of its fifteen lanes are still
-  unread — `+0x14`, `+0x20`, `+0x24`, `+0x28`, `+0x30` — and an
-  *enabled-at-stage-entry* flag would live in one of them. **Start here**: it
-  costs a histogram over 8,024 rows split by whether a lock covers the row,
-  and if one lane separates the two populations the question is answered
-  without the EBOOT.
+- **and `enemy_gen.bin` says something itself.** That histogram was the cheap
+  test and it was run: 8,024 rows, 5,355 covered by a lock and 2,669 not, and
+  **two of the unread lanes separate the two populations cleanly**:
+
+  ```
+                        covered by a lock      no lock
+    +0x29   the 8..80     12   46.9 %           80   47.6 %
+                          64   34.3 %           64   19.5 %
+    +0x2b   the 0..90      0   41.7 %            0   86.1 %
+                          30   39.6 %           30    5.0 %
+    +0x31   the 1..255     1   68.8 %          100   31.2 %
+                           2   19.7 %          255   20.5 %
+  ```
+
+  **The reading that fits is a field spawner against an arena spawner.** A
+  lock's generator makes **one or two** monsters within a **12-metre** radius
+  after a **30**-unit delay; a generator with no lock makes **a hundred or
+  255** of them within **80 metres** and **no delay** — which is a respawning
+  populator armed by the player's own approach, not by a script. If that is
+  right, the engine's missing path is *proximity*, and it is in
+  [`host.py`](../engine/host.py) rather than in the quest tables.
+
+  **It is a reading and it is not proven**: what settles it is the code that
+  reads those lanes, and `ppc.py refs` on `enemy_gen`'s loader is the way in.
+  Note it does not explain `q00109`, whose single boss generator should then
+  spawn on approach and is one row of 2,669 — check that one first.
 
 ### 1a. And 441 landings could not read a monster's hit points.
 
