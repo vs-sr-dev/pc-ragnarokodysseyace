@@ -735,11 +735,27 @@ the order they would block an implementation.
    damage's ratio comes from `+0x30` instead. `+0x103` is what item 4's
    function reads, and that function runs it through the same base/add/rate
    chain the damage terms use rather than adding it raw — which is §5's second
-   reading. **What is left is whether the value it produces is also what
-   indexes `stg_p`.**
-4. **What computes the hit level.** Three levels, both consumers agree on
-   three, and the function from damage to 0/1/2 is nowhere. **EBOOT —
-   `FUN_006235fc`, located session 31, not yet read out.**
+   reading. Session 32 read that function out and the chain is confirmed to
+   the slot: `(byte + add) * rate`, floored at zero. **What is left is whether
+   the value it produces is also what indexes `stg_p`.**
+4. **What computes the hit level — read, session 32,**
+   [`eboot.md`](eboot.md)**.** `FUN_006235fc`, and the answer is that the
+   question was wrong: **the hit level never sees the damage.** It is
+
+   ```
+   level = (int)( ( hit[+0x103] + add ) * rate )      0 if that is not > 0
+   ```
+
+   where `hit[+0x103]` is the byte `FUN_0060fe50` copied out of the
+   `.anmcmd` record's `+0x35`, and `add` and `rate` are the same
+   listener-driven pair the damage terms carry — the attacker's list at
+   `vtable + 0x14`, the target's at `vtable + 0x18`. **The target then gets a
+   whole level back**: one more virtual call returns a `char` that is
+   subtracted from `add`, an integer of levels rather than a rate, which is
+   the shape a stagger resistance has. The truncation is toward zero and the
+   floor is **zero**, the opposite of the damage's floor of one, so a hit that
+   lands can still produce no reaction. So the three levels are authored per
+   volume and then negotiated, not derived from how hard the hit landed.
 5. **The sign convention of a region's flat modifier — settled, session 31.**
    The defence term is **subtracted**, one `fsubs`, and it is clamped to zero
    before the subtraction so a negative one cannot add. A weak point's `-450`

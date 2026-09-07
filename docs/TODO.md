@@ -144,11 +144,16 @@ Each has a function to start from. `Query.java` answers `decomp`, `xrefs`,
 `callers` and `info` without a window; `ppc.py refs` finds a global's users in
 a second.
 
-- **what computes the hit level** (ledger 4) — `FUN_006235fc`, called by the
-  hit resolver just before the damage, starting from a **byte at `+0x103` of
-  the hit record in memory** and passing it through the same listener chain.
-  If that byte is `.anmcmd`'s `+0x35`, ledger 3 goes with it. That is a
-  reading to prove, not to assume;
+- ~~**what computes the hit level**~~ **(ledger 4) — read in session 32.**
+  `FUN_006235fc` is `level = (int)((hit[+0x103] + add) * rate)`, floored at
+  **zero**, and the answer corrects the question: **the hit level never sees
+  the damage**. The input is the byte `FUN_0060fe50` copies out of `.anmcmd`'s
+  `+0x35`, `add` and `rate` are walked over both listener lists at
+  `vtable + 0x14` and `+0x18`, and the target then gets a **whole level** back
+  through one more virtual call returning a `char` that is subtracted from
+  `add` — an integer of levels, the shape a stagger resistance has, with
+  ability 8 the candidate on the disc. Ledger 3 keeps only its last clause:
+  whether that value also indexes `stg_p`;
 - **`se_hitlevel_tbl`'s third word** (ledger 7) — six references, five
   accessors around `0x003ec7fc` and a loader at `0x006587c8` that caches three
   block pointers at `+0x24`, `+0x28` and `+0x2c` of its owner. The consumer is

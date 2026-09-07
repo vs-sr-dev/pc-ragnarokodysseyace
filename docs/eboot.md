@@ -430,6 +430,41 @@ Four of those lines are worth naming separately.
   `1 + f`. So a single volume can be worth different amounts against different
   parts, independently of the region's own multipliers.
 
+## The hit level, and the question it answers differently
+
+`FUN_006235fc` is 604 bytes and it is [`combat_loop.md`](combat_loop.md)'s
+ledger item 4. That item asked *"the function from damage to 0, 1 or 2 is
+nowhere"* — and it is nowhere because **there is no such function**. The hit
+level never sees the damage. Written out, with the same `1.0` and `0.0` the
+expression uses:
+
+```
+  level = (int)( ( hit[+0x103] + add ) * rate )      0 if that is not > 0
+```
+
+- **The input is the byte the animation authored.** `hit[+0x103]` is the
+  runtime hit record's own field, and session 31 watched `FUN_0060fe50` copy
+  it out of an `.anmcmd` record's `+0x35`. A zero returns immediately, so a
+  volume with no authored strength has no reaction at all;
+- **`add` and `rate` are the same shape as the damage's**, initialised to
+  `0.0` and `1.0` and walked over both listener lists — the attacker's at
+  `vtable + 0x14` and the target's at `vtable + 0x18`. Same idea, different
+  slots: a card that makes a weapon stagger harder and one that makes a
+  monster stagger less are the same mechanism twice;
+- **and the target gets a whole level back.** After its listeners, one more
+  virtual call on the target's list owner (`vtable + 0x2c`) returns a `char`,
+  and a non-zero one is **subtracted from `add`** — an integer number of hit
+  levels, not a rate. That is the shape a stagger resistance has, and
+  `it_db_ability.bin`'s ability 8 is *"Raises resistance to knockback, launch
+  and stagger"* with a range of ±100. The join is not proven here; the shape
+  is;
+- **the truncation is toward zero and the floor is zero**, not one — the
+  opposite of the damage's floor, and it is what makes a hit that lands still
+  able to produce no reaction.
+
+The result is written to `result + 0x10` and returned, which is where the
+resolver picks it up.
+
 ## The parameter record, and the offset that proves it
 
 `d[0]` is `*(float *)(parameters + 0x2c4)` and the claim that `0x2c4` is `def`
