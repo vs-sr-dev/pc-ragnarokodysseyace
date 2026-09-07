@@ -250,14 +250,35 @@ The eighth slot, `r2-0x7f70`, is shared by all seven and is `4MdAI`, the base
 escape hatch is inert unless that boss is on the field. The names come off the
 RTTI two words at a time, as above; nothing here was guessed.
 
-**And the disc agrees on six of the seven**, which is what makes this a
-reading rather than a table. `monster.cpk/bNN_*/ai.pac` names its scripts
-`AI_B01_OrcKing`, `AI_B09_Hraesvelgr`, `AI_B11_Mokkurkalfe`, `AI_B15_Surt`,
-`AI_B18_Nidhogg`, `AI_B19_LordOfDeath` — the same seven ids, the same six
-names, and four of the seven mappings were read directly out of the
-decompiler rather than inferred from the slot order. The seventh is a real
-disagreement worth recording: **the disc calls b05 *Fafnir* and the engine
-class is `MdAIHjahanir`**, one boss carrying two names in one build.
+**And the disc agrees on all seven.** `monster.cpk/bNN_*/ai.pac` names its
+scripts `AI_B01_OrcKing`, `AI_B09_Hraesvelgr`, `AI_B11_Mokkurkalfe`,
+`AI_B15_Surt`, `AI_B18_Nidhogg`, `AI_B19_LordOfDeath` — the same seven ids and
+six of the names outright, with four of the seven mappings read directly out
+of the decompiler rather than inferred from the slot order.
+
+The seventh looked like a disagreement and was written up as one: the disc
+calls b05's script `AI_B05_Fafnir` and the engine class is `MdAIHjahanir`.
+**It is not a disagreement, it is a variant**, and what caught the error was an
+outside source — a player's guide, which lists Fafnir and Hjahanir as two
+different bosses. That is all testimony is good for here, and it was enough:
+the disc's own encyclopedia then settled it exactly.
+`dc_db_monster.bin`'s twelve-bit id against
+`dc_db_text_monster.rmsg`'s names — the join
+[`format_reward.md`](format_reward.md) established for the material tags —
+reads
+
+```
+  2050  b05_00  Fafnir            2090  b09_00  Hraesvelgr
+  2051  b05_01  Hjahanir          2091  b09_01  Kona Hraesvelgr
+  2070  b07_00  Fafnir (Top)      2190  b19_00  Lord of Death
+  2080  b08_00  Fafnir (Bottom)   2191  b19_01  Lord of Darkness
+```
+
+So `b05` is one boss with two variants, the script is named for the first and
+the engine class for the second, and b09 does the same thing the other way
+round — `MdAIHraesvelgr` for a family whose `_01` is *Kona Hraesvelgr*. **A
+hatch is per boss family, not per variant**, which is what a downcast to one
+class can express and a per-variant hook cannot.
 
 ## `se_hitlevel_tbl` has one reference, not six
 

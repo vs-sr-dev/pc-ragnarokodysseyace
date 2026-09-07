@@ -188,9 +188,14 @@ that maps `.anmcmd` opcode 10's effect id to a `PTB` slot. **The seven
 seven times: two integers off the Squirrel stack, a manager asked for the live
 AI object of one boss class *by RTTI type*, a call to its `vtable + 0x1c`, and
 false if that boss is not on the field. The seven types are seven consecutive
-TOC slots and they carry the disc's own `ai.pac` names on six of seven — the
-seventh being `MdAIHjahanir` where the disc says `AI_B05_Fafnir`. See
-[`eboot.md`](eboot.md) and [`format_self.md`](format_self.md).
+TOC slots and they carry the disc's own `ai.pac` names. The one that looked
+wrong — `MdAIHjahanir` where the disc says `AI_B05_Fafnir` — is a **variant**,
+not a disagreement: `dc_db_monster.bin` against its text file gives `b05_00`
+*Fafnir* and `b05_01` *Hjahanir*, so the script is named for the first variant
+and the engine class for the second, and `b09`/`MdAIHraesvelgr` does the same
+with *Kona Hraesvelgr*. **A hatch is per boss family, which is what a downcast
+to one class can express.** See [`eboot.md`](eboot.md) and
+[`format_self.md`](format_self.md).
 
 ~~**One loose end priced at an hour.**~~ **Closed in session 32, and it cost
 twenty minutes.** The damage path queries the disc's ability table by row

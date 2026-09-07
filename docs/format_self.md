@@ -178,7 +178,8 @@ for the live AI object of one boss class by RTTI type and calls its
 `vtable + 0x1c`, so the hatch is inert unless that boss is on the field, and
 the seven classes are `MdAIOrcKing`, `MdAIHjahanir`, `MdAIHraesvelgr`,
 `MdAIMokkurkalfe`, `MdAISurt`, `MdAINidhogg` and `MdAILordOfDeath` — the disc's
-own `ai.pac` names, on six of the seven. See [`eboot.md`](eboot.md).
+own `ai.pac` names, once `b05`'s two variants are read as two
+(`b05_00` *Fafnir*, `b05_01` *Hjahanir*). See [`eboot.md`](eboot.md).
 
 ## What is left, and it is the disassembler's
 
