@@ -222,6 +222,43 @@ is the source root, with `ga/source/lib/` a middleware layer beside
 `entity/stage/treasure_coffer.cpp`, `item/it_closet_accessor.cpp`,
 `menu/shop/billing/mu_sh_billing.cpp`, `other/collision_mgr.cpp`, `main.cpp`.
 
+## The seven escape hatches, and what they escape to
+
+[`format_self.md`](format_self.md) located the AI host's predicate table and
+with it the seven `checkBnnTerm` entries that nothing on the disc defines —
+B01, B05, B09, B11, B15, B18 and B19, the only condition names a monster's
+rules can use that the `.cnut` never explains. **All seven are the same
+228-byte function** and it is short enough to quote in words: it takes two
+integers off the Squirrel stack, asks a manager at `r2-0x7fb0` for an object
+by **type**, calls that object's `vtable + 0x1c` with the two integers and an
+out-byte, and pushes false if the manager has nothing. Each differs from the
+others in **one TOC slot**, the type it asks for, and the slots are seven
+consecutive words:
+
+```
+  checkB19Term  r2-0x7f6c  15MdAILordOfDeath      disc: AI_B19_LordOfDeath
+  checkB18Term  r2-0x7f68  11MdAINidhogg          disc: AI_B18_Nidhogg
+  checkB01Term  r2-0x7f64  11MdAIOrcKing          disc: AI_B01_OrcKing
+  checkB05Term  r2-0x7f60  12MdAIHjahanir         disc: AI_B05_Fafnir
+  checkB11Term  r2-0x7f5c  15MdAIMokkurkalfe      disc: AI_B11_Mokkurkalfe
+  checkB09Term  r2-0x7f58  14MdAIHraesvelgr       disc: AI_B09_Hraesvelgr
+  checkB15Term  r2-0x7f54  8MdAISurt              disc: AI_B15_Surt
+```
+
+The eighth slot, `r2-0x7f70`, is shared by all seven and is `4MdAI`, the base
+— so the call is a **downcast**, *find the live AI of class X*, and a boss's
+escape hatch is inert unless that boss is on the field. The names come off the
+RTTI two words at a time, as above; nothing here was guessed.
+
+**And the disc agrees on six of the seven**, which is what makes this a
+reading rather than a table. `monster.cpk/bNN_*/ai.pac` names its scripts
+`AI_B01_OrcKing`, `AI_B09_Hraesvelgr`, `AI_B11_Mokkurkalfe`, `AI_B15_Surt`,
+`AI_B18_Nidhogg`, `AI_B19_LordOfDeath` — the same seven ids, the same six
+names, and four of the seven mappings were read directly out of the
+decompiler rather than inferred from the slot order. The seventh is a real
+disagreement worth recording: **the disc calls b05 *Fafnir* and the engine
+class is `MdAIHjahanir`**, one boss carrying two names in one build.
+
 ## A cross-reference that needs no disassembler
 
 Almost every global in this build is reached as `lwz rN, d(r2)`, and `r2` is

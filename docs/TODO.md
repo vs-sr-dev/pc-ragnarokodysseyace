@@ -157,8 +157,15 @@ a second.
   rather than a table name, so it goes through the same `+0x244` record `def`
   came out of.
 
-And the two cosmetic ones are still cheap: the table that maps `.anmcmd`
-opcode 10's effect id to a `PTB` slot, and the seven `checkBnnTerm` bodies.
+~~And the two cosmetic ones are still cheap~~ — **one is left**: the table
+that maps `.anmcmd` opcode 10's effect id to a `PTB` slot. **The seven
+`checkBnnTerm` bodies were read in session 32** and they are one function
+seven times: two integers off the Squirrel stack, a manager asked for the live
+AI object of one boss class *by RTTI type*, a call to its `vtable + 0x1c`, and
+false if that boss is not on the field. The seven types are seven consecutive
+TOC slots and they carry the disc's own `ai.pac` names on six of seven — the
+seventh being `MdAIHjahanir` where the disc says `AI_B05_Fafnir`. See
+[`eboot.md`](eboot.md) and [`format_self.md`](format_self.md).
 
 ~~**One loose end priced at an hour.**~~ **Closed in session 32, and it cost
 twenty minutes.** The damage path queries the disc's ability table by row

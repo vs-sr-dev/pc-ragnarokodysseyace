@@ -173,7 +173,12 @@ name either, plus one.
 **The AI host predicate table**, 75 `(function, name)` pairs — the vocabulary
 a monster's rules are written against, including the seven `checkBnnTerm`
 escape hatches that nothing on the disc defines, now located as B01, B05,
-B09, B11, B15, B18 and B19.
+B09, B11, B15, B18 and B19. **Session 32 read all seven**: each asks a manager
+for the live AI object of one boss class by RTTI type and calls its
+`vtable + 0x1c`, so the hatch is inert unless that boss is on the field, and
+the seven classes are `MdAIOrcKing`, `MdAIHjahanir`, `MdAIHraesvelgr`,
+`MdAIMokkurkalfe`, `MdAISurt`, `MdAINidhogg` and `MdAILordOfDeath` — the disc's
+own `ai.pac` names, on six of the seven. See [`eboot.md`](eboot.md).
 
 ## What is left, and it is the disassembler's
 
