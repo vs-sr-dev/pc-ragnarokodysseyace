@@ -570,11 +570,22 @@ Two things this settles and one it does not.
   has an address where it had a name. What *consumes* it is still open: 37
   functions touch `+0x264` off a non-stack base and nothing yet says which of
   them is holding a parameter object;
-- **the record is one of several.** These 46 are the scalars; the vectors are
-  read by `FUN_0064af4c` in a different shape — `addi r5, off(r31)` for the
-  destination, the name in `r7`, and an element count in `r6`, which is how
-  `stg_p` arrives at `+0x100` with **four** elements. That function is the
-  obvious next `params` reader to teach the tool;
+- **the record is one of several.** These 46 are the scalars. The vectors are
+  read by `FUN_0064af4c` in a different shape — the destination as
+  `addi r5, off(r31)`, the name in `r7`, an element count in `r6` and an
+  element size in `r9` — and that function reads the stagger family and
+  nothing else:
+
+  ```
+    +0x100  stg_p     +0x104  stg_s_r     +0x108  stg_l_r     +0x10c  stg_d_r
+                              4 elements of 0x10 bytes each
+  ```
+
+  Four slots four bytes apart for four-element vectors, so the slot holds a
+  **pointer** to the block rather than the block. `combat_loop.md` §5 reads
+  `stg_p[4]` and the three rates off the disc; this is where they land in
+  memory. The tool is not taught this shape — one function is not a pattern,
+  and the four offsets above are the whole of what it would print;
 - **and one offset is still ambiguous**: `sz` and `col_r` both land on
   `+0x008` because the loop's prologue does not follow the pairing rule. The
   tool prints the clash rather than picking a winner.
