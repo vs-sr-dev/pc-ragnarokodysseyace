@@ -136,7 +136,10 @@ it end to end:
   name is the region's own on 259 of 266;
 - **`region_data_brk`** — the same for the 23 monsters with breakable parts,
   with its own hit-point pool an order of magnitude larger, and indexing
-  `it_drop_break` positionally, 23 of 23.
+  `it_drop_break` positionally, 23 of 23. **And a third table joins on the
+  same 23**: `se_parts_tbl2`, which session 32 found the EBOOT caching beside
+  `se_hitlevel_tbl`, is in exactly those objbins and no others — so a part
+  coming off has its own sound table, indexed the way its hit points are.
 
 So *where the hit lands* is answered completely. Forty of the 83 monsters have
 exactly one region, called `all`; the other 43 have a real part list.

@@ -154,10 +154,20 @@ a second.
   `add` — an integer of levels, the shape a stagger resistance has, with
   ability 8 the candidate on the disc. Ledger 3 keeps only its last clause:
   whether that value also indexes `stg_p`;
-- **`se_hitlevel_tbl`'s third word** (ledger 7) — six references, five
-  accessors around `0x003ec7fc` and a loader at `0x006587c8` that caches three
-  block pointers at `+0x24`, `+0x28` and `+0x2c` of its owner. The consumer is
-  whatever reads those three;
+- **`se_hitlevel_tbl`'s third word** (ledger 7) — **the six references are
+  one.** Session 32 read the five *"accessors around `0x003ec7fc`"* and they
+  are Boost exception constructors: each carries two descriptors with
+  different TOCs, and the name only appears under the window the code does not
+  run with. That is the folding caveat in [`eboot.md`](eboot.md) biting for
+  real, and the cheap guard is to read what a reference is used *as* — three
+  assignments of `v`, `v+0x1c`, `v+0x38` into an object is a vtable, not a
+  table. The real reference is the loader at `0x006587c8`, and it caches
+  **three sibling tables**: `se_vari_tbl` at `+0x24`, `se_hitlevel_tbl` at
+  `+0x28`, `se_parts_tbl2` at `+0x2c`. **Start from whatever reads `+0x28` of
+  that owner.** The siblings also joined on the disc: `se_parts_tbl2` is in
+  exactly the 23 objbins that carry `region_data_brk`, set against set, so it
+  is the sound a breakable part makes coming off, and `se_vari_tbl`'s 21 are
+  every one of them a variant record;
 - **`react_p`** (ledger 8) — **half done in session 32.** It is a `u32` at
   `+0x20` of the `+0x244` record, so `+0x264` of the parameter object, and the
   way that was read is now a tool: `python tools/ppc.py params <elf>` walks the

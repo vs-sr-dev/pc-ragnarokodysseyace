@@ -259,6 +259,54 @@ decompiler rather than inferred from the slot order. The seventh is a real
 disagreement worth recording: **the disc calls b05 *Fafnir* and the engine
 class is `MdAIHjahanir`**, one boss carrying two names in one build.
 
+## `se_hitlevel_tbl` has one reference, not six
+
+Session 31 wrote down six references to the string `se_hitlevel_tbl` — a
+loader and *"five accessors around `0x003ec7fc`"* — and made them ledger item
+7's starting point. **Five of the six are not references at all.** Each of
+those functions carries **two** descriptors with different TOC values, and it
+is only under the *other* window that `r2-0x4274` is the table's name; under
+the window the code actually runs with, `r2-0x4274` is `0x00faf30c`, a vtable
+group whose `typeinfo` reads `N5boost16exception_detail10clone_implI...`. The
+decompiled bodies say the same thing without being asked: they assign
+`v`, `v+0x1c` and `v+0x38` into an object, which is a multiple-inheritance
+constructor and not a table lookup.
+
+This is the folding caveat above, biting. `ppc.py refs` accepts a hit under any
+of a function's TOCs — right for finding candidates, and it over-reports on the
+9 % of entries that are folded. **The rule that catches it costs nothing: read
+what the reference is used *as*.** A vtable is three assignments into an
+object; a table is an index.
+
+What is left is one real reference, and it is worth more than the five:
+
+```c
+/* FUN_006587c8 */                       r2-0x4278  "se_vari_tbl"
+owner[0x24] = load(archive, "se_vari_tbl",     0);   r2-0x4274  "se_hitlevel_tbl"
+owner[0x28] = load(archive, "se_hitlevel_tbl", 0);   r2-0x4270  "se_parts_tbl2"
+owner[0x2c] = load(archive, "se_parts_tbl2",   0);
+```
+
+**Three sibling tables, cached together, one owner.** So the consumer of the
+hit-level table is whatever reads `+0x28` of that object, and it is in the same
+place as whatever reads `+0x24` and `+0x2c` — which is a much narrower search
+than five constructors.
+
+And the two siblings are on the disc, in the same `objbin.bin` the hit-level
+table lives in, which says what the family is for:
+
+```
+  se_hitlevel_tbl   65 objbins   players and monsters
+  se_vari_tbl       21 objbins   every one of them a variant record: _01, _02
+  se_parts_tbl2     23 objbins   exactly the 23 that carry region_data_brk
+```
+
+**23 and 23, and the same 23** — `combat.py`'s own reader over every objbin on
+the disc, set against set. `region_data_brk` is the breakable-parts table, so
+`se_parts_tbl2` is the sound a part makes coming off, and `se_vari_tbl` sits on
+exactly the actors whose file name says they are a variant. The engine holds
+one family of three sound tables where this repository had read one.
+
 ## A cross-reference that needs no disassembler
 
 Almost every global in this build is reached as `lwz rN, d(r2)`, and `r2` is
