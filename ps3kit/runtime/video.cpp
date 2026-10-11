@@ -183,7 +183,7 @@ void video_submit(std::vector<uint8_t>& rec, int flips) {
 }
 
 void video_run(const char* title) {
-    if (!SDL_Init(SDL_INIT_VIDEO)) { rt_log("video: SDL_Init: %s", SDL_GetError()); std::_Exit(1); }
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) { rt_log("video: SDL_Init: %s", SDL_GetError()); std::_Exit(1); }
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -217,6 +217,7 @@ void video_run(const char* title) {
                   (e.key.mod & SDL_KMOD_ALT))))
                 SDL_SetWindowFullscreen(win, !(SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN));
         }
+        pad_host_poll();
         auto now = Clock::now();
         if (opt.quit_after > 0 && std::chrono::duration<double>(now - t0).count() > opt.quit_after) quit();
         if (now - t_title >= std::chrono::seconds(1)) {

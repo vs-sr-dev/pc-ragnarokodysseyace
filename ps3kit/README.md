@@ -19,7 +19,7 @@ the second one starts.
 
 | Port | Game | What it asked of ps3kit |
 |---|---|---|
-| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start, threads, files, the command buffer to its first flip, the audio ports and their clock, the window, the RSX's draws: the publishers' logos; save data; cellSail and an MPEG-2 decoder: the first movie |
+| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start, threads, files, the command buffer to its first flip, the audio ports and their clock, the window, the RSX's draws: the publishers' logos; save data; cellSail and an MPEG-2 decoder: the first movie; the controller: the title screen, the main menu and character creation |
 | *next* | 3D Dot Game Heroes (2009) | the SPUs: 26 SPU programs on SPURS task sets and raw thread groups |
 
 ## Using it
@@ -64,6 +64,10 @@ is the last one reported), `PS3KIT_SAVEDATA=1` each save
 data step and callback result, `PS3KIT_SAIL=1` each movie player call and
 event and every 30th frame shown.
 
+`PS3KIT_PAD_PRESS="30:cross,46:start,52:cross+up"` presses the controller's
+buttons for a fifth of a second at those times (seconds from the window's
+first poll), so that a run nobody plays can still get past a screen.
+
 `mpeg2test MOVIE OUT.yuv [--offset BYTES]` (`ninja mpeg2test`) runs the MPEG-2
 decoder alone, on a program stream or an elementary stream, so that its
 frames can be compared with another decoder's.
@@ -104,7 +108,7 @@ from [`nids.txt`](nids.txt); a NID is computed from its name, never stored.
 | 1. Recognise | What is in this executable? | `elf`: segments, process parameters, TLS, the descriptor table, imports by name | the SPU programs embedded in it, the middleware it links |
 | 2. Read code | What does this function do? | `ppu`: the PPU decoder, disassembly, census | cross-references through the TOC |
 | 3. Recompile | The PPU code as C++ | `recomp`: discovery, switch tables, the whole user-mode PPU set and the VMX operations games use | SPU code |
-| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start; PPU threads, lightweight and lv2 synchronisation, event queues; the file system (cellFs and sys_fs); cellGame; cellGcmSys and cellResc with a FIFO consumer, labels, flips and a 59.94 Hz vblank; the renderer (SDL3, OpenGL 4.5): a window, render targets on the host GPU, clears, draws with vertex and fragment programs translated to GLSL, textures, blending, flips; video out; cellAudio and the audio output, with the 48 kHz clock that consumes the ports; SPURS job queue ports; save data (Auto, ListAuto, Fixed) with PARAM.SFO; cellSail playing PAMF through the runtime's own MPEG-2 decoder | the rest of the 3D engine's state (fog, clip planes, two-sided colour, point sprites), sound out (the SPU jobs that make it), input, the list save dialogs, SPURS |
+| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start; PPU threads, lightweight and lv2 synchronisation, event queues; the file system (cellFs and sys_fs); cellGame; cellGcmSys and cellResc with a FIFO consumer, labels, flips and a 59.94 Hz vblank; the renderer (SDL3, OpenGL 4.5): a window, render targets on the host GPU, clears, draws with vertex and fragment programs translated to GLSL, textures, blending, flips; video out; cellAudio and the audio output, with the 48 kHz clock that consumes the ports; SPURS job queue ports; save data (Auto, ListAuto, Fixed) with PARAM.SFO; cellSail playing PAMF through the runtime's own MPEG-2 decoder; cellPad from the host's gamepad and keyboard | the rest of the 3D engine's state (fog, clip planes, two-sided colour, point sprites), sound out (the SPU jobs that make it), fonts, the list save dialogs, SPURS |
 
 ## Known approximations
 
@@ -185,6 +189,12 @@ Declared here as they are made, so that the list is the cost:
 - A texture whose format the renderer does not know, or whose linear rows
   are longer than their pitch, is reported with its registers and drawn
   with no image.
+- One standard controller is connected to port 0, and no keyboard. Its
+  state is the host's first SDL gamepad, by position (south is cross), and
+  the keyboard mapped onto the same buttons (see `pad.cpp`); the keyboard
+  map is the runtime's own, standing where a gamepad goes. Pressure values
+  are 255 for a pressed button, the triggers' travel for L2 and R2; the
+  motion sensors report a controller at rest; the motors do not turn.
 - Vertex programs that branch are translated as the basic blocks their
   start reaches, in a loop over a program counter, at most 65,535 passes a
   vertex (a `switch` with a case

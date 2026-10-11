@@ -67,6 +67,9 @@ void video_submit(std::vector<uint8_t>& rec, int flips);
 // Runs the window and the renderer on the calling thread, the process's
 // main thread, until the window is closed; the game runs on its own threads.
 [[noreturn]] void video_run(const char* title);
+// The controller's state from the host's gamepad and keyboard (pad.cpp), sampled
+// by the window's loop on the main thread.
+void pad_host_poll();
 
 // rsxcap.cpp, on the FIFO thread
 void rsxcap_io(uint32_t io_addr, uint32_t io_size);
