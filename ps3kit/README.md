@@ -19,7 +19,7 @@ the second one starts.
 
 | Port | Game | What it asked of ps3kit |
 |---|---|---|
-| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start, threads, files, the command buffer to its first flip |
+| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start, threads, files, the command buffer to its first flip, the audio ports and their clock |
 | *next* | 3D Dot Game Heroes (2009) | the SPUs: 26 SPU programs on SPURS task sets and raw thread groups |
 
 ## Using it
@@ -88,7 +88,7 @@ from [`nids.txt`](nids.txt); a NID is computed from its name, never stored.
 | 1. Recognise | What is in this executable? | `elf`: segments, process parameters, TLS, the descriptor table, imports by name | the SPU programs embedded in it, the middleware it links |
 | 2. Read code | What does this function do? | `ppu`: the PPU decoder, disassembly, census | cross-references through the TOC |
 | 3. Recompile | The PPU code as C++ | `recomp`: discovery, switch tables, the whole user-mode PPU set and the VMX operations games use | SPU code |
-| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start; PPU threads, lightweight and lv2 synchronisation, event queues; the file system (cellFs and sys_fs); cellGame; cellGcmSys and cellResc with a FIFO consumer, labels, flips and a 59.94 Hz vblank; video out | drawing (RSX methods to OpenGL), audio, input, cellSail, SPURS |
+| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start; PPU threads, lightweight and lv2 synchronisation, event queues; the file system (cellFs and sys_fs); cellGame; cellGcmSys and cellResc with a FIFO consumer, labels, flips and a 59.94 Hz vblank; video out; cellAudio and the audio output, with the 48 kHz clock that consumes the ports; SPURS job queue ports | drawing (RSX methods to OpenGL), sound out (the SPU jobs that make it), input, cellSail, SPURS |
 
 ## Known approximations
 
@@ -109,5 +109,14 @@ Declared here as they are made, so that the list is the cost:
   and fragment-shader sizes are the runtime's own.
 - The video output is fixed: one HDMI display, 1280x720, 59.94 Hz. System
   callbacks are registered and never raised.
+- The audio system plays nothing: its clock consumes every started port's
+  block each 256/48000 s, clears it and moves the read index on, from the
+  host's steady clock. The port buffers and read indices live in the
+  runtime's heap, so their addresses are the runtime's own.
+- The audio output is fixed like the video output: HDMI, two-channel linear
+  PCM at 48 kHz. Configuring any other channel count is refused.
+- A SPURS job queue runs no job. A pushed job is complete at once and its
+  outputs stay as they were; each distinct SPU program is reported when it
+  is first pushed.
 - An import with no implementation returns `CELL_OK`; an lv2 call with none
   returns `CELL_ENOSYS`. Both are reported.

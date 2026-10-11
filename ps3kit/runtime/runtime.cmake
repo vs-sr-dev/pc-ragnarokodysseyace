@@ -6,7 +6,8 @@
 set(_rt ${CMAKE_CURRENT_LIST_DIR})
 add_library(ps3kit_core OBJECT ${_rt}/core.cpp ${_rt}/mem.cpp ${_rt}/elf.cpp ${_rt}/hle.cpp
             ${_rt}/lv2.cpp ${_rt}/sysprx.cpp ${_rt}/thread.cpp ${_rt}/sync.cpp
-            ${_rt}/intr.cpp ${_rt}/gcm.cpp ${_rt}/sysutil.cpp ${_rt}/fs.cpp ${_rt}/game.cpp)
+            ${_rt}/intr.cpp ${_rt}/gcm.cpp ${_rt}/sysutil.cpp ${_rt}/fs.cpp ${_rt}/game.cpp
+            ${_rt}/audio.cpp ${_rt}/spursjq.cpp)
 target_include_directories(ps3kit_core PUBLIC ${_rt})
 find_package(Threads REQUIRED)
 target_link_libraries(ps3kit_core PUBLIC Threads::Threads)
@@ -15,4 +16,5 @@ target_link_libraries(ps3boot ps3kit_core recomp)
 # recompiled code recurses as deeply as the game does, on the host's stack
 if(WIN32)
   target_link_options(ps3boot PRIVATE -Wl,--stack,268435456)
+  target_link_libraries(ps3boot winmm)
 endif()

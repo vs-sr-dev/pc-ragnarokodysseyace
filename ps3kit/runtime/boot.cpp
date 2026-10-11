@@ -16,6 +16,7 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <timeapi.h>
 #endif
 
 void tls_init(PPUContext& c, uint32_t image, uint32_t filesz, uint32_t memsz);
@@ -69,6 +70,7 @@ int main(int argc, char** argv) {
            g_dev_hdd0.c_str());
 #ifdef _WIN32
     AddVectoredExceptionHandler(1, on_fault);
+    timeBeginPeriod(1);                  // the system's clocks (vblank, audio) sleep in milliseconds
 #endif
     if (!mem_init()) { std::fprintf(stderr, "ps3kit: cannot reserve guest memory\n"); return 1; }
     ElfInfo info;
