@@ -1,20 +1,24 @@
-// ps3kit runtime — cellGcmSys and cellResc, and the RSX as far as the game's
-// command stream needs one to keep going: a thread that consumes the FIFO
-// between GET and PUT, follows its jumps, calls and returns, executes the
-// methods that synchronise (references, semaphores, labels) and the flip,
-// and a vblank clock at 59.94 Hz that paces flips and runs the handlers.
+// ps3kit runtime — cellGcmSys and cellResc, and the RSX: a thread that
+// consumes the FIFO between GET and PUT, follows its jumps, calls and
+// returns, executes the methods that synchronise (references, semaphores,
+// labels) and the flip, and a vblank clock at 59.94 Hz that paces flips and
+// runs the handlers.
 //
-// Nothing is drawn yet: every other method is counted and skipped. The
-// counts are what the renderer will be written against.
+// What changes the picture is recorded for the renderer (rsx.h): the render
+// targets and their clears so far. Every other method is counted and
+// skipped; the counts are what the renderer is written against.
 //
 // The default FIFO is libgcm's: the command area at the start of the I/O
 // region is cut into 32 KB segments, the first 4 KB reserved; when one fills,
 // the callback flushes PUT, writes a jump into the next and waits for the RSX
 // to have left it.
 #include "rt.h"
+#include "rsx.h"
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
 #include <map>
 #include <mutex>
 #include <pthread.h>
@@ -44,6 +48,17 @@ std::mutex g_vblank_mx;
 std::condition_variable_any g_vblank_cv;
 std::mutex g_stats_mx;
 std::map<uint32_t, uint64_t> g_method_counts;
+
+// The registers the record is made of, and the record since the last flip.
+RsxSurface g_surf{};
+bool g_surf_dirty = true;
+uint32_t g_color_mask = 0x01010101u;                // NV4097_SET_COLOR_MASK: A, R, G, B a byte each
+uint32_t g_scissor_h = 4096u << 16, g_scissor_v = 4096u << 16;
+uint32_t g_clear_color = 0, g_clear_zs = 0;
+uint32_t g_clears = 0;
+std::vector<uint8_t> g_rec;
+// PS3KIT_RSX_TRACE=N: every method of the Nth frame (the methods before flip N), with its argument
+const uint32_t g_trace_frame = std::getenv("PS3KIT_RSX_TRACE") ? (uint32_t)std::atoi(std::getenv("PS3KIT_RSX_TRACE")) : 0;
 
 void gcm_report(int top);
 uint32_t put() { return ld32(g_control); }
@@ -89,6 +104,36 @@ void callback(PPUContext& c) {
 }
 
 // ---- the RSX ------------------------------------------------------------------------------------
+void record(uint8_t op, const void* p, size_t n) {
+    g_rec.push_back(op);
+    g_rec.insert(g_rec.end(), (const uint8_t*)p, (const uint8_t*)p + n);
+}
+
+// CLEAR_SURFACE: the channels the colour mask lets through, inside the
+// scissor and the surface's clip.
+void clear_surface(uint32_t arg) {
+    uint32_t mask = arg & 0xF3;
+    if (!(g_color_mask & 0x00010000u)) mask &= ~0x10u;
+    if (!(g_color_mask & 0x00000100u)) mask &= ~0x20u;
+    if (!(g_color_mask & 0x00000001u)) mask &= ~0x40u;
+    if (!(g_color_mask & 0x01000000u)) mask &= ~0x80u;
+    auto span = [](uint32_t clip_x, uint32_t clip_w, uint32_t sc, uint16_t& at, uint16_t& n) {
+        uint32_t a = std::max(clip_x, sc & 0xFFFF), b = std::min(clip_x + clip_w, (sc & 0xFFFF) + (sc >> 16));
+        at = (uint16_t)a;
+        n = (uint16_t)(b > a ? b - a : 0);
+    };
+    RsxClear c{mask, g_clear_color, g_clear_zs, 0, 0, 0, 0};
+    span(g_surf.clip_x, g_surf.clip_w, g_scissor_h, c.x, c.w);
+    span(g_surf.clip_y, g_surf.clip_h, g_scissor_v, c.y, c.h);
+    if (++g_clears <= 8)
+        rt_log("rsx: clear %X colour %08X zs %08X at %u,%u %ux%u; surface format %X target %X colour A %X:%X pitch %X, "
+               "zeta %X:%X", mask, c.color, c.zstencil, c.x, c.y, c.w, c.h, g_surf.format, g_surf.target,
+               g_surf.color_dma[0], g_surf.color_offset[0], g_surf.color_pitch[0], g_surf.zeta_dma, g_surf.zeta_offset);
+    if (!mask || !c.w || !c.h) return;
+    if (g_surf_dirty) { record(RC_SURFACE, &g_surf, sizeof g_surf); g_surf_dirty = false; }
+    record(RC_CLEAR, &c, sizeof c);
+}
+
 void flip(uint32_t id) {
     if (g_flip_mode == 1) {                                         // wait for the next vblank
         std::unique_lock<std::mutex> lk(g_vblank_mx);
@@ -102,11 +147,17 @@ void flip(uint32_t id) {
         rt_log("rsx: flip %u to buffer %u (offset %X, %ux%u, pitch %X)", n, id, d.offset, d.width, d.height, d.pitch);
     }
     if (n == 60 || n % 1800 == 0) gcm_report(12);
+    const Display& d = g_display[id & 7];
+    RsxFlip f{id, d.offset, d.pitch, d.width, d.height};
+    record(RC_FLIP, &f, sizeof f);
+    video_submit(g_rec, 1);
+    g_surf_dirty = true;                                            // a new record starts from the registers
     if (uint32_t h = g_flip_handler) ppu_intr_post(h, 1);
     if (uint32_t h = g_resc_flip_handler) ppu_intr_post(h, 1);
 }
 
 void method(uint32_t m, uint32_t arg, uint32_t& sem406e, uint32_t& sem4097) {
+    if (g_trace_frame && g_flips.load() + 1 == g_trace_frame) rt_log("rsx: %04X %08X", m, arg);
     switch (m) {
     case 0x0050: st32(g_control + 8, arg); return;                  // NV406E_SET_REFERENCE
     case 0x0064: sem406e = arg; return;                             // NV406E_SEMAPHORE_OFFSET
@@ -120,6 +171,33 @@ void method(uint32_t m, uint32_t arg, uint32_t& sem406e, uint32_t& sem4097) {
         return;
     case 0x1D74: st32(g_labels + sem4097, arg); return;             // NV4097_TEXTURE_READ_SEMAPHORE_RELEASE
     case 0xFEAC: flip(arg); return;                                 // GCM_FLIP_COMMAND
+    // the surface
+    case 0x018C: g_surf.color_dma[1] = arg; g_surf_dirty = true; return;
+    case 0x0194: g_surf.color_dma[0] = arg; g_surf_dirty = true; return;
+    case 0x0198: g_surf.zeta_dma = arg; g_surf_dirty = true; return;
+    case 0x01B4: g_surf.color_dma[2] = arg; g_surf_dirty = true; return;
+    case 0x01B8: g_surf.color_dma[3] = arg; g_surf_dirty = true; return;
+    case 0x0200: g_surf.clip_x = arg & 0xFFFF; g_surf.clip_w = arg >> 16; g_surf_dirty = true; return;
+    case 0x0204: g_surf.clip_y = arg & 0xFFFF; g_surf.clip_h = arg >> 16; g_surf_dirty = true; return;
+    case 0x0208: g_surf.format = arg; g_surf_dirty = true; return;
+    case 0x020C: g_surf.color_pitch[0] = arg; g_surf_dirty = true; return;
+    case 0x0210: g_surf.color_offset[0] = arg; g_surf_dirty = true; return;
+    case 0x0214: g_surf.zeta_offset = arg; g_surf_dirty = true; return;
+    case 0x0218: g_surf.color_offset[1] = arg; g_surf_dirty = true; return;
+    case 0x021C: g_surf.color_pitch[1] = arg; g_surf_dirty = true; return;
+    case 0x0220: g_surf.target = arg; g_surf_dirty = true; return;
+    case 0x022C: g_surf.zeta_pitch = arg; g_surf_dirty = true; return;
+    case 0x0280: g_surf.color_pitch[2] = arg; g_surf_dirty = true; return;
+    case 0x0284: g_surf.color_pitch[3] = arg; g_surf_dirty = true; return;
+    case 0x0288: g_surf.color_offset[2] = arg; g_surf_dirty = true; return;
+    case 0x028C: g_surf.color_offset[3] = arg; g_surf_dirty = true; return;
+    // what bounds a clear, and the clear
+    case 0x0324: g_color_mask = arg; return;                        // NV4097_SET_COLOR_MASK
+    case 0x08C0: g_scissor_h = arg; return;                         // NV4097_SET_SCISSOR_HORIZONTAL
+    case 0x08C4: g_scissor_v = arg; return;
+    case 0x1D8C: g_clear_zs = arg; return;                          // NV4097_SET_ZSTENCIL_CLEAR_VALUE
+    case 0x1D90: g_clear_color = arg; return;                       // NV4097_SET_COLOR_CLEAR_VALUE
+    case 0x1D94: clear_surface(arg); return;                        // NV4097_CLEAR_SURFACE
     default: break;
     }
     std::lock_guard<std::mutex> lk(g_stats_mx);

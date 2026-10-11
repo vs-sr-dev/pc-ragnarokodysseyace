@@ -19,7 +19,7 @@ the second one starts.
 
 | Port | Game | What it asked of ps3kit |
 |---|---|---|
-| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start, threads, files, the command buffer to its first flip, the audio ports and their clock |
+| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start, threads, files, the command buffer to its first flip, the audio ports and their clock, the window and the first cleared frame |
 | *next* | 3D Dot Game Heroes (2009) | the SPUs: 26 SPU programs on SPURS task sets and raw thread groups |
 
 ## Using it
@@ -40,6 +40,10 @@ ninja -C build/recomp-build
 build/recomp-build/ps3boot GAME.elf --bdvd DISC --hdd0 DIR   # DISC holds PS3_GAME
 ```
 
+`ps3boot` opens a window and runs the game behind it; `--no-video` runs the
+game alone, `--quit-after SECONDS` ends the run, and `--dump DIR` writes
+every 60th shown frame as a PNG (`--dump-every N` for another interval).
+
 Debugging a run: `ps3boot` reports a host fault with the guest address it
 touched, and [`gdb_trace.py`](gdb_trace.py) traces any recompiled function
 under gdb (arguments, result, the guest call chain) with no debug build:
@@ -50,9 +54,11 @@ PS3KIT_TRACE_FUNCS=81BEE8 PS3KIT_TRACE_CHAIN=1 gdb -q -batch -x ps3kit/gdb_trace
 ```
 
 `PS3KIT_TRACE=1` reports every import call (by default each one's first
-three), `PS3KIT_FS=1` every file opened.
+three), `PS3KIT_FS=1` every file opened, `PS3KIT_RSX_TRACE=N` every RSX
+method of frame N with its argument, and `PS3KIT_GLDEBUG=1` the OpenGL
+driver's complaints.
 
-Building needs CMake, Ninja and clang (the generated code's tail jumps are
+Building needs SDL3, CMake, Ninja and clang (the generated code's tail jumps are
 `[[clang::musttail]]`; clang 22 from MSYS2 is what is used here). The Python
 side has no dependencies.
 
@@ -88,7 +94,7 @@ from [`nids.txt`](nids.txt); a NID is computed from its name, never stored.
 | 1. Recognise | What is in this executable? | `elf`: segments, process parameters, TLS, the descriptor table, imports by name | the SPU programs embedded in it, the middleware it links |
 | 2. Read code | What does this function do? | `ppu`: the PPU decoder, disassembly, census | cross-references through the TOC |
 | 3. Recompile | The PPU code as C++ | `recomp`: discovery, switch tables, the whole user-mode PPU set and the VMX operations games use | SPU code |
-| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start; PPU threads, lightweight and lv2 synchronisation, event queues; the file system (cellFs and sys_fs); cellGame; cellGcmSys and cellResc with a FIFO consumer, labels, flips and a 59.94 Hz vblank; video out; cellAudio and the audio output, with the 48 kHz clock that consumes the ports; SPURS job queue ports | drawing (RSX methods to OpenGL), sound out (the SPU jobs that make it), input, cellSail, SPURS |
+| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start; PPU threads, lightweight and lv2 synchronisation, event queues; the file system (cellFs and sys_fs); cellGame; cellGcmSys and cellResc with a FIFO consumer, labels, flips and a 59.94 Hz vblank; the renderer (SDL3, OpenGL 4.5): a window, render targets on the host GPU, clears, flips; video out; cellAudio and the audio output, with the 48 kHz clock that consumes the ports; SPURS job queue ports | drawing (vertex arrays, the vertex and fragment programs, textures, blending), sound out (the SPU jobs that make it), input, cellSail, SPURS |
 
 ## Known approximations
 
@@ -102,8 +108,17 @@ Declared here as they are made, so that the list is the cost:
 - Guest threads are host threads and the host schedules them: guest
   priorities are kept, not honoured. Every synchronisation object shares one
   lock and one condition variable; waiters race rather than queue.
-- The RSX draws nothing yet: the FIFO is consumed, references, semaphores
-  and flips are executed, every other method is counted and skipped.
+- The RSX draws nothing yet. It clears: the render targets the surface
+  registers name are kept on the host GPU, and `CLEAR_SURFACE` clears them
+  inside the scissor with the colour mask applied. Every other method is
+  counted and skipped.
+- A render target found again at the same address with another size or
+  format is made anew, and what it held is lost.
+- A display buffer no render target was drawn to is read from guest memory
+  when the renderer shows it, which may be up to two flips after the game
+  flipped it.
+- Resc's conversion shows the source buffer itself, which is only right
+  while the source and the display are the same size (1280x720 here).
 - `cellRescGetBufferSize`'s colour-buffer size is a reading: the largest
   supported, registered destination times its buffer count. Its vertex-array
   and fragment-shader sizes are the runtime's own.

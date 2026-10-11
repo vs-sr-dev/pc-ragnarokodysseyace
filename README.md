@@ -13,6 +13,17 @@ is your disc's code, translated, and is never part of this repository.
 
 ## Status
 
+Session 34 (2026-10-11). **The game runs in a window, and its first frame is
+the colour it clears to: black.** Its audio ports are real now, consumed by a
+48 kHz clock that the game paces its mixer on, so it gets past the crash
+session 33 ended on and settles into a steady loop: sixty flips a second, a
+clear and two textured quads each. `ps3boot` opens an SDL3/OpenGL 4.5 window,
+keeps the game's render targets on the GPU and clears them as the RSX would;
+the quads are the renderer's next job. The audio job queue settled a question
+too: the game hands two CRI programs to the SPUs, and the one that decodes
+HCA, the format of 7,659 of its 7,756 waveforms, exists only as SPU code, so
+the sound will come from lifting it.
+
 Session 33 (2026-10-11). **The game now runs its own code.** A census of the
 decrypted EBOOT came first — 27 libraries and **306 imports, all named**; 2.69
 million PPU instructions of which about 2,000 are vector code; **the only SPU
@@ -29,8 +40,8 @@ MB it was given and the twenty memory pools it carves out of them. With
 threads, synchronisation, the file system and the command buffer behind it,
 it then starts CRI's file system, reads its disc, sets up its audio and its
 three 1280x720 display buffers and **reaches its first flip** — then six
-hundred more at 59.94 Hz, with nothing drawn yet. Audio, a window and the RSX
-are next — see [`docs/TODO.md`](docs/TODO.md).
+hundred more at 59.94 Hz, with nothing drawn yet. What comes next is in
+[`docs/TODO.md`](docs/TODO.md).
 
 The reimplementation below is not retired: it is the oracle the recompiled
 game can now be checked against, function by function.

@@ -2,15 +2,23 @@
 // memory, every import bound, the primary thread's stack and TLS, and a call
 // to the entry descriptor with the registers _start expects.
 //
-//     ps3boot GAME.elf [--bdvd DISC] [--hdd0 DIR]
+//     ps3boot GAME.elf [--bdvd DISC] [--hdd0 DIR] [--no-video] [--quit-after SECONDS]
+//                      [--dump DIR [--dump-every N]]
 //
 // DISC is the player's extracted disc, the folder that holds PS3_GAME;
 // DIR is where /dev_hdd0 lives (game data, saves), created if missing.
+// The window and the renderer take the host's main thread and the game runs
+// on its own; --no-video runs the game alone. --dump writes every Nth shown
+// frame (60 by default) as a PNG.
 //
 // r3 argc, r4 argv, r5 envp, r6 envc, r7 the thread's id, r8-r10 the TLS
 // image (address, file size, memory size), r11 e_entry, r12 malloc's page size.
 #include "rt.h"
+#include "rsx.h"
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
+#include <pthread.h>
 #include <filesystem>
 #include <string>
 #ifdef _WIN32
@@ -51,18 +59,31 @@ static LONG WINAPI on_fault(EXCEPTION_POINTERS* ep) {
 #endif
 
 static const char kArgv0[] = "/dev_bdvd/PS3_GAME/USRDIR/EBOOT.BIN";
+static ElfInfo g_info;
+static void* game_main(void*);
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: ps3boot GAME.elf [--bdvd DISC] [--hdd0 DIR]\n");
+        std::fprintf(stderr, "usage: ps3boot GAME.elf [--bdvd DISC] [--hdd0 DIR] [--no-video] [--quit-after SECONDS]\n"
+                             "                [--dump DIR [--dump-every N]]\n");
         return 2;
     }
     g_dev_hdd0 = "hdd0";
-    for (int i = 2; i + 1 < argc; i += 2) {
+    VideoOptions vo;
+    for (int i = 2; i < argc; ++i) {
         std::string k = argv[i];
-        if (k == "--bdvd") g_dev_bdvd = argv[i + 1];
-        else if (k == "--hdd0") g_dev_hdd0 = argv[i + 1];
+        const char* v = i + 1 < argc ? argv[i + 1] : nullptr;
+        if (k == "--no-video") { vo.enabled = false; continue; }
+        if (!v) { std::fprintf(stderr, "ps3boot: %s needs a value\n", k.c_str()); return 2; }
+        if (k == "--bdvd") g_dev_bdvd = v;
+        else if (k == "--hdd0") g_dev_hdd0 = v;
+        else if (k == "--quit-after") vo.quit_after = std::atof(v);
+        else if (k == "--dump") vo.dump_dir = v;
+        else if (k == "--dump-every") vo.dump_every = std::max(1, std::atoi(v));
+        else { std::fprintf(stderr, "ps3boot: unknown option %s\n", k.c_str()); return 2; }
+        ++i;
     }
+    video_configure(vo);
     std::error_code ec;
     std::filesystem::create_directories(g_dev_hdd0 + "/game", ec);
     std::filesystem::create_directories(g_dev_hdd0 + "/home/00000001/savedata", ec);
@@ -73,13 +94,27 @@ int main(int argc, char** argv) {
     timeBeginPeriod(1);                  // the system's clocks (vblank, audio) sleep in milliseconds
 #endif
     if (!mem_init()) { std::fprintf(stderr, "ps3kit: cannot reserve guest memory\n"); return 1; }
-    ElfInfo info;
+    ElfInfo& info = g_info;
     if (!elf_load(argv[1], info)) return 1;
     rt_log("ps3kit: entry descriptor %08X, sdk %08X, primary thread prio %d stack %X, malloc page %X",
            info.entry_desc, info.sdk_version, (int)info.primary_prio, info.primary_stacksize,
            info.malloc_pagesize);
     hle_bind_imports();
 
+    // the game on a host thread of its own, with room to recurse as deeply as it does
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 256u << 20);
+    pthread_t game;
+    if (pthread_create(&game, &attr, game_main, nullptr)) { std::fprintf(stderr, "ps3kit: no game thread\n"); return 1; }
+    pthread_attr_destroy(&attr);
+    if (video_enabled()) video_run("ps3kit");
+    pthread_join(game, nullptr);
+    return 0;
+}
+
+static void* game_main(void*) {
+    const ElfInfo& info = g_info;
     static PPUContext ctx{};
     PPUContext& c = ctx;
     c.thread_id = 0x01000000;
@@ -122,9 +157,14 @@ int main(int argc, char** argv) {
         rt_log("ps3kit: the primary thread exited with %lld", (long long)e.value);
     } catch (const PPUExit& e) {
         rt_log("ps3kit: the process exited with %d", e.code);
-        return e.code;
+        std::fflush(stdout);
+        std::fflush(stderr);
+        std::_Exit(e.code);
     }
     // the process lives until sys_process_exit, or until nothing is left running
     ppu_thread_wait_all();
-    return 0;
+    rt_log("ps3kit: no thread is left running");
+    std::fflush(stdout);
+    std::fflush(stderr);
+    std::_Exit(0);
 }

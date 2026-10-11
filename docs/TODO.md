@@ -7,84 +7,92 @@
 
 # Next session
 
-**Session 33 changed the road, and the recompiled game reached its first
-flip the same day.** [`STRATEGY.md`](STRATEGY.md#the-pivot-static-recompilation-session-33)
-has the reasons and the census behind them: the game is recompiled from its
-own executable onto a runtime that stands in for the PS3, built as a
-reusable kit, [`ps3kit`](../ps3kit). The reimplementation in
-[`engine/`](../engine) is the oracle now, and the session 31-32 plan it was
-following is kept intact in the [Log](#sessions-31-32---2026-08-25), parked.
+**Session 34 put the first frame in a window, and it is black, because black
+is the colour the game clears to.** The recompiled game now runs past the
+audio crash session 33 ended on, and it settles into a loop it does not
+leave: sixty flips a second, a clear and two textured quads each, with the
+mixer feeding its port in step.
 
 Where it stands:
 
-- **`python -m ps3kit.recomp eboot.elf --out build/recomp`** turns the 2.69
-  million PPU instructions into 122 MB of C++ in 12 seconds: 76,648 units,
-  the code range found without the section table and equal to it to the byte,
-  and **379 switch tables of 379**. Every `bctr` in the binary is one; the 86
-  the census could not place use `lwax` rather than `lwzx`, and some of their
-  cases sit in a neighbouring function. clang builds it in about 73 seconds.
-- **`ps3boot eboot.elf --bdvd extract --hdd0 build/hdd0`** runs it. Guest
-  threads are host threads with their own stacks and TLS; the lightweight
-  mutex and condition and lv2's mutex, condition, semaphore, event flag and
-  event queue are real; `/dev_bdvd` is the extracted disc. The game brings up
-  its libc and its twenty memory pools, starts **CRI's file system threads**
-  (four "File Access", one decompression, the server), scans its disc, sets
-  up SPURS and the CRI audio job queue, opens its audio ports, initialises
-  `cellGcm` and Resc with three 1280x720 display buffers, opens and reads its
-  files, loads fonts, asks for its save data, boots `cellSail` — and
-  **flips**: `rsx: flip 1 to buffer 0`, then 600 more at 59.94 Hz. Nothing is
-  drawn: the RSX consumes the FIFO, executes references, semaphores and
-  flips, and counts the 200 other methods it skips.
-- **It then dies in its own audio code** (`f_00081D10`), reading through the
-  port configuration `cellAudioGetPortConfig` never wrote.
+- **Audio is real enough to go on.** `cellAudio`'s ports live in the
+  runtime's heap and report themselves the way the game reads them back: a
+  u64 read index, status RUN, the buffer's address. A 48 kHz clock clears
+  each started port's current block every 256 samples and moves the index
+  on. The game opens one port, 8 channels and 8 blocks, mixes 0x2000 bytes a
+  block, and paces on that index. `cellAudioOut` answers as a television
+  would, HDMI stereo LPCM at 48 kHz, and the game asks for downmixer A (8
+  channels to 2). On Windows the host's timer resolution is now 1 ms, which
+  both clocks need.
+- **The job queue answers, and that settled the open question.** Every
+  pushed job completes at once and runs nothing. The game pushes exactly two
+  CRI programs, **AsrVoice** (`0xF4D080`, 0x7400 bytes) and **AtomDecoder**
+  (`0xF3D200`, 0xFE20 bytes), each synchronously, several times a frame.
+  7,659 of the disc's 7,756 waveforms are HCA (`format_awb.md`), and the
+  only HCA decoder in the executable is the SPU one: the PPU side has an ADX
+  decoder and no HCA decoder. **CRI has no PPU fallback to run, so sound
+  comes from lifting SPU code.** That is the same work 3D Dot will need, on
+  a larger scale.
+- **`ps3boot` opens a window.** SDL3 and OpenGL 4.5 run on the main thread,
+  and the game runs on a thread of its own (256 MB host stack, as before).
+  The RSX thread keeps the surface, scissor, colour mask and clear
+  registers, and records each frame for the renderer, which runs at most two
+  flips behind. Render targets are GL textures, found by location, offset,
+  size and format; a flip shows the one at the display buffer's offset.
+  `--quit-after`, `--dump DIR` (PNGs) and `--no-video` make runs scriptable,
+  and `PS3KIT_RSX_TRACE=N` prints frame N method by method. The colour path
+  was checked once with a forced clear colour: channels in order, scissor
+  rows from the top.
+- **What a frame holds now** (frame 600): a clear of the Resc source buffer
+  to `FF000000` (colour, depth 0xFFFFFF, stencil 0), then twice: a fragment
+  program in main memory (`08E4` = `0x0C4CC202`, then `...C402`), vertex
+  arrays in main memory (`1680`, formats `0x1832`, `0x1844`, `0x1822`), a
+  texture (`1A00` = `0x023F8000`, format word `0x00018529`), and
+  `DRAW_ARRAYS` of six vertices as triangles. That is a picture drawn over
+  black, probably a notice or a loading screen, waiting for something.
+- **What it waits for** is one of the two stubs it called last:
+  `cellSaveDataListAutoLoad` returns `CELL_OK` without calling any of its
+  callbacks, and `cellSailPlayerBoot` never reports the player booted. The
+  files stop at `menu.cpk`, just before both.
 
-**The method note is the bug that came first.** The first crash looked like a
-recompilation error: a pool allocation returned NULL with 8 MB free. It was
-not. The pool had 0x16C30 bytes left, its 40 allocations total `0x81A340`
-against a pool of `0x819000` — over by `0x1340` — and the excess came from the
-local-memory page table, whose size follows the space left after Resc's
-colour buffers, whose size was a number this runtime had **invented** for
-`cellRescGetBufferSize`. Sized as the library plausibly does (the largest
-supported, registered destination: 1080 lines at pitch `0x2000`, two
-buffers), the pool fits. The game's memory budget is exact to a few
-kilobytes, so a plausible stand-in fails loudly here — which is the parity
-rule, enforced by the game itself. The reading is declared in
-[`ps3kit/README.md`](../ps3kit/README.md). [`ps3kit/gdb_trace.py`](../ps3kit/gdb_trace.py)
-is the instrument that followed it: any recompiled function under gdb, its
-arguments, result and guest call chain, with no debug build.
+### 1. The two quads.
 
-### 1. Audio, enough to go on.
+This is what the push is waiting for. Draw them: vertex arrays (`1680`
+offsets, `1740` formats, from main or local memory), the vertex program
+(uploaded through `0B80`-`0B9C`, constants through `1EFC`/`1F00`), the
+fragment program (microcode at the `08E4` address, read from memory), the
+texture (`1A00`-`1A1C`), blending and `DRAW_ARRAYS`. Both kinds of program
+are translated to GLSL when first seen and cached by their bytes. The 676
+`CGB` blocks remain a possible offline cache, not the path. The skipped-method
+report and `PS3KIT_RSX_TRACE` are the to-do list.
 
-`cellAudioInit`, `PortOpen` (the port's buffer in guest memory, its block
-count and channels), `GetPortConfig` (where the game reads the read index),
-`PortStart`, and a host thread advancing the read index at 48 kHz, 256
-samples a block, with `cellAudioSetNotifyEventQueue`-style events if the game
-asks. Output can wait; the timing cannot, because the game paces its mixer on
-it. Then `cellSpursJq`: the CRI jobs are pushed into a queue nobody serves.
-First answer them as done (silence), then decide between lifting the six SPU
-jobs and running their PPU-side fallbacks, if CRI has any.
+### 2. Save data.
 
-### 2. Something on screen.
-
-The push is waiting for this. A window (SDL3, OpenGL, as the other kits)
-that presents the display buffer each flip names, then the RSX methods in
-the order the counts give them: the surface (colour and depth targets),
-`NV4097_CLEAR_SURFACE` — a cleared frame in the game's own colour is the first
-picture — then vertex state, shaders (the 676 `CGB` blocks, translated to
-GLSL), textures and draws. The skipped-method report every 1,800 flips is
-the to-do list; the heaviest so far are `0A20`-`0A3C` (1,682 each),
-`1714` (1,479), `0394`/`0398`/`0A00` (841).
+`cellSaveDataListAutoLoad` and the other `cellSaveData*` calls, with their
+callbacks raised as the system raises them, and the first-boot answer (no
+save yet) that a fresh `/dev_hdd0` gives. The game asks for its save just
+before it boots `cellSail`, and nothing after that moves.
 
 ### 3. The intro movie.
 
-`cellSail` plays PAMF, which [`pam.py`](../tools/pam.py) already reads: a Sony header over an MPEG-2 program stream with no audio. A
-player HLE plus an MPEG-2 video decoder of our own is a bounded job, and it
-puts the game's own first frames on screen independently of the renderer.
+`cellSail` plays PAMF, which [`pam.py`](../tools/pam.py) already reads: a
+Sony header over an MPEG-2 program stream with no audio. A player HLE (its
+state events first, since the game may be waiting on `PlayerBoot`) plus an
+MPEG-2 video decoder of our own is a bounded job, and it puts the game's own
+first frames on screen independently of the renderer.
 
 ### 4. Input.
 
 `cellPadInit`, `GetInfo2`, `GetData` from SDL's gamepad and keyboard. The game
 polls them every frame already.
+
+### 5. Sound: the two SPU jobs.
+
+An SPU recompiler in ps3kit (the SPU decoder, then SPU programs as C++ the
+way PPU code is), JOBCRT's calling convention, and the job descriptor's DMA
+lists, enough to run AsrVoice and AtomDecoder when they are pushed. Then
+`Port2Sync` waits for real work, and the port's blocks carry sound. Output
+through SDL3's audio stream, from the clock that already consumes the ports.
 
 ### Alongside, every session.
 
@@ -303,6 +311,92 @@ polls them every frame already.
 ---
 
 # Log
+
+## Session 33 - 2026-10-11
+
+*The "next session" section as session 33 left it: the pivot to
+recompilation and the first run, up to the audio crash.*
+
+**Session 33 changed the road, and the recompiled game reached its first
+flip the same day.** [`STRATEGY.md`](STRATEGY.md#the-pivot-static-recompilation-session-33)
+has the reasons and the census behind them: the game is recompiled from its
+own executable onto a runtime that stands in for the PS3, built as a
+reusable kit, [`ps3kit`](../ps3kit). The reimplementation in
+[`engine/`](../engine) is the oracle now, and the session 31-32 plan it was
+following is kept intact in the [Log](#sessions-31-32---2026-08-25), parked.
+
+Where it stands:
+
+- **`python -m ps3kit.recomp eboot.elf --out build/recomp`** turns the 2.69
+  million PPU instructions into 122 MB of C++ in 12 seconds: 76,648 units,
+  the code range found without the section table and equal to it to the byte,
+  and **379 switch tables of 379**. Every `bctr` in the binary is one; the 86
+  the census could not place use `lwax` rather than `lwzx`, and some of their
+  cases sit in a neighbouring function. clang builds it in about 73 seconds.
+- **`ps3boot eboot.elf --bdvd extract --hdd0 build/hdd0`** runs it. Guest
+  threads are host threads with their own stacks and TLS; the lightweight
+  mutex and condition and lv2's mutex, condition, semaphore, event flag and
+  event queue are real; `/dev_bdvd` is the extracted disc. The game brings up
+  its libc and its twenty memory pools, starts **CRI's file system threads**
+  (four "File Access", one decompression, the server), scans its disc, sets
+  up SPURS and the CRI audio job queue, opens its audio ports, initialises
+  `cellGcm` and Resc with three 1280x720 display buffers, opens and reads its
+  files, loads fonts, asks for its save data, boots `cellSail` — and
+  **flips**: `rsx: flip 1 to buffer 0`, then 600 more at 59.94 Hz. Nothing is
+  drawn: the RSX consumes the FIFO, executes references, semaphores and
+  flips, and counts the 200 other methods it skips.
+- **It then dies in its own audio code** (`f_00081D10`), reading through the
+  port configuration `cellAudioGetPortConfig` never wrote.
+
+**The method note is the bug that came first.** The first crash looked like a
+recompilation error: a pool allocation returned NULL with 8 MB free. It was
+not. The pool had 0x16C30 bytes left, its 40 allocations total `0x81A340`
+against a pool of `0x819000` — over by `0x1340` — and the excess came from the
+local-memory page table, whose size follows the space left after Resc's
+colour buffers, whose size was a number this runtime had **invented** for
+`cellRescGetBufferSize`. Sized as the library plausibly does (the largest
+supported, registered destination: 1080 lines at pitch `0x2000`, two
+buffers), the pool fits. The game's memory budget is exact to a few
+kilobytes, so a plausible stand-in fails loudly here — which is the parity
+rule, enforced by the game itself. The reading is declared in
+[`ps3kit/README.md`](../ps3kit/README.md). [`ps3kit/gdb_trace.py`](../ps3kit/gdb_trace.py)
+is the instrument that followed it: any recompiled function under gdb, its
+arguments, result and guest call chain, with no debug build.
+
+The plan it left, before session 34 reordered it:
+
+#### 1. Audio, enough to go on.
+
+`cellAudioInit`, `PortOpen` (the port's buffer in guest memory, its block
+count and channels), `GetPortConfig` (where the game reads the read index),
+`PortStart`, and a host thread advancing the read index at 48 kHz, 256
+samples a block, with `cellAudioSetNotifyEventQueue`-style events if the game
+asks. Output can wait; the timing cannot, because the game paces its mixer on
+it. Then `cellSpursJq`: the CRI jobs are pushed into a queue nobody serves.
+First answer them as done (silence), then decide between lifting the six SPU
+jobs and running their PPU-side fallbacks, if CRI has any.
+
+#### 2. Something on screen.
+
+The push is waiting for this. A window (SDL3, OpenGL, as the other kits)
+that presents the display buffer each flip names, then the RSX methods in
+the order the counts give them: the surface (colour and depth targets),
+`NV4097_CLEAR_SURFACE` — a cleared frame in the game's own colour is the first
+picture — then vertex state, shaders (the 676 `CGB` blocks, translated to
+GLSL), textures and draws. The skipped-method report every 1,800 flips is
+the to-do list; the heaviest so far are `0A20`-`0A3C` (1,682 each),
+`1714` (1,479), `0394`/`0398`/`0A00` (841).
+
+#### 3. The intro movie.
+
+`cellSail` plays PAMF, which [`pam.py`](../tools/pam.py) already reads: a Sony header over an MPEG-2 program stream with no audio. A
+player HLE plus an MPEG-2 video decoder of our own is a bounded job, and it
+puts the game's own first frames on screen independently of the renderer.
+
+#### 4. Input.
+
+`cellPadInit`, `GetInfo2`, `GetData` from SDL's gamepad and keyboard. The game
+polls them every frame already.
 
 ## Sessions 31-32 - 2026-08-25
 
