@@ -58,7 +58,9 @@ three), `PS3KIT_FS=1` every file opened, `PS3KIT_RSX_TRACE=N` every RSX
 method of frame N with its argument, `PS3KIT_DRAWDUMP=N` draw N's vertices,
 constants and state, `PS3KIT_SHADERDUMP=1` every program pair as GLSL,
 `PS3KIT_TEXDUMP=DIR` every texture as first decoded (PNG), and
-`PS3KIT_GLDEBUG=1` the OpenGL driver's complaints, `PS3KIT_SAVEDATA=1` each save
+`PS3KIT_GLDEBUG=1` the OpenGL driver's complaints, `PS3KIT_GLSYNC=N` each
+draw from draw N on, waited for (so that a draw which brings the driver down
+is the last one reported), `PS3KIT_SAVEDATA=1` each save
 data step and callback result, `PS3KIT_SAIL=1` each movie player call and
 event and every 30th frame shown.
 
@@ -183,5 +185,11 @@ Declared here as they are made, so that the list is the cost:
 - A texture whose format the renderer does not know, or whose linear rows
   are longer than their pitch, is reported with its registers and drawn
   with no image.
+- Vertex programs that branch are translated as the basic blocks their
+  start reaches, in a loop over a program counter, at most 65,535 passes a
+  vertex (a `switch` with a case
+  per instruction brought the NVIDIA driver down). A branch tests its
+  condition whether or not the instruction's test-enable bit is set; read
+  the other way, every branch was taken and a skinning loop never ended.
 - An import with no implementation returns `CELL_OK`; an lv2 call with none
   returns `CELL_ENOSYS`. Both are reported.

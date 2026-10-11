@@ -553,6 +553,9 @@ void set_state() {
 
 // PS3KIT_DRAWDUMP=N: the Nth draw's vertices, the constants its programs see and its state.
 const uint64_t g_drawdump = std::getenv("PS3KIT_DRAWDUMP") ? std::strtoull(std::getenv("PS3KIT_DRAWDUMP"), nullptr, 0) : 0;
+// PS3KIT_GLSYNC=N: from draw N on, each draw is reported and waited for, so
+// that a draw which brings the driver down is the last one reported.
+const uint64_t g_glsync = std::getenv("PS3KIT_GLSYNC") ? std::strtoull(std::getenv("PS3KIT_GLSYNC"), nullptr, 0) : 0;
 
 template <typename F>
 void dump_draw(const RsxDraw& d, size_t nattrs, F attr, const std::vector<uint32_t>& fp, size_t ntex) {
@@ -700,6 +703,9 @@ void draw(const uint8_t*& p) {
         }
         size_t o = ring(vbo, vbo_at, a.data, a.bytes);
         glVertexArrayVertexBuffer(vao, a.index, vbo, (GLintptr)o, (GLsizei)stride);
+        // a stride of 0 is one element for every vertex, where GL would read the
+        // elements packed: as a per-instance attribute, every vertex reads element 0
+        glVertexArrayBindingDivisor(vao, a.index, stride ? 0 : 1);
         glVertexArrayAttribFormat(vao, a.index, (GLint)std::min(size, 4u), gt, norm, 0);
         glVertexArrayAttribBinding(vao, a.index, a.index);
         glEnableVertexArrayAttrib(vao, a.index);
@@ -737,6 +743,18 @@ void draw(const uint8_t*& p) {
         glMultiDrawArrays(prim, first.data(), count.data(), (GLsizei)first.size());
     }
     glDisable(GL_SCISSOR_TEST);
+    if (g_glsync && cnt.draws >= g_glsync) {
+        std::string at;
+        for (auto& a : attrs) {
+            char b[40];
+            std::snprintf(b, sizeof b, " %u:%03X/%u", a.index, a.format & 0xFFF, a.bytes);
+            at += b;
+        }
+        rt_log("rsxgl: draw %llu prim %u %s %u, %u vertices, program %u, %zu textures, attrs%s",
+               (unsigned long long)cnt.draws, d.prim, d.indexed ? "indices" : "ranges", d.count, d.vertices, pr.prog,
+               texs.size(), at.c_str());
+        glFinish();
+    }
 }
 }  // namespace
 

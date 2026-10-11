@@ -11,6 +11,7 @@
     X(PFNGLENABLEIPROC, glEnablei)                                                                  \
     X(PFNGLDISABLEIPROC, glDisablei)                                                                \
     X(PFNGLVIEWPORTPROC, glViewport)                                                                \
+    X(PFNGLFINISHPROC, glFinish)                                                                    \
     X(PFNGLSCISSORPROC, glScissor)                                                                  \
     X(PFNGLCOLORMASKPROC, glColorMask)                                                              \
     X(PFNGLCOLORMASKIPROC, glColorMaski)                                                            \
@@ -59,6 +60,7 @@
     X(PFNGLCREATEVERTEXARRAYSPROC, glCreateVertexArrays)                                            \
     X(PFNGLBINDVERTEXARRAYPROC, glBindVertexArray)                                                  \
     X(PFNGLVERTEXARRAYVERTEXBUFFERPROC, glVertexArrayVertexBuffer)                                  \
+    X(PFNGLVERTEXARRAYBINDINGDIVISORPROC, glVertexArrayBindingDivisor)                              \
     X(PFNGLVERTEXARRAYELEMENTBUFFERPROC, glVertexArrayElementBuffer)                                \
     X(PFNGLENABLEVERTEXARRAYATTRIBPROC, glEnableVertexArrayAttrib)                                  \
     X(PFNGLDISABLEVERTEXARRAYATTRIBPROC, glDisableVertexArrayAttrib)                                \

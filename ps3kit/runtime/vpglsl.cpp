@@ -5,7 +5,8 @@
 // reading source 2. Either can write a temporary, an output register or the
 // condition code, under a condition. A program runs from its start slot to
 // the instruction whose end bit is set; one that branches is translated as
-// a loop over a program counter, one without as straight code.
+// a loop over a program counter and its basic blocks, one without as
+// straight code.
 //
 // The viewport is applied after the program, as the RSX does: the output
 // position is taken to window coordinates by NV4097_SET_VIEWPORT_SCALE and
@@ -14,6 +15,7 @@
 #include "rsxprog.h"
 #include <cstdio>
 #include <set>
+#include <vector>
 
 namespace {
 uint32_t bits(uint32_t v, int lo, int n) { return (v >> lo) & ((1u << n) - 1); }
@@ -193,7 +195,9 @@ struct Gen {
         }
         case S_BRI: case S_BRA: case S_BRB: case S_CAL: case S_CLI: case S_CLB: case S_RET: {
             uint32_t op = bits(d1, 27, 5);
-            std::string c = always() ? "true" : bits(d0, 10, 3) == 0 ? "false" : "any(" + condition() + ")";
+            // a branch tests its condition whether or not the test-enable bit is set
+            uint32_t cond = bits(d0, 10, 3);
+            std::string c = cond == 7 ? "true" : cond == 0 ? "false" : "any(" + condition() + ")";
             if (op == S_BRB || op == S_CLB) {
                 c = std::string("((vp_branch_bits >> ") + std::to_string(bits(d3, 23, 5)) + "u) & 1u) " +
                     (bits(d3, 28, 1) ? "!=" : "==") + " 0u";
@@ -225,10 +229,39 @@ struct Gen {
             if (is_branch(bits(d1, 27, 5))) dispatch = true;
             if (bits(d3, 0, 1) && !dispatch) break;
         }
+        // A program that branches is cut into basic blocks, each entered by
+        // its first instruction: the start, every branch target, and whatever
+        // follows a branch or an ending. A block falls through to the next one
+        // within the same pass of the loop; a branch sets pc and starts a pass.
+        // Only what the start reaches is translated.
+        std::set<uint32_t> leaders = {cfg.start}, reach;
+        if (dispatch) {
+            std::vector<uint32_t> work = {cfg.start};
+            while (!work.empty()) {
+                uint32_t i = work.back();
+                work.pop_back();
+                for (; i < n && reach.insert(i).second; ++i) {
+                    load(i);
+                    uint32_t sop = bits(d1, 27, 5);
+                    if (!valid() || bits(d3, 0, 1)) { leaders.insert(i + 1); break; }
+                    if (!is_branch(sop)) continue;
+                    leaders.insert(i + 1);
+                    if (sop != S_RET && target() < n) { leaders.insert(target()); work.push_back(target()); }
+                    if (bits(d0, 10, 3) == 7 && (sop == S_BRA || sop == S_BRI || sop == S_RET)) break;
+                }
+            }
+        }
+        bool open = false;
         for (uint32_t i = dispatch ? 0 : cfg.start; i < n; ++i) {
+            if (dispatch && !reach.count(i)) continue;
             load(i);
-            if (dispatch) body += "    case " + std::to_string(i) + ":\n";
-            if (!bits(src[0], 0, 2) || !bits(src[1], 0, 2) || !bits(src[2], 0, 2)) {
+            if (dispatch && leaders.count(i)) {
+                if (open) body += "    }\n";
+                body += "    if (pc == " + std::to_string(i) + ") {\n";
+                open = true;
+            }
+            bool last = dispatch && leaders.count(i + 1);
+            if (!valid()) {
                 problem("invalid source type");
                 if (!dispatch) break;
                 line("pc = -1; continue;");
@@ -239,10 +272,15 @@ struct Gen {
             if (bits(d3, 0, 1)) {
                 if (!dispatch) break;
                 line("pc = -1; continue;");
+                continue;
             }
+            if (last) line("pc = " + std::to_string(i + 1) + ";");
         }
-        if (dispatch) line("pc = -1; continue;");
+        if (open) body += "    }\n";
+        if (dispatch) body += "    pc = -1;\n";
     }
+
+    bool valid() { return bits(src[0], 0, 2) && bits(src[1], 0, 2) && bits(src[2], 0, 2); }
 
     std::string build() {
         std::string s = "#version 450\n";
@@ -255,7 +293,7 @@ struct Gen {
         s += "    vec4 cc0 = vec4(0.0), cc1 = vec4(0.0);\n    ivec4 a0 = ivec4(0), a1 = ivec4(0);\n";
         if (dispatch) {
             s += "    int pc = " + std::to_string(cfg.start) + ", sp = 0, guard = 0;\n    int stack[8];\n";
-            s += "    while (pc >= 0 && ++guard < 65536) {\n    switch (pc) {\n" + body + "    default: pc = -1; continue;\n    }\n    }\n";
+            s += "    while (pc >= 0 && ++guard < 65536) {\n" + body + "    }\n";
         } else {
             s += body;
         }
