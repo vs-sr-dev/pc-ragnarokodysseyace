@@ -171,8 +171,15 @@ Declared here as they are made, so that the list is the cost:
   unnormalised texture coordinates and packed (`CMP`) vertex attributes.
 - A texture is copied and hashed whole on every draw that binds it, and the
   renderer keeps each distinct one until 512 MB have been sent; then it
-  forgets them all. A render target the game samples is found on the GPU by
-  its address, before guest memory is read.
+  forgets them all. A texture over a surface the renderer has made (by a
+  draw or a clear) is sampled on the GPU and guest memory is not read: what
+  the GPU drew is not there. Hashing the 1280x1280 shadow map's depth buffer
+  from memory on every draw that sampled it had held character creation to
+  9 frames a second.
+- A D24S8 depth surface sampled as A8R8G8B8 is converted on the GPU to the
+  bytes the RSX would read (depth from the top in A, R and G, the stencil in
+  B), again only when the surface has been written since. Any other format
+  over a depth surface is read from memory and reported.
 - A render target found again at the same address with another size or
   format is made anew, and what it held is lost.
 - A display buffer no render target was drawn to is read from guest memory

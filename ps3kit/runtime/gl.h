@@ -93,7 +93,12 @@
     X(PFNGLBLITNAMEDFRAMEBUFFERPROC, glBlitNamedFramebuffer)                                        \
     X(PFNGLCHECKNAMEDFRAMEBUFFERSTATUSPROC, glCheckNamedFramebufferStatus)                          \
     X(PFNGLCLEARNAMEDFRAMEBUFFERFVPROC, glClearNamedFramebufferfv)                                  \
-    X(PFNGLCLEARNAMEDFRAMEBUFFERFIPROC, glClearNamedFramebufferfi)
+    X(PFNGLCLEARNAMEDFRAMEBUFFERFIPROC, glClearNamedFramebufferfi)                                  \
+    X(PFNGLGENTEXTURESPROC, glGenTextures)                                                          \
+    X(PFNGLTEXTUREVIEWPROC, glTextureView)                                                          \
+    X(PFNGLBINDIMAGETEXTUREPROC, glBindImageTexture)                                                \
+    X(PFNGLDISPATCHCOMPUTEPROC, glDispatchCompute)                                                  \
+    X(PFNGLMEMORYBARRIERPROC, glMemoryBarrier)
 
 #define PS3KIT_GL_DECLARE(T, n) extern T n;
 PS3KIT_GL_FUNCS(PS3KIT_GL_DECLARE)

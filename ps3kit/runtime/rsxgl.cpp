@@ -46,7 +46,7 @@ void report_once(const std::string& s) {
 struct Counters { uint64_t draws, clears, programs, textures, skipped_draws; } cnt;
 
 // ---- surfaces ---------------------------------------------------------------------------------
-struct Surface { GLuint tex = 0, fbo = 0; int w = 0, h = 0; GLenum fmt = 0; };
+struct Surface { GLuint tex = 0, fbo = 0; int w = 0, h = 0; GLenum fmt = 0; uint64_t version = 0; };   // version: its last write
 std::unordered_map<uint64_t, Surface> colors, depths;     // by location << 32 | offset
 
 uint64_t skey(uint32_t dma, uint32_t offset) { return (uint64_t)(dma == 0xFEED0001u) << 32 | offset; }
@@ -64,11 +64,13 @@ GLenum color_format(uint32_t f) {
 }
 
 void forget_fbos();
+void forget_depth_color(GLuint depth);
+uint64_t g_surface_writes = 0;
 
 Surface& surface(std::unordered_map<uint64_t, Surface>& m, uint64_t k, int w, int h, GLenum fmt, GLenum attach) {
     Surface& s = m[k];
     if (s.tex && s.w == w && s.h == h && s.fmt == fmt) return s;
-    if (s.tex) { glDeleteTextures(1, &s.tex); glDeleteFramebuffers(1, &s.fbo); forget_fbos(); }
+    if (s.tex) { forget_depth_color(s.tex); glDeleteTextures(1, &s.tex); glDeleteFramebuffers(1, &s.fbo); forget_fbos(); }
     s = Surface{0, 0, w, h, fmt};
     glCreateTextures(GL_TEXTURE_2D, 1, &s.tex);
     glTextureStorage2D(s.tex, 1, fmt, w, h);
@@ -152,6 +154,7 @@ void clear(uint32_t arg) {
             float depth = z16 ? (zs & 0xFFFF) / 65535.0f : (zs >> 8) / 16777215.0f;
             glDepthMask(mask & 1);
             glStencilMask((mask & 2) ? 0xFF : 0);
+            s->version = ++g_surface_writes;
             if (z16) glClearNamedFramebufferfv(s->fbo, GL_DEPTH, 0, &depth);
             else glClearNamedFramebufferfi(s->fbo, GL_DEPTH_STENCIL, 0, depth, (GLint)(zs & 0xFF));
             glDepthMask(1);
@@ -418,6 +421,66 @@ GLenum wrap(uint32_t w) {
     }
 }
 
+// A D24S8 surface as the RSX reads it through an A8R8G8B8 texture: each texel
+// the word depth << 8 | stencil, so A, R and G are the depth's bytes from the
+// top and B is the stencil. Made on the GPU from the surface, again only when
+// the surface has been written since.
+struct DepthColor { GLuint view = 0, tex = 0; uint64_t version = ~0ull; };
+std::unordered_map<GLuint, DepthColor> depth_colors;              // by the depth surface's texture
+GLuint depth_color_prog = 0;
+
+void forget_depth_color(GLuint depth) {
+    auto it = depth_colors.find(depth);
+    if (it == depth_colors.end()) return;
+    glDeleteTextures(1, &it->second.view);
+    glDeleteTextures(1, &it->second.tex);
+    depth_colors.erase(it);
+}
+
+GLuint depth_color(Surface& s) {
+    if (!depth_color_prog) {
+        static const char* src =
+            "#version 450\n"
+            "layout(local_size_x = 8, local_size_y = 8) in;\n"
+            "layout(binding = 30) uniform sampler2D depth;\n"
+            "layout(binding = 31) uniform usampler2D stencil;\n"
+            "layout(binding = 0, rgba8) writeonly uniform image2D outimg;\n"
+            "void main() {\n"
+            "    ivec2 p = ivec2(gl_GlobalInvocationID.xy);\n"
+            "    if (any(greaterThanEqual(p, imageSize(outimg)))) return;\n"
+            "    uint d = uint(round(texelFetch(depth, p, 0).r * 16777215.0)), st = texelFetch(stencil, p, 0).r;\n"
+            "    imageStore(outimg, p, vec4(float(d >> 8 & 255u), float(d & 255u), float(st & 255u), float(d >> 16 & 255u)) / 255.0);\n"
+            "}\n";
+        GLuint cs = compile(GL_COMPUTE_SHADER, src, "depth conversion");
+        if (!cs) return 0;
+        depth_color_prog = glCreateProgram();
+        glAttachShader(depth_color_prog, cs);
+        glLinkProgram(depth_color_prog);
+        glDeleteShader(cs);
+    }
+    DepthColor& c = depth_colors[s.tex];
+    if (!c.tex) {
+        glCreateTextures(GL_TEXTURE_2D, 1, &c.tex);
+        glTextureStorage2D(c.tex, 1, GL_RGBA8, s.w, s.h);
+        glGenTextures(1, &c.view);
+        glTextureView(c.view, GL_TEXTURE_2D, s.tex, GL_DEPTH24_STENCIL8, 0, 1, 0, 1);
+        glTextureParameteri(c.view, GL_DEPTH_STENCIL_TEXTURE_MODE, GL_STENCIL_INDEX);
+    }
+    if (c.version == s.version) return c.tex;
+    c.version = s.version;
+    glUseProgram(depth_color_prog);
+    glBindTextureUnit(30, s.tex);
+    glBindSampler(30, 0);
+    glBindTextureUnit(31, c.view);
+    glBindSampler(31, 0);
+    glBindImageTexture(0, c.tex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
+    glDispatchCompute((GLuint)(s.w + 7) / 8, (GLuint)(s.h + 7) / 8, 1);
+    glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
+    glBindTextureUnit(30, 0);
+    glBindTextureUnit(31, 0);
+    return c.tex;
+}
+
 // Binds a texture unit as the registers describe it: the image, the remap
 // of its channels, and the sampler.
 void bind_texture(const RsxTexture& t, const uint8_t* data, uint32_t& dims) {
@@ -425,10 +488,20 @@ void bind_texture(const RsxTexture& t, const uint8_t* data, uint32_t& dims) {
     TexLayout l = tex_layout(t.regs[1], t.regs[6], t.control3);
     GLuint name = 0;
     GLenum src[4] = {GL_ALPHA, GL_RED, GL_GREEN, GL_BLUE};
-    // a render target the game samples is found on the GPU first
-    auto sit = colors.find((uint64_t)((t.regs[1] & 3) == 2) << 32 | t.regs[0]);
-    if (sit != colors.end() && sit->second.w >= (int)l.w && sit->second.h >= (int)l.h && !l.cube && l.dims == 2) {
+    // a render target the game samples is sampled on the GPU (the capture side decided which)
+    if (t.target == 1) {
+        auto sit = colors.find((uint64_t)((t.regs[1] & 3) == 2) << 32 | t.regs[0]);
+        if (sit == colors.end()) { report_once("a sampled render target the renderer never made"); return; }
         name = sit->second.tex;
+        dims |= 1u << (2 * u);
+    } else if (t.target == 2) {
+        auto sit = depths.find((uint64_t)((t.regs[1] & 3) == 2) << 32 | t.regs[0]);
+        if (sit == depths.end() || sit->second.fmt != GL_DEPTH24_STENCIL8) {
+            report_once("a sampled depth surface the renderer never made as D24S8");
+            return;
+        }
+        name = depth_color(sit->second);
+        if (!name) return;
         dims |= 1u << (2 * u);
     } else {
         Texture& x = texture(t, data);
@@ -637,6 +710,7 @@ void draw(const uint8_t*& p) {
     std::vector<Surface*> cs;
     for (int i = 0; i < nt; ++i) if (Surface* s = color_surface(t[i])) { cs.push_back(s); key.push_back(s->tex); }
     Surface* ds = depth_surface();
+    if (ds) ds->version = ++g_surface_writes;
     key.push_back(ds ? ds->tex : 0);
     GLuint& fbo = fbos[key];
     if (!fbo) {

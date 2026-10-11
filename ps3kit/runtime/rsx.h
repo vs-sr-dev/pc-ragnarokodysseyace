@@ -46,6 +46,7 @@ struct RsxTexture {
     uint32_t control3;                  // pitch and depth
     uint64_t key;                       // the layout and the bytes, hashed
     uint32_t bytes;                     // 0: the renderer has this key already
+    uint32_t target;                    // a render target's, sampled on the GPU (no key, no bytes): 1 colour, 2 depth
 };
 
 struct RsxFlip {

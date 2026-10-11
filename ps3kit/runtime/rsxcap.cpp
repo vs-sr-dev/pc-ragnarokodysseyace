@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <mutex>
 #include <set>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace {
@@ -19,6 +20,12 @@ uint32_t g_prim = 0;
 bool g_indexed = false;
 std::vector<std::pair<uint32_t, uint32_t>> g_ranges;   // first, count
 std::unordered_set<uint64_t> g_sent;    // texture keys the renderer has
+// The surfaces the renderer has made, by location << 32 | offset, with their
+// size: registered where it makes them (a draw; a colour or a depth clear), so
+// that a texture over one is sampled on the GPU and never read, hashed or sent.
+// Guest memory holds nothing the GPU drew there.
+struct Target { uint32_t w, h, depth_format; };
+std::unordered_map<uint64_t, Target> g_colors, g_depths;
 uint64_t g_sent_bytes = 0;
 uint64_t g_draws = 0;
 std::set<std::string> g_reported;
@@ -28,6 +35,26 @@ void report_once(const std::string& what) {
 }
 
 uint32_t R(uint32_t method) { return reg[method >> 2]; }
+
+// As rsxgl's targets(), color_dma(), color_offset(), depth_surface() and the surface size read them.
+void register_targets(bool color, bool depth) {
+    uint32_t w = (R(0x0200) & 0xFFFF) + (R(0x0200) >> 16), h = (R(0x0204) & 0xFFFF) + (R(0x0204) >> 16);
+    if (!w || !h || w > 0xFFFF || h > 0xFFFF) return;
+    uint32_t zf = R(0x0208) >> 5 & 7;
+    if (depth && zf) g_depths[(uint64_t)(R(0x0198) == 0xFEED0001u) << 32 | R(0x0214)] = {w, h, zf};
+    if (!color) return;
+    static const uint32_t dma[] = {0x0194, 0x018C, 0x01B4, 0x01B8}, off[] = {0x0210, 0x0218, 0x0288, 0x028C};
+    int t[4], n = 0;
+    switch (R(0x0220)) {
+    case 0x01: t[n++] = 0; break;
+    case 0x02: t[n++] = 1; break;
+    case 0x13: t[n++] = 0; t[n++] = 1; break;
+    case 0x17: t[n++] = 0; t[n++] = 1; t[n++] = 2; break;
+    case 0x1F: t[n++] = 0; t[n++] = 1; t[n++] = 2; t[n++] = 3; break;
+    }
+    for (int i = 0; i < n; ++i)
+        g_colors[(uint64_t)(R(dma[t[i]]) == 0xFEED0001u) << 32 | R(off[t[i]])] = {w, h, 0};
+}
 
 template <typename T> void put(const T& v) {
     const uint8_t* p = reinterpret_cast<const uint8_t*>(&v);
@@ -155,6 +182,7 @@ void end_draw() {
         if (!ok) { report_once("fragment program without an end, or outside guest memory"); fp.clear(); }
     }
     d.fp_words = (uint32_t)fp.size();
+    if (d.fp_words && d.vertices) register_targets(true, true);    // the renderer draws it, so makes them
 
     // the textures
     struct Tex { RsxTexture t; uint32_t addr; };
@@ -167,6 +195,16 @@ void end_draw() {
         for (int k = 0; k < 8; ++k) t.regs[k] = R(b + 4 * k);
         t.control3 = R(0x1840 + 4 * u);
         TexLayout l = tex_layout(t.regs[1], t.regs[6], t.control3);
+        uint64_t sk = (uint64_t)((t.regs[1] & 3) == 2) << 32 | t.regs[0];
+        auto fits = [&](const Target& s) { return s.w >= l.w && s.h >= l.h && !l.cube && l.dims == 2; };
+        auto ct = g_colors.find(sk), dt = g_depths.find(sk);
+        if (ct != g_colors.end() && fits(ct->second)) t.target = 1;
+        else if (dt != g_depths.end() && fits(dt->second)) {
+            // a D24S8 buffer read as A8R8G8B8 gives its bytes; other pairings are not done yet
+            if (dt->second.depth_format == 2 && l.base == 0x85) t.target = 2;
+            else report_once("depth surface sampled as texture format " + std::to_string(l.base) + ", read from memory");
+        }
+        if (t.target) { texs.push_back({t, 0}); continue; }
         uint32_t a = address((t.regs[1] & 3) == 2, t.regs[0]);
         if (!readable(a, l.total)) { report_once("texture outside guest memory"); continue; }
         uint32_t layout[3] = {t.regs[1] & ~3u, t.regs[6], t.control3};
@@ -185,6 +223,7 @@ void end_draw() {
     put_bytes(fp.data(), fp.size() * 4);
     for (auto& [t0, a] : texs) {
         RsxTexture t = t0;
+        if (t.target) { put(t); continue; }
         bool have = g_sent.count(t.key);
         if (!have && g_sent_bytes + t.bytes > (512ull << 20)) {      // the renderer's textures start again
             g_rec.push_back(RC_TEXFLUSH);
@@ -219,6 +258,11 @@ void rsxcap_method(uint32_t m, uint32_t v) {
         return;
     case 0x1818:                                                    // NV4097_INLINE_ARRAY
         report_once("inline vertex arrays");
+        return;
+    case 0x1D94:                                                    // NV4097_CLEAR_SURFACE
+        register_targets(v & 0xF0, v & 3);                          // a clear makes them too
+        g_pending.push_back(m);
+        g_pending.push_back(v);
         return;
     default:
         g_pending.push_back(m);
