@@ -13,6 +13,15 @@ is your disc's code, translated, and is never part of this repository.
 
 ## Status
 
+Session 37 (2026-10-12). **Playable into the first quests, at 30 frames.**
+The menus have their text, drawn by an OpenType/CFF reader and a rasterizer
+of the kit's own in place of the system's font library; the hero is named
+on an on-screen keyboard that stands where the system's goes; the new
+character's save is written; and the player takes the first quest in town
+and fights the first monsters. Three frame-rate drops were measured to
+their causes and removed: a shadow map read from memory on every draw, and
+textures hashed again on every bind.
+
 Session 36 (2026-10-11). **Playable to character creation, with its music.**
 With a controller the intro movie skips, the title screen and the main menu
 come up, and New Game reaches character creation with the hero's skinned

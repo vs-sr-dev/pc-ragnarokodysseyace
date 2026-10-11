@@ -7,42 +7,36 @@
 
 # Next session
 
-**Session 36 made the game playable to character creation, and audible.**
-With a controller the movie skips, the title screen comes up, Start opens
-the main menu (New Game, Load Game, Options, Install, Cross-Save, Backup,
-Restore, Import Game Data), and New Game reaches character creation with
-the hero's skinned model drawn. The CRI sound jobs run on an SPU
-recompiler of the kit's own, and the music plays; left alone, the movie
-now ends by itself and hands over to the title.
+**Session 37 made the game playable into its first quests, at 30 frames.**
+The menus have their text, the hero is named, the new character's save is
+written, and the player walks into town, takes the first quest from the
+Kafra and fights the first monsters on the first map. Confirmed by the
+user at a steady 30 frames everywhere, including the two places that
+dropped to 22.
 
 Where it stands:
 
-- **What the movie waited for is answered.** The scene at `0x7C62B0`
-  alternates `RHN_advertise` (cue `0xCA`) and `RH_movie_fix` (cue `0x27`)
-  on each visit, loads `UN_Title` behind the movie, and after the stream
-  ends polls the soundtrack's player for PLAYEND (`f_009E2008`, status 3).
-  With no sound decoded that never came; now it does. Skipping (any of
-  five buttons) fades the cue out instead, which ends it from the PPU side.
-- **Input** (`pad.cpp`): one controller on port 0 from SDL's first gamepad
-  and a keyboard map; no keyboard connected. `PS3KIT_PAD_PRESS` presses
-  buttons at set times for unattended runs.
-- **Vertex programs that branch** are their reachable basic blocks in a
-  loop; a branch tests its condition regardless of the test-enable bit.
-  Both faults brought the NVIDIA driver down on the first skinned mesh;
-  `PS3KIT_GLSYNC=N` (report and wait for every draw from N on) is what
-  found the draw. Stride-0 vertex attributes are constants now.
-- **The SPU side** (`ps3kit/spu.py`, `ps3kit/recomp/spu.py`,
-  `runtime/spu.h`, `spu.cpp`): each program translated whole for its
-  local-store base; all six CRI jobs found by their JOBCRT header.
-  `spursjq.cpp` is a job manager of the runtime's own that runs a job when
-  it is pushed. AtomDecoder (HCA to PCM) and AsrVoice (the voice mixer) are
-  the two pushed so far; DspPack1/2, DspPitchShifter and HcaMixer are
-  translated and wait for a caller.
-- **Sound out**: the audio clock mixes its ports to stereo and plays them
-  through SDL3. The BGM status stub had muted the game's music (PLAY is 0),
-  and Windows 11's background timer throttling made CRI's 60 Hz writer
-  fall a whole port behind; both are fixed, the second with
-  high-resolution waitable timers for every sleep.
+- **Fonts** (`font.cpp`, `otf.cpp`, `raster.cpp`): cellFont over an
+  OpenType/CFF reader and a coverage rasterizer of the kit's own; see item 1
+  for what is left.
+- **The on-screen keyboard** (`osk.cpp`): the system's protocol as the game
+  reads it, raised through `cellSysutilCheckCallback`, which now delivers
+  events; the keyboard is a panel of the runtime's own over the dimmed
+  display, typed on the host's keyboard. `PS3KIT_OSK_TYPE` answers it in
+  unattended runs.
+- **Save data written by the game for the first time**: `FixedSave2` made
+  `NPUB31406-SYS-SAVEDATA` with `PLY-DATA` and its mirror `PLY-MIRR`.
+  Just before it the game calls `cellSaveDataListSave2`, still a stub that
+  answers OK having done nothing (item 2).
+- **Three frame-rate faults, each found by measuring.** Character creation
+  ran at 9 frames because a depth surface sampled as a texture (the
+  shadow map) was read and hashed from guest memory on every draw: depth
+  surfaces are now sampled on the GPU, D24S8 converted to the bytes the RSX
+  reads. The town dropped to 22 because every bind hashed its texture
+  again (3 GB a second): texture keys are now kept while their memory goes
+  unwritten, by page-protection write tracking (`mem.cpp`). `PS3KIT_PROF=1`
+  is the tool that told them apart; it remains, and names the cause of any
+  drop by itself.
 
 ### 1. Fonts: drawn, and three things left to settle.
 
@@ -82,12 +76,19 @@ Left to settle:
 - **Hinting and the exact antialiasing** of the system's FreeType are
   unknown; ours is unhinted exact area. Only a hardware capture can say.
 
-### 2. Past character creation.
+### 2. Into the game, screen by screen.
 
-Name entry (`cellOskDialog`?), the save the game writes for a new
-character (the save write path is still untested by the game), and the
-first town. Each screen will say what it needs; the skipped-method and
-stub reports are the to-do list.
+- **`cellSaveDataListSave2`** is called before the new character's
+  `FixedSave2` and is a stub that does nothing. On a PS3 it lists the saves
+  for the player and calls the game's callbacks; read what the game passes
+  and expects before it matters somewhere else.
+- **Shader compilation at first sight of a scene** costs up to 200 ms in
+  a second (22 to 28 new programs): a program cache on disk, so that a
+  second run never stalls.
+- **One second at 20 frames** on the first map was the game itself (the
+  RSX thread waiting for commands, renderer idle): watch whether it repeats.
+- From here each screen says what it needs; the stub reports and
+  `PS3KIT_PROF` are the to-do list.
 
 ### 3. The rest of the 3D engine, as the game asks.
 
@@ -320,6 +321,45 @@ during the movie) that is still unexplained.
 ---
 
 # Log
+
+## Session 36 - 2026-10-11
+
+**Session 36 made the game playable to character creation, and audible.**
+With a controller the movie skips, the title screen comes up, Start opens
+the main menu (New Game, Load Game, Options, Install, Cross-Save, Backup,
+Restore, Import Game Data), and New Game reaches character creation with
+the hero's skinned model drawn. The CRI sound jobs run on an SPU
+recompiler of the kit's own, and the music plays; left alone, the movie
+now ends by itself and hands over to the title.
+
+Where it stands:
+
+- **What the movie waited for is answered.** The scene at `0x7C62B0`
+  alternates `RHN_advertise` (cue `0xCA`) and `RH_movie_fix` (cue `0x27`)
+  on each visit, loads `UN_Title` behind the movie, and after the stream
+  ends polls the soundtrack's player for PLAYEND (`f_009E2008`, status 3).
+  With no sound decoded that never came; now it does. Skipping (any of
+  five buttons) fades the cue out instead, which ends it from the PPU side.
+- **Input** (`pad.cpp`): one controller on port 0 from SDL's first gamepad
+  and a keyboard map; no keyboard connected. `PS3KIT_PAD_PRESS` presses
+  buttons at set times for unattended runs.
+- **Vertex programs that branch** are their reachable basic blocks in a
+  loop; a branch tests its condition regardless of the test-enable bit.
+  Both faults brought the NVIDIA driver down on the first skinned mesh;
+  `PS3KIT_GLSYNC=N` (report and wait for every draw from N on) is what
+  found the draw. Stride-0 vertex attributes are constants now.
+- **The SPU side** (`ps3kit/spu.py`, `ps3kit/recomp/spu.py`,
+  `runtime/spu.h`, `spu.cpp`): each program translated whole for its
+  local-store base; all six CRI jobs found by their JOBCRT header.
+  `spursjq.cpp` is a job manager of the runtime's own that runs a job when
+  it is pushed. AtomDecoder (HCA to PCM) and AsrVoice (the voice mixer) are
+  the two pushed so far; DspPack1/2, DspPitchShifter and HcaMixer are
+  translated and wait for a caller.
+- **Sound out**: the audio clock mixes its ports to stereo and plays them
+  through SDL3. The BGM status stub had muted the game's music (PLAY is 0),
+  and Windows 11's background timer throttling made CRI's 60 Hz writer
+  fall a whole port behind; both are fixed, the second with
+  high-resolution waitable timers for every sleep.
 
 ## Session 35 - 2026-10-11
 
