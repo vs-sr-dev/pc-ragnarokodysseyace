@@ -232,6 +232,8 @@ Program& program(const uint32_t* fp, uint32_t fp_words, const FPConfig& fc) {
     if (it != programs.end()) return it->second;
     Program& p = programs[key];
     ++cnt.programs;
+    ProfScope prof(PROF_RENDER_COMPILE);
+    if (g_prof) prof_count(PROFC_PROGRAMS, 1);
     ProgramText ft = fp_translate(fp, fp_words, fc);
     VPConfig vcfg;
     vcfg.start = start;
@@ -347,6 +349,8 @@ Texture& texture(const RsxTexture& t, const uint8_t* data) {
     if (it != textures.end() || !t.bytes) return textures[t.key];
     Texture& x = textures[t.key];
     ++cnt.textures;
+    ProfScope prof(PROF_RENDER_UPLOAD);
+    if (g_prof) prof_count(PROFC_TEXTURES, 1);
     TexLayout l = tex_layout(t.regs[1], t.regs[6], t.control3);
     GLFmt f = gl_format(l.base);
     char what[64];

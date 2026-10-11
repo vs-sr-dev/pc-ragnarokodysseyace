@@ -174,11 +174,13 @@ PS3_HLE(cellSpursJoinJobQueue) { c.r[3] = CELL_OK; }
 // (port, job descriptor, descriptor size, ..., tag, is sync): the descriptor
 // is copied, so the caller may reuse it as soon as this returns.
 PS3_HLE(_cellSpursJobQueuePort2CopyPushJobBody) {
+    ProfScope prof(PROF_SPU_JOBS);
     run(arg_u32(c, 1), arg_u32(c, 2));
     c.r[3] = CELL_OK;
 }
 
 PS3_HLE(_cellSpursJobQueuePort2PushJobBody) {
+    ProfScope prof(PROF_SPU_JOBS);
     run(arg_u32(c, 1), arg_u32(c, 2));
     c.r[3] = CELL_OK;
 }

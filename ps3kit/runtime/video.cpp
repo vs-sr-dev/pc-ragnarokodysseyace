@@ -124,6 +124,26 @@ void flip(const RsxFlip& f) {
     }
     int ww = 0, wh = 0;
     SDL_GetWindowSizeInPixels(win, &ww, &wh);
+    static uint64_t panel_version = ~0ull;
+    static std::vector<uint8_t> panel;
+    static int pw = 0, ph = 0;
+    static GLuint ptex = 0, pfbo = 0;
+    static int ptex_w = 0, ptex_h = 0;
+    uint64_t seen = panel_version;
+    bool show_panel = osk_panel(panel_version, panel, pw, ph);
+    if (!show_panel) panel_version = ~0ull;
+    else if (seen != panel_version) {
+        if (ptex_w != pw || ptex_h != ph) {
+            if (ptex) { glDeleteTextures(1, &ptex); glDeleteFramebuffers(1, &pfbo); }
+            glCreateTextures(GL_TEXTURE_2D, 1, &ptex);
+            glTextureStorage2D(ptex, 1, GL_RGBA8, pw, ph);
+            glCreateFramebuffers(1, &pfbo);
+            glNamedFramebufferTexture(pfbo, GL_COLOR_ATTACHMENT0, ptex, 0);
+            ptex_w = pw;
+            ptex_h = ph;
+        }
+        glTextureSubImage2D(ptex, 0, 0, 0, pw, ph, GL_RGBA, GL_UNSIGNED_BYTE, panel.data());
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, ww, wh);
     float black[4] = {0, 0, 0, 1};
@@ -137,8 +157,52 @@ void flip(const RsxFlip& f) {
         glBlitNamedFramebuffer(src->fbo, 0, 0, 0, src->w, src->h, x0, y0 + dh, x0 + dw, y0, GL_COLOR_BUFFER_BIT,
                                GL_LINEAR);
         if (opt.dump_dir && cnt.flips % (uint64_t)opt.dump_every == 1) dump(*src);
+        if (osk_dimmed()) {                                       // the system's dimmer: the display at half
+            static GLuint dim_prog = 0, dim_vao = 0;
+            if (!dim_prog) {
+                const char* vs = "#version 450\nvoid main() { vec2 p = vec2((gl_VertexID & 1) * 4 - 1, (gl_VertexID >> 1) * 4 - 1);"
+                                 " gl_Position = vec4(p, 0, 1); }\n";
+                const char* fs = "#version 450\nout vec4 o; void main() { o = vec4(0, 0, 0, 0.5); }\n";
+                GLuint v = glCreateShader(GL_VERTEX_SHADER), f = glCreateShader(GL_FRAGMENT_SHADER);
+                glShaderSource(v, 1, &vs, nullptr);
+                glShaderSource(f, 1, &fs, nullptr);
+                glCompileShader(v);
+                glCompileShader(f);
+                dim_prog = glCreateProgram();
+                glAttachShader(dim_prog, v);
+                glAttachShader(dim_prog, f);
+                glLinkProgram(dim_prog);
+                glDeleteShader(v);
+                glDeleteShader(f);
+                glCreateVertexArrays(1, &dim_vao);
+            }
+            glViewport(x0, y0, dw, dh);
+            glDisable(GL_SCISSOR_TEST);
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_STENCIL_TEST);
+            glDisable(GL_CULL_FACE);
+            glDisable(GL_COLOR_LOGIC_OP);
+            glColorMask(1, 1, 1, 1);
+            glEnable(GL_BLEND);
+            glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glUseProgram(dim_prog);
+            glBindVertexArray(dim_vao);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+            glDisable(GL_BLEND);
+            glViewport(0, 0, ww, wh);
+        }
+        if (show_panel) {                                         // the on-screen keyboard, low on the display
+            float s = dw / 1280.0f;
+            int px0 = x0 + (int)((1280 - pw) / 2 * s), px1 = px0 + (int)(pw * s);
+            int top = y0 + dh - (int)(548 * s), bottom = top - (int)(ph * s);
+            glBlitNamedFramebuffer(pfbo, 0, 0, 0, pw, ph, px0, top, px1, bottom, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        }
     }
-    SDL_GL_SwapWindow(win);
+    {
+        ProfScope prof(PROF_RENDER_SWAP);
+        SDL_GL_SwapWindow(win);
+    }
     ++cnt.presents;
     if (cnt.flips == 60 || cnt.flips % 1800 == 0) rsxgl_report();
 }
@@ -174,6 +238,7 @@ void video_submit(std::vector<uint8_t>& rec, int flips) {
     if (!opt.enabled) { rec.clear(); return; }
     {
         std::unique_lock<std::mutex> lk(qmx);
+        ProfScope prof(PROF_FIFO_SUBMIT);
         q_space.wait(lk, [] { return q_flips < opt.frames_ahead; });
         q.push_back(Chunk{std::move(rec), flips});
         q_flips += flips;
@@ -207,10 +272,24 @@ void video_run(const char* title) {
 
     auto t0 = Clock::now(), t_title = t0;
     uint64_t flips_then = 0;
+    bool text_input = false;
     for (;;) {
+        bool osk = osk_active();
+        if (osk != text_input) {
+            if (osk) SDL_StartTextInput(win); else SDL_StopTextInput(win);
+            text_input = osk;
+        }
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_EVENT_QUIT) quit();
+            if (osk && e.type == SDL_EVENT_TEXT_INPUT) osk_host_text(e.text.text);
+            if (osk && e.type == SDL_EVENT_KEY_DOWN) {
+                if (e.key.scancode == SDL_SCANCODE_BACKSPACE) osk_host_key(0);
+                else if ((e.key.scancode == SDL_SCANCODE_RETURN || e.key.scancode == SDL_SCANCODE_KP_ENTER) &&
+                         !e.key.repeat && !(e.key.mod & SDL_KMOD_ALT))
+                    osk_host_key(1);
+                else if (e.key.scancode == SDL_SCANCODE_ESCAPE && !e.key.repeat) osk_host_key(2);
+            }
             if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat &&
                 (e.key.scancode == SDL_SCANCODE_F11 ||
                  ((e.key.scancode == SDL_SCANCODE_RETURN || e.key.scancode == SDL_SCANCODE_KP_ENTER) &&
@@ -222,8 +301,10 @@ void video_run(const char* title) {
         if (opt.quit_after > 0 && std::chrono::duration<double>(now - t0).count() > opt.quit_after) quit();
         if (now - t_title >= std::chrono::seconds(1)) {
             double s = std::chrono::duration<double>(now - t_title).count();
-            char buf[256];
-            std::snprintf(buf, sizeof buf, "%s  |  %.1f fps", title, (double)(cnt.flips - flips_then) / s);
+            char buf[512];
+            std::string prompt = osk_title();
+            std::snprintf(buf, sizeof buf, "%s  |  %.1f fps%s%s", title, (double)(cnt.flips - flips_then) / s,
+                          prompt.empty() ? "" : "  |  ", prompt.c_str());
             SDL_SetWindowTitle(win, buf);
             flips_then = cnt.flips;
             t_title = now;
@@ -234,7 +315,10 @@ void video_run(const char* title) {
             if (!q.empty()) { c = std::move(q.front()); q.pop_front(); }
         }
         if (c.flips || !c.data.empty()) {
-            rsxgl_exec(c.data.data(), c.data.size(), flip);
+            {
+                ProfScope prof(PROF_RENDER_EXEC);
+                rsxgl_exec(c.data.data(), c.data.size(), flip);
+            }
             {
                 std::lock_guard<std::mutex> lk(qmx);
                 q_flips -= c.flips;
@@ -242,6 +326,7 @@ void video_run(const char* title) {
             q_space.notify_all();
             continue;
         }
+        ProfScope prof(PROF_RENDER_IDLE);
         SDL_WaitSemaphoreTimeout(wake, 5);
     }
 }

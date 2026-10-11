@@ -107,6 +107,13 @@ void write_metrics(uint32_t m, const Font& f, int gid, const otf::Path& path, fl
 }
 }  // namespace
 
+std::shared_ptr<const otf::Face> font_ui_face() {
+    std::lock_guard<std::mutex> lk(g_mx);
+    if (g_faces.empty()) return nullptr;
+    std::shared_ptr<Face> f = g_faces.begin()->second;
+    return std::shared_ptr<const otf::Face>(f, &f->face);
+}
+
 // ---- the library ---------------------------------------------------------------------
 
 // (revisionFlags, CellFontConfig*)

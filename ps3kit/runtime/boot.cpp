@@ -36,6 +36,10 @@ extern std::string g_dev_bdvd, g_dev_hdd0;
 // access was into guest memory, the guest address.
 static LONG WINAPI on_fault(EXCEPTION_POINTERS* ep) {
     const EXCEPTION_RECORD* r = ep->ExceptionRecord;
+    // a write into a page armed for write tracking: recorded, then let through
+    if (r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r->NumberParameters >= 2 && r->ExceptionInformation[0] == 1 &&
+        memwatch_fault((uintptr_t)r->ExceptionInformation[1]))
+        return EXCEPTION_CONTINUE_EXECUTION;
     if (r->ExceptionCode != EXCEPTION_ACCESS_VIOLATION && r->ExceptionCode != EXCEPTION_STACK_OVERFLOW &&
         r->ExceptionCode != EXCEPTION_ILLEGAL_INSTRUCTION && r->ExceptionCode != EXCEPTION_INT_DIVIDE_BY_ZERO)
         return EXCEPTION_CONTINUE_SEARCH;

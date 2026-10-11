@@ -19,7 +19,7 @@ the second one starts.
 
 | Port | Game | What it asked of ps3kit |
 |---|---|---|
-| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start, threads, files, the command buffer to its first flip, the audio ports and their clock, the window, the RSX's draws: the publishers' logos; save data; cellSail and an MPEG-2 decoder: the first movie; the controller: the title screen, the main menu and character creation; the SPU recompiler and a job manager: CRI's sound, heard; cellFont with an OpenType/CFF reader and a rasterizer of its own: character creation's text |
+| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start, threads, files, the command buffer to its first flip, the audio ports and their clock, the window, the RSX's draws: the publishers' logos; save data; cellSail and an MPEG-2 decoder: the first movie; the controller: the title screen, the main menu and character creation; the SPU recompiler and a job manager: CRI's sound, heard; cellFont with an OpenType/CFF reader and a rasterizer of its own: character creation's text; system events and the on-screen keyboard: the hero's name |
 | *next* | 3D Dot Game Heroes (2009) | the SPUs: 26 SPU programs on SPURS task sets and raw thread groups |
 
 ## Using it
@@ -72,6 +72,17 @@ its words), `PS3KIT_SPU_TRACE=1` every indirect branch in SPU code, and
 `PS3KIT_SPU_TRACE=2` every instruction, once the code has been generated with
 `python -m ps3kit.recomp ... --spu-step`. `PS3KIT_AUDIODUMP=FILE.wav` writes
 what the audio output plays.
+
+`PS3KIT_PROF=1` reports, every 30 flips, where the wall-clock time went:
+the RSX thread idle, on semaphores, capturing draws, waiting for the vblank
+or for the renderer; the renderer executing, presenting, idle, compiling
+new programs and making new textures; SPURS jobs; with the draws, the bytes
+hashed and sent, and the new programs and textures. A frame-rate drop then
+names its own cause.
+
+`PS3KIT_OSK=1` reports each on-screen keyboard call, and
+`PS3KIT_OSK_TYPE="Name"` answers every keyboard at once with that text,
+confirmed.
 
 `PS3KIT_PAD_PRESS="30:cross,46:start,52:cross+up"` presses the controller's
 buttons for a fifth of a second at those times (seconds from the window's
@@ -136,7 +147,7 @@ position-independent and relocate themselves.
 | 1. Recognise | What is in this executable? | `elf`: segments, process parameters, TLS, the descriptor table, imports by name; SPURS job binaries by their job-runtime header | SPU ELFs, task sets, the middleware it links |
 | 2. Read code | What does this function do? | `ppu`: the PPU decoder, disassembly, census; `spu`: the same for the SPU | cross-references through the TOC |
 | 3. Recompile | The code as C++ | `recomp`: discovery, switch tables, the whole user-mode PPU set and the VMX operations games use; each SPU program whole, every SPU instruction but `bisled` and the double compares by magnitude | SPU ELFs and task sets |
-| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start; PPU threads, lightweight and lv2 synchronisation, event queues; the file system (cellFs and sys_fs); cellGame; cellGcmSys and cellResc with a FIFO consumer, labels, flips and a 59.94 Hz vblank; the renderer (SDL3, OpenGL 4.5): a window, render targets on the host GPU, clears, draws with vertex and fragment programs translated to GLSL, textures, blending, flips; video out; cellAudio and the audio output, with the 48 kHz clock that consumes the ports and plays them through SDL3; SPURS job queues with a job manager running recompiled SPU programs: the SPU's channels, its DMA and atomic unit; save data (Auto, ListAuto, Fixed) with PARAM.SFO; cellSail playing PAMF through the runtime's own MPEG-2 decoder; cellPad from the host's gamepad and keyboard; cellFont over the runtime's own OpenType reader (CFF outlines, name- or CID-keyed) and coverage rasterizer | the rest of the 3D engine's state (fog, clip planes, two-sided colour, point sprites), TrueType outlines and the system's font sets, the list save dialogs, SPURS task sets and SPU thread groups |
+| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start; PPU threads, lightweight and lv2 synchronisation, event queues; the file system (cellFs and sys_fs); cellGame; cellGcmSys and cellResc with a FIFO consumer, labels, flips and a 59.94 Hz vblank; the renderer (SDL3, OpenGL 4.5): a window, render targets on the host GPU, clears, draws with vertex and fragment programs translated to GLSL, textures, blending, flips; video out; cellAudio and the audio output, with the 48 kHz clock that consumes the ports and plays them through SDL3; SPURS job queues with a job manager running recompiled SPU programs: the SPU's channels, its DMA and atomic unit; save data (Auto, ListAuto, Fixed) with PARAM.SFO; cellSail playing PAMF through the runtime's own MPEG-2 decoder; cellPad from the host's gamepad and keyboard; system events raised through cellSysutilCheckCallback; cellOskDialog typed on the host's keyboard; cellFont over the runtime's own OpenType reader (CFF outlines, name- or CID-keyed) and coverage rasterizer | the rest of the 3D engine's state (fog, clip planes, two-sided colour, point sprites), TrueType outlines and the system's font sets, the list save dialogs, SPURS task sets and SPU thread groups |
 
 ## Known approximations
 
@@ -169,8 +180,14 @@ Declared here as they are made, so that the list is the cost:
   through the address register (BRA) and its texture fetches, `CAL` in a
   fragment program, indexed fragment inputs, texture expansion (`_bx2`),
   unnormalised texture coordinates and packed (`CMP`) vertex attributes.
-- A texture is copied and hashed whole on every draw that binds it, and the
-  renderer keeps each distinct one until 512 MB have been sent; then it
+- A texture's key is the hash of its layout and bytes, kept by address and
+  layout while its memory goes unwritten: the pages are made read-only when
+  it is hashed, and a write into one faults once, is recorded and goes
+  through (Windows only; elsewhere every bind hashes again). The host's own
+  file reads into guest memory unprotect their range first, since a kernel
+  write into a read-only page fails rather than faults. Hashing every bind
+  had cost the RSX thread up to 3 GB a second in the first town. The
+  renderer keeps each distinct texture until 512 MB have been sent; then it
   forgets them all. A texture over a surface the renderer has made (by a
   draw or a clear) is sampled on the GPU and guest memory is not read: what
   the GPU drew is not there. Hashing the 1280x1280 shadow map's depth buffer
@@ -190,8 +207,23 @@ Declared here as they are made, so that the list is the cost:
 - `cellRescGetBufferSize`'s colour-buffer size is a reading: the largest
   supported, registered destination times its buffer count. Its vertex-array
   and fragment-shader sizes are the runtime's own.
-- The video output is fixed: one HDMI display, 1280x720, 59.94 Hz. System
-  callbacks are registered and never raised.
+- The video output is fixed: one HDMI display, 1280x720, 59.94 Hz.
+- System events are raised only for what the runtime posts (so far the
+  on-screen keyboard's): to every registered callback, on the thread that
+  next calls `cellSysutilCheckCallback`; an event posted while they run waits
+  for the next check. The XMB, quitting and the other system events never
+  happen.
+- The on-screen keyboard is the runtime's own: a panel over the display with
+  the game's message and the text typed so far, in the first font the game
+  opened from memory, typed on the host's keyboard (Enter, Escape,
+  Backspace); the display behind it is dimmed to half unless the game
+  disabled the dimmer. Its protocol is the system's (LOADED, FINISHED with
+  0 for confirm and 1 for cancel, the result written by `UnloadAsync`, then
+  UNLOADED); the FINISHED parameter and the error for a dialog that is not
+  open (the message dialog's) are readings, not confirmed. While it is open
+  the controller reports a neutral state with the intercepted bit set, and
+  after it closes the keyboard counts again only once every key is up. A
+  confirm-word filter callback is accepted and never run.
 - The audio system's clock consumes every started port's block each
   256/48000 s, clears it and moves the read index on, from the host's steady
   clock, and plays what it took: mixed down to stereo (centre and surrounds

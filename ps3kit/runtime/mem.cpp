@@ -1,7 +1,9 @@
 // ps3kit runtime — guest memory: the 4 GiB reservation, its committed areas,
 // and the three allocators the system side needs.
 #include "rt.h"
+#include <atomic>
 #include <cstdio>
+#include <memory>
 #include <mutex>
 
 #ifdef _WIN32
@@ -74,6 +76,96 @@ uint32_t user_free_bytes() { return mm::USER + mm::USER_SIZE - g_user_top; }
 
 void mem_write(uint32_t addr, const void* src, size_t n) { std::memcpy(g_mem + addr, src, n); }
 void mem_read(uint32_t addr, void* dst, size_t n) { std::memcpy(dst, g_mem + addr, n); }
+
+// ---- write tracking ------------------------------------------------------------------------
+// Per 4 KiB page: whether it is armed (read-only) and the clock at its last
+// recorded write. Arming and the fault handler both take the lock, so that a
+// page is never armed with its flag clear or left writable with it set; the
+// stamp is taken inside the lock before the range is armed and the caller
+// reads the range after, so a write either lands before the read or faults
+// and is recorded after the stamp.
+namespace {
+constexpr uint32_t kPageBits = 12, kPages = 1u << (32 - kPageBits);
+std::mutex g_watch_mx;
+std::atomic<uint64_t> g_clock{1};
+std::unique_ptr<std::atomic<uint64_t>[]> g_last_write;
+std::unique_ptr<uint8_t[]> g_armed;
+
+void watch_init() {
+    if (g_armed) return;
+    g_last_write.reset(new std::atomic<uint64_t>[kPages]());
+    g_armed.reset(new uint8_t[kPages]());
+}
+
+#ifdef _WIN32
+void protect(uint32_t first, uint32_t count, bool read_only) {
+    DWORD old;
+    VirtualProtect(g_mem + ((size_t)first << kPageBits), (size_t)count << kPageBits,
+                   read_only ? PAGE_READONLY : PAGE_READWRITE, &old);
+}
+#endif
+}  // namespace
+
+uint64_t memwatch_arm(uint32_t addr, uint32_t n) {
+#ifdef _WIN32
+    if (!n) return 0;
+    std::lock_guard<std::mutex> lk(g_watch_mx);
+    watch_init();
+    uint64_t stamp = g_clock.fetch_add(1) + 1;
+    uint32_t p0 = addr >> kPageBits, p1 = (uint32_t)(((uint64_t)addr + n - 1) >> kPageBits);
+    for (uint32_t p = p0; p <= p1;) {
+        if (g_armed[p]) { ++p; continue; }
+        uint32_t q = p;
+        while (q <= p1 && !g_armed[q]) g_armed[q++] = 1;
+        protect(p, q - p, true);
+        p = q;
+    }
+    return stamp;
+#else
+    (void)addr; (void)n;
+    return 0;
+#endif
+}
+
+bool memwatch_clean(uint32_t addr, uint32_t n, uint64_t stamp) {
+    if (!stamp || !g_last_write) return false;
+    uint32_t p0 = addr >> kPageBits, p1 = (uint32_t)(((uint64_t)addr + n - 1) >> kPageBits);
+    for (uint32_t p = p0; p <= p1; ++p)
+        if (g_last_write[p].load(std::memory_order_acquire) >= stamp) return false;
+    return true;
+}
+
+void memwatch_write(uint32_t addr, uint32_t n) {
+#ifdef _WIN32
+    if (!n) return;
+    std::lock_guard<std::mutex> lk(g_watch_mx);
+    if (!g_armed) return;
+    uint32_t p0 = addr >> kPageBits, p1 = (uint32_t)(((uint64_t)addr + n - 1) >> kPageBits);
+    for (uint32_t p = p0; p <= p1; ++p) {
+        if (g_armed[p]) { protect(p, 1, false); g_armed[p] = 0; }
+        g_last_write[p].store(g_clock.fetch_add(1) + 1, std::memory_order_release);
+    }
+#else
+    (void)addr; (void)n;
+#endif
+}
+
+bool memwatch_fault(uintptr_t host_addr) {
+#ifdef _WIN32
+    uintptr_t base = (uintptr_t)g_mem;
+    if (host_addr < base || host_addr >= base + (1ull << 32)) return false;
+    uint32_t p = (uint32_t)((host_addr - base) >> kPageBits);
+    std::lock_guard<std::mutex> lk(g_watch_mx);
+    if (!g_armed || !g_armed[p]) return false;
+    protect(p, 1, false);
+    g_armed[p] = 0;
+    g_last_write[p].store(g_clock.fetch_add(1) + 1, std::memory_order_release);
+    return true;
+#else
+    (void)host_addr;
+    return false;
+#endif
+}
 
 std::string mem_cstr(uint32_t addr, size_t max) {
     std::string s;

@@ -5,7 +5,9 @@
 #include "ppu.h"
 #include <chrono>
 #include <cstddef>
+#include <memory>
 #include <string>
+#include <vector>
 
 // ---- the address space ------------------------------------------------------------
 // Laid out as the PS3 lays out a game process: the executable and the
@@ -36,6 +38,18 @@ uint32_t user_free_bytes();
 void     mem_write(uint32_t addr, const void* src, size_t n);
 void     mem_read(uint32_t addr, void* dst, size_t n);
 std::string mem_cstr(uint32_t addr, size_t max = 1024);
+
+// Write tracking, for caches of what guest memory holds (the renderer's
+// texture keys). memwatch_arm write-protects a range and returns a stamp
+// (0 where the host cannot track writes); memwatch_clean says whether the
+// range has gone unwritten since that stamp. A write into an armed page
+// faults once, and the fault handler (memwatch_fault) records it and lets it
+// through. Writes the host's kernel makes into guest memory (a file read)
+// do not fault but fail, so their callers announce them (memwatch_write).
+uint64_t memwatch_arm(uint32_t addr, uint32_t n);
+bool     memwatch_clean(uint32_t addr, uint32_t n, uint64_t stamp);
+void     memwatch_write(uint32_t addr, uint32_t n);
+bool     memwatch_fault(uintptr_t host_addr);
 
 std::string fs_host_path(const std::string& guest);        // "" when the runtime maps nothing there
 
@@ -83,6 +97,38 @@ PPUContext* ppu_context_new(uint32_t stacksize, const char* name);
 void     ppu_intr_post(uint32_t desc, uint64_t arg);
 uint32_t tls_new_block();                           // a thread's TLS block; r13 = it + 0x7000
 bool     lv2_event_queue_push(uint32_t queue, uint64_t source, uint64_t d1, uint64_t d2, uint64_t d3);
+
+// ---- where the time goes (prof.cpp, PS3KIT_PROF=1) ------------------------------------------
+enum ProfSlot { PROF_FIFO_IDLE, PROF_FIFO_SEMA, PROF_FIFO_CAPTURE, PROF_FIFO_VBLANK, PROF_FIFO_SUBMIT,
+                PROF_RENDER_EXEC, PROF_RENDER_SWAP, PROF_RENDER_IDLE, PROF_RENDER_COMPILE, PROF_RENDER_UPLOAD,
+                PROF_SPU_JOBS, PROF_N };
+enum ProfCount { PROFC_DRAWS, PROFC_HASHED, PROFC_SENT, PROFC_PROGRAMS, PROFC_TEXTURES, PROFC_N };
+extern const bool g_prof;
+uint64_t prof_now();
+void prof_add(int slot, uint64_t ns);
+void prof_count(int slot, uint64_t n);
+void prof_flip();                                   // the report, every 30 flips
+struct ProfScope {
+    int slot;
+    uint64_t t;
+    explicit ProfScope(int s) : slot(s), t(g_prof ? prof_now() : 0) {}
+    ~ProfScope() { if (g_prof) prof_add(slot, prof_now() - t); }
+};
+
+// ---- system events and dialogs ----------------------------------------------------------
+// A system event (status, param) for the game's registered callbacks, raised
+// on the thread that next calls cellSysutilCheckCallback.
+void sysutil_post(uint64_t status, uint64_t param);
+// The on-screen keyboard (osk.cpp) as the window shows and types it.
+bool osk_active();
+bool osk_dimmed();                                  // open, and the system's dimmer not disabled
+std::string osk_title();                            // "" while closed
+void osk_host_text(const char* utf8);
+void osk_host_key(int key);                         // 0 backspace, 1 confirm, 2 cancel
+// The panel as RGBA when `version` is stale; false while closed.
+bool osk_panel(uint64_t& version, std::vector<uint8_t>& rgba, int& w, int& h);
+namespace otf { class Face; }
+std::shared_ptr<const otf::Face> font_ui_face();    // the first font the game opened from memory, or null
 
 // ---- imported functions (HLE) ----------------------------------------------------------
 typedef void (*HleFunc)(PPUContext&);

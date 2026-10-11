@@ -98,7 +98,8 @@
     X(PFNGLTEXTUREVIEWPROC, glTextureView)                                                          \
     X(PFNGLBINDIMAGETEXTUREPROC, glBindImageTexture)                                                \
     X(PFNGLDISPATCHCOMPUTEPROC, glDispatchCompute)                                                  \
-    X(PFNGLMEMORYBARRIERPROC, glMemoryBarrier)
+    X(PFNGLMEMORYBARRIERPROC, glMemoryBarrier)                                                      \
+    X(PFNGLBLENDFUNCPROC, glBlendFunc)
 
 #define PS3KIT_GL_DECLARE(T, n) extern T n;
 PS3KIT_GL_FUNCS(PS3KIT_GL_DECLARE)

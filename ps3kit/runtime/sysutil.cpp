@@ -2,6 +2,9 @@
 // and the system callbacks. The output is one HDMI display at 1280x720,
 // progressive, 16:9, 59.94 Hz, RGB: what a PS3 on a television reports.
 #include "rt.h"
+#include <cstring>
+#include <deque>
+#include <mutex>
 
 namespace {
 constexpr uint8_t kRes720 = 2;           // CELL_VIDEO_OUT_RESOLUTION_720
@@ -65,19 +68,46 @@ PS3_HLE(cellVideoOutGetDeviceInfo) {     // (video out, device index, CellVideoO
     c.r[3] = CELL_OK;
 }
 
-// System callbacks (the XMB, quitting, ...): registered and kept; none is
-// ever raised yet, so checking for them finds nothing.
-namespace { uint32_t g_sys_cb[4], g_sys_cb_arg[4]; }
+// System callbacks: registered in four slots. An event the runtime posts
+// (sysutil_post: so far the on-screen keyboard's) is raised to every
+// registered callback, (status, param, userdata), on the thread that next
+// checks for callbacks; events posted while those run wait for the next check.
+namespace {
+std::mutex g_cb_mx;
+uint32_t g_sys_cb[4], g_sys_cb_arg[4];
+std::deque<std::pair<uint64_t, uint64_t>> g_events;
+}
+
+void sysutil_post(uint64_t status, uint64_t param) {
+    std::lock_guard<std::mutex> lk(g_cb_mx);
+    g_events.push_back({status, param});
+}
 
 PS3_HLE(cellSysutilRegisterCallback) {   // (slot, func, userdata)
     uint32_t slot = arg_u32(c, 0);
     if (slot > 3) { c.r[3] = 0x8002B102u; return; }   // CELL_SYSUTIL_ERROR_VALUE
+    std::lock_guard<std::mutex> lk(g_cb_mx);
     g_sys_cb[slot] = arg_u32(c, 1);
     g_sys_cb_arg[slot] = arg_u32(c, 2);
     c.r[3] = CELL_OK;
 }
 
-PS3_HLE(cellSysutilCheckCallback) { c.r[3] = CELL_OK; }
+PS3_HLE(cellSysutilCheckCallback) {
+    std::deque<std::pair<uint64_t, uint64_t>> events;
+    uint32_t cb[4], arg[4];
+    {
+        std::lock_guard<std::mutex> lk(g_cb_mx);
+        events.swap(g_events);
+        std::memcpy(cb, g_sys_cb, sizeof cb);
+        std::memcpy(arg, g_sys_cb_arg, sizeof arg);
+    }
+    for (auto& [status, param] : events) {
+        rt_log("sysutil: event %llX (param %llX)", (unsigned long long)status, (unsigned long long)param);
+        for (int i = 0; i < 4; ++i)
+            if (cb[i]) ppu_call_guest(c, cb[i], status, param, arg[i]);
+    }
+    c.r[3] = CELL_OK;
+}
 
 // ---- the system's background music ----------------------------------------------------
 // The user can play their own music over a game from the XMB; a game that

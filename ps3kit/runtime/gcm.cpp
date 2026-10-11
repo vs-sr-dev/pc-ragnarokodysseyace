@@ -94,6 +94,7 @@ void callback(PPUContext& c) {
 // ---- the RSX ------------------------------------------------------------------------------------
 void flip(uint32_t id) {
     if (g_flip_mode == 1) {                                         // wait for the next vblank
+        ProfScope prof(PROF_FIFO_VBLANK);
         std::unique_lock<std::mutex> lk(g_vblank_mx);
         uint64_t v = g_vblank_count.load();
         g_vblank_cv.wait(lk, [v] { return g_vblank_count.load() != v; });
@@ -108,6 +109,7 @@ void flip(uint32_t id) {
     rsxcap_flip(RsxFlip{id, d.offset, d.pitch, d.width, d.height});
     if (uint32_t h = g_flip_handler) ppu_intr_post(h, 1);
     if (uint32_t h = g_resc_flip_handler) ppu_intr_post(h, 1);
+    prof_flip();
 }
 
 void method(uint32_t m, uint32_t arg, uint32_t& sem406e, uint32_t& sem4097) {
@@ -115,9 +117,11 @@ void method(uint32_t m, uint32_t arg, uint32_t& sem406e, uint32_t& sem4097) {
     switch (m) {
     case 0x0050: st32(g_control + 8, arg); return;                  // NV406E_SET_REFERENCE
     case 0x0064: sem406e = arg; return;                             // NV406E_SEMAPHORE_OFFSET
-    case 0x0068:                                                    // NV406E_SEMAPHORE_ACQUIRE
+    case 0x0068: {                                                  // NV406E_SEMAPHORE_ACQUIRE
+        ProfScope prof(PROF_FIFO_SEMA);
         while (ld32(g_labels + sem406e) != arg) std::this_thread::yield();
         return;
+    }
     case 0x006C: st32(g_labels + sem406e, arg); return;             // NV406E_SEMAPHORE_RELEASE
     case 0x1D6C: sem4097 = arg; return;                             // NV4097_SET_SEMAPHORE_OFFSET
     case 0x1D70:                                                    // NV4097_BACK_END_WRITE_SEMAPHORE_RELEASE
@@ -134,7 +138,11 @@ void* rsx_main(void*) {
     uint32_t stack[8] = {}, depth = 0, sem406e = 0, sem4097 = 0;
     for (;;) {
         uint32_t g = get();
-        if (g == put()) { std::this_thread::sleep_for(std::chrono::microseconds(50)); continue; }
+        if (g == put()) {
+            ProfScope prof(PROF_FIFO_IDLE);
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+            continue;
+        }
         uint32_t cmd = ld32(g_io_addr + g);
         if ((cmd & 0xE0000003u) == 0x20000000u) { st32(g_control + 4, cmd & 0x1FFFFFFCu); continue; }  // old jump
         if ((cmd & 3) == 1) { st32(g_control + 4, cmd & ~3u); continue; }                            // jump

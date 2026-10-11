@@ -69,6 +69,7 @@ bool g_last_valid = false;
 bool g_kb_init = false;
 uint32_t g_kb_max = 0;
 SDL_Gamepad* g_pad = nullptr;
+bool g_intercepted = false;                       // a system dialog has the controller
 
 // PS3KIT_PAD_PRESS="20:cross,31.5:start+up": buttons held for a fifth of a
 // second at those times (seconds from the first poll), for runs nobody plays.
@@ -121,6 +122,21 @@ void stick(State& s, int xw, int yw, bool l, bool r, bool u, bool d) {
 }  // namespace
 
 void pad_host_poll() {
+    // While a system dialog is open the game sees a neutral controller; after one
+    // closes, the keyboard counts again only once every key is up (the Enter that
+    // confirmed it must not press Start).
+    static bool keys_held_over = false;
+    if (osk_active()) {
+        keys_held_over = true;
+        std::lock_guard<std::mutex> lk(g_mx);
+        g_host = neutral();
+        g_intercepted = true;
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lk(g_mx);
+        g_intercepted = false;
+    }
     if (!g_pad) {
         int n = 0;
         SDL_JoystickID* ids = SDL_GetGamepads(&n);
@@ -161,7 +177,16 @@ void pad_host_poll() {
         s.b[kRightX] = axis(SDL_GetGamepadAxis(g_pad, SDL_GAMEPAD_AXIS_RIGHTX));
         s.b[kRightY] = axis(SDL_GetGamepadAxis(g_pad, SDL_GAMEPAD_AXIS_RIGHTY));
     }
-    const bool* k = SDL_GetKeyboardState(nullptr);
+    int nkeys = 0;
+    const bool* k = SDL_GetKeyboardState(&nkeys);
+    if (keys_held_over) {
+        bool any = false;
+        for (int i = 0; i < nkeys && !any; ++i) any = k[i];
+        if (any) {
+            static bool none_arr[SDL_SCANCODE_COUNT] = {};
+            k = none_arr;
+        } else keys_held_over = false;
+    }
     auto key = [&](SDL_Scancode sc) -> uint8_t { return k[sc] ? 255 : 0; };
     press(s, kDigital1, kUp, kPressUp, key(SDL_SCANCODE_UP));
     press(s, kDigital1, kDown, kPressDown, key(SDL_SCANCODE_DOWN));
@@ -234,7 +259,7 @@ PS3_HLE(cellPadGetInfo2) {
     std::memset(g_mem + p, 0, 12 + 4 * 4 * kMaxPorts);
     st32(p + 0, g_max);
     st32(p + 4, 1);
-    st32(p + 8, 0);
+    st32(p + 8, g_intercepted ? 1 : 0);            // CELL_PAD_INFO_INTERCEPTED
     st32(p + 12, kStatusConnected | (g_assigned ? 0 : kStatusAssignChanges));
     st32(p + 12 + 4 * kMaxPorts, g_setting[0]);
     st32(p + 12 + 8 * kMaxPorts, kCapabilities);

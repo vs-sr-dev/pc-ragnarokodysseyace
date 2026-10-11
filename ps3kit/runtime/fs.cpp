@@ -97,6 +97,7 @@ uint32_t do_read(uint32_t fd, uint32_t buf, uint64_t n, uint64_t& done) {
     std::lock_guard<std::mutex> lk(g_mx);
     File* e = get(fd);
     if (!e || e->dir) return EBADF_;
+    memwatch_write(buf, (uint32_t)n);                       // the kernel's write would fail on an armed page
     done = std::fread(g_mem + buf, 1, n, e->f);
     return CELL_OK;
 }

@@ -10,7 +10,7 @@ add_library(ps3kit_core OBJECT ${_rt}/core.cpp ${_rt}/mem.cpp ${_rt}/elf.cpp ${_
             ${_rt}/intr.cpp ${_rt}/gcm.cpp ${_rt}/sysutil.cpp ${_rt}/fs.cpp ${_rt}/game.cpp ${_rt}/psf.cpp ${_rt}/savedata.cpp
             ${_rt}/audio.cpp ${_rt}/pad.cpp ${_rt}/spu.cpp ${_rt}/spursjq.cpp ${_rt}/video.cpp ${_rt}/rsxcap.cpp ${_rt}/rsxgl.cpp
             ${_rt}/vpglsl.cpp ${_rt}/fpglsl.cpp ${_rt}/sail.cpp ${_rt}/mpeg2.cpp
-            ${_rt}/font.cpp ${_rt}/otf.cpp ${_rt}/raster.cpp)
+            ${_rt}/font.cpp ${_rt}/otf.cpp ${_rt}/raster.cpp ${_rt}/osk.cpp ${_rt}/prof.cpp)
 # the movie decoder and its colour conversion run in real time whatever the build
 set_source_files_properties(${_rt}/mpeg2.cpp ${_rt}/sail.cpp PROPERTIES COMPILE_OPTIONS -O2)
 target_include_directories(ps3kit_core PUBLIC ${_rt})

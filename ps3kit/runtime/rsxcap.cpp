@@ -20,6 +20,11 @@ uint32_t g_prim = 0;
 bool g_indexed = false;
 std::vector<std::pair<uint32_t, uint32_t>> g_ranges;   // first, count
 std::unordered_set<uint64_t> g_sent;    // texture keys the renderer has
+// A texture's key by its address and layout, kept while its memory goes
+// unwritten (mem.cpp's write tracking), so that an unchanged texture is not
+// read and hashed again on every draw that binds it.
+struct KnownTexture { uint32_t addr, layout[3]; uint64_t key, stamp; };
+std::unordered_map<uint64_t, KnownTexture> g_known;
 // The surfaces the renderer has made, by location << 32 | offset, with their
 // size: registered where it makes them (a draw; a colour or a depth clear), so
 // that a texture over one is sampled on the GPU and never read, hashed or sent.
@@ -106,6 +111,10 @@ uint32_t component_bytes(uint32_t type) {
 
 void end_draw() {
     if (g_ranges.empty()) return;
+    ProfScope prof(PROF_FIFO_CAPTURE);
+    size_t rec_before = g_rec.size();
+    struct Sent { size_t& from; ~Sent() { if (g_prof) prof_count(PROFC_SENT, g_rec.size() - from); } } sent{rec_before};
+    if (g_prof) prof_count(PROFC_DRAWS, 1);
     ++g_draws;
     RsxDraw d{g_prim, g_indexed, 0, 0, 0, 0, 0, 0};
     std::vector<uint32_t> indices;
@@ -208,7 +217,16 @@ void end_draw() {
         uint32_t a = address((t.regs[1] & 3) == 2, t.regs[0]);
         if (!readable(a, l.total)) { report_once("texture outside guest memory"); continue; }
         uint32_t layout[3] = {t.regs[1] & ~3u, t.regs[6], t.control3};
-        t.key = hash(g_mem + a, l.total, hash((const uint8_t*)layout, sizeof layout));
+        uint64_t lk = hash((const uint8_t*)layout, sizeof layout, a);
+        KnownTexture& kt = g_known[lk];
+        if (kt.addr == a && std::memcmp(kt.layout, layout, sizeof layout) == 0 && memwatch_clean(a, l.total, kt.stamp)) {
+            t.key = kt.key;
+        } else {
+            uint64_t stamp = memwatch_arm(a, l.total);              // before the read: a write after it is seen
+            t.key = hash(g_mem + a, l.total, hash((const uint8_t*)layout, sizeof layout));
+            kt = KnownTexture{a, {layout[0], layout[1], layout[2]}, t.key, stamp};
+            if (g_prof) prof_count(PROFC_HASHED, l.total);
+        }
         t.bytes = l.total;
         texs.push_back({t, a});
     }
