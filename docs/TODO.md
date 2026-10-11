@@ -44,39 +44,43 @@ Where it stands:
   fall a whole port behind; both are fixed, the second with
   high-resolution waitable timers for every sleep.
 
-### 1. Fonts.
+### 1. Fonts: drawn, and three things left to settle.
 
-`cellFont*` is all stubs, so character creation's rows are empty and every
-menu that is not pre-rendered will be. The game opens fonts from memory
-(`cellFontOpenFontMemory`) and system font sets (`cellFontOpenFontset`),
-creates a renderer and renders glyphs into a surface it then draws as a
-linear `G8B8` texture. Its own font is on the disc,
-`misc.cpk/rh_font_en.otf` (1.9 MB): **OpenType with CFF outlines**
-(`OTTO`; tables BASE, CFF, GPOS, GSUB, OS/2, VORG, cmap, head, hhea, hmtx,
-maxp, name, post, vhea, vmtx), so the rasterizer has to read Type 2
-charstrings and fill cubic outlines, not TrueType's quadratic `glyf`.
+**Session 37 drew them.** `cellFont` is real (`runtime/font.cpp`), over an
+OpenType reader (`otf.cpp`: cmap 4/12, hmtx, vmtx/VORG, CFF with its
+INDEXes, Private DICTs, subroutines, FDArray and FDSelect, Type 2
+charstrings) and a coverage rasterizer (`raster.cpp`), both the kit's own.
+`rh_font_en.otf` is Fontworks' **ChiaroStd-B**, CID-keyed Adobe-Japan1:
+all 9,354 glyphs decode, and the shapes match FreeType's.
+Character creation's rows now read Name, Gender/Male, ..., Job/Sword
+Warrior, Confirm, "Enter your name. (12 characters max)" and Turn / Zoom.
 
-First, read before building: which font each call opens (the memory
-font's address against the file the game loaded), what the game asks of
-the system font sets and whether it ever draws with them, and which
-metrics it uses (glyph metrics, horizontal layout, the render-scale calls).
+What the reading found: one game module (`0x83FC9C`-`0x840480`) makes
+every font call. Fonts live in named slots of 700 bytes; a name `#romN`
+opens system font set N from a table (`0x100`, `0x104`, `0x300109`), any
+other is a file. The game opens `#rom0` (`0x100`, NewRodin Gothic JP) at
+16 px and again at 21 px in character creation, and `rh_font_en` at 26
+and 52 px. It ignores the horizontal layout: ascent and descent are its
+own constants, 8.921875 and 1.21875 of size / 10.140625 (the font's 880
+and 120 per mille). Of a glyph it reads only `h_advance`, and it copies the
+image itself from the transfer record into its G8B8 cache (`0xFF00 |
+coverage`). A missing glyph (`NO_SUPPORT_GLYPH`) is replaced by a fallback
+character from a global.
 
-Then the options, to settle at the start of the session:
+Left to settle:
 
-- **The rasterizer is ours** (the kit's rule): a CFF/OpenType reader
-  (cmap, hmtx, CFF INDEXes, charstrings with subroutines, hints ignored)
-  and a coverage rasterizer for cubic outlines, behind the cellFont calls
-  the game makes. A TrueType `glyf` path can follow when a game needs it.
-- **System font sets, three ways.** (a) The player supplies the PS3's own
-  fonts, taken from their firmware (`dev_flash/data/font`) by a tool of
-  ours, as the disc is: exact, and needs a PUP/dev_flash reader. (b) A
-  substitute font, declared as a stand-in, which the parity rule argues
-  against. (c) None needed, if the reading shows the game draws only with
-  its own font, or uses the system sets only as a fallback; the cheapest
-  outcome, so the reading comes first.
-- **Antialiasing and hinting** as the system library does them are not
-  known; the first comparison is the game's own pre-rendered menu text
-  against what our renderer makes of the same strings.
+- **Where the baseline is.** The game passes a cell's top less the
+  descent as `y`, and draws the cell from baseline less ascent to baseline
+  plus descent; so the baseline is one em below `y`. This font cannot tell
+  "one em" from "ascent to descent" (both 1000). A real screenshot of the
+  same screen would settle the pixel placement and the left bearing too
+  (the labels start right at the bar's edge).
+- **The system font set.** `#rom0` opens but in this run nothing asked it
+  for a glyph; every request is reported (`font: system font set 100 asked
+  for U+...`). Watch for it on every new screen: if it stays silent, option
+  (c) holds and no firmware fonts are needed.
+- **Hinting and the exact antialiasing** of the system's FreeType are
+  unknown; ours is unhinted exact area. Only a hardware capture can say.
 
 ### 2. Past character creation.
 
