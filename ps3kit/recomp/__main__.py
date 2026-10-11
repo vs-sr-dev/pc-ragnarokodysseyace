@@ -6,6 +6,8 @@ Writes, into --out:
     funcs.h          prototypes of every recompiled entry point
     recomp_NNN.cpp   the functions, split by instruction count
     table.cpp        the sorted address -> function table for indirect calls
+    spu_NNN.cpp      each SPU program the executable carries, translated whole
+    spu_table.cpp    those programs: image address, size, local-store base
     imports.cpp      every imported function: its library, name, NID and the
                      slot the loader fills (the runtime binds them by name)
     CMakeLists.txt   the library, the link check, and the runtime targets
@@ -20,6 +22,7 @@ import time
 
 from ..elf import Image, load_names
 from . import emit as E
+from . import spu as S
 from .program import Program
 
 RUNTIME = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "runtime"))
@@ -73,7 +76,7 @@ class FnCtx:
         return f'ppu_unimplemented(c, 0x{t:08X}u, "call to unknown target");'
 
 
-def generate(img, out, per_file=20000, comments=False, log=print):
+def generate(img, out, per_file=20000, comments=False, log=print, spu_step=False):
     t0 = time.time()
     prog = Program(img, log=log)
     entries = set(prog.entries)
@@ -133,6 +136,27 @@ def generate(img, out, per_file=20000, comments=False, log=print):
         f.write("};\n")
         f.write(f"extern const size_t g_ppu_nfuncs = {len(prog.entries)};\n")
 
+    spu_progs = S.find_jobs(img)
+    spu_unsupported = {}
+    for k, sp in enumerate(spu_progs):
+        code, uns = S.translate(img, sp, comments, spu_step)
+        for op, n in uns.items():
+            spu_unsupported[op] = spu_unsupported.get(op, 0) + n
+        name = f"spu_{k:03d}.cpp"
+        with Out(os.path.join(out, name)) as f:
+            f.write('#include "spu.h"\n\n')
+            f.write(code)
+        files.append(name)
+    with Out(os.path.join(out, "spu_table.cpp")) as f:
+        f.write('#include "spu.h"\n#include <cstddef>\n\n')
+        for sp in spu_progs:
+            f.write(f"uint32_t {sp.fname}(SPUContext& s, uint32_t pc);\n")
+        f.write("extern const SPUProgram g_spu_programs[] = {\n")
+        for sp in spu_progs:
+            f.write(f'    {{0x{sp.ea:08X}u, 0x{sp.size:X}u, 0x{sp.base:X}u, {sp.fname}, "{sp.name}"}},\n')
+        f.write("    {0, 0, 0, nullptr, nullptr}\n};\n")
+        f.write(f"extern const size_t g_spu_nprograms = {len(spu_progs)};\n")
+
     names = load_names()
     imports = img.imports()
     n_imp = sum(len(m.nids) for m in imports)
@@ -151,7 +175,7 @@ def generate(img, out, per_file=20000, comments=False, log=print):
 
     with Out(os.path.join(out, "CMakeLists.txt")) as f:
         rt = RUNTIME.replace("\\", "/")
-        srcs = "\n    ".join(files + ["table.cpp", "imports.cpp"])
+        srcs = "\n    ".join(files + ["table.cpp", "imports.cpp", "spu_table.cpp"])
         f.write(f"""cmake_minimum_required(VERSION 3.20)
 project(ps3kit_recomp CXX)
 set(CMAKE_CXX_STANDARD 20)
@@ -179,6 +203,8 @@ endif()
         f"bad targets      {len(prog.bad_targets)}",
         f"imports          {len(imports)} libraries, {n_imp} functions",
         f"unsupported      {unsupported or 'none'}",
+        f"spu programs     {len(spu_progs)}: " + ", ".join(f"{p.name} {p.ea:08X}+{p.size:X}" for p in spu_progs),
+        f"spu unsupported  {spu_unsupported or 'none'}",
         f"files            {len(files)}",
         f"time             {time.time() - t0:.1f} s",
     ]
@@ -197,8 +223,10 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--per-file", type=int, default=20000)
     ap.add_argument("--comments", action="store_true", help="the guest address on every line")
+    ap.add_argument("--spu-step", action="store_true",
+                    help="SPU programs report every instruction under PS3KIT_SPU_TRACE=2 (slow)")
     a = ap.parse_args()
-    generate(Image(a.image), a.out, a.per_file, a.comments)
+    generate(Image(a.image), a.out, a.per_file, a.comments, spu_step=a.spu_step)
 
 
 if __name__ == "__main__":

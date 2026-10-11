@@ -70,9 +70,9 @@ bool hle_dispatch(PPUContext& c, uint32_t addr) {
     uint32_t n = __atomic_fetch_add(&b.calls, 1, __ATOMIC_RELAXED);
     if (g_trace_all || n < kTraceFirst) {
         std::lock_guard<std::mutex> lk(g_trace_mx);
-        rt_log("%s %s.%s(%llX, %llX, %llX, %llX)  lr=%08llX", b.fn ? "hle " : "STUB", im.module, im.name,
+        rt_log("%s %s.%s(%llX, %llX, %llX, %llX)  lr=%08llX  thread %X", b.fn ? "hle " : "STUB", im.module, im.name,
                (unsigned long long)c.r[3], (unsigned long long)c.r[4], (unsigned long long)c.r[5],
-               (unsigned long long)c.r[6], (unsigned long long)c.lr);
+               (unsigned long long)c.r[6], (unsigned long long)c.lr, c.thread_id);
     }
     if (b.fn) b.fn(c);
     else c.r[3] = CELL_OK;
