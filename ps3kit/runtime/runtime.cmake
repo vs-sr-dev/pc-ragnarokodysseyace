@@ -7,7 +7,7 @@
 set(_rt ${CMAKE_CURRENT_LIST_DIR})
 add_library(ps3kit_core OBJECT ${_rt}/core.cpp ${_rt}/mem.cpp ${_rt}/elf.cpp ${_rt}/hle.cpp
             ${_rt}/lv2.cpp ${_rt}/sysprx.cpp ${_rt}/thread.cpp ${_rt}/sync.cpp
-            ${_rt}/intr.cpp ${_rt}/gcm.cpp ${_rt}/sysutil.cpp ${_rt}/fs.cpp ${_rt}/game.cpp
+            ${_rt}/intr.cpp ${_rt}/gcm.cpp ${_rt}/sysutil.cpp ${_rt}/fs.cpp ${_rt}/game.cpp ${_rt}/psf.cpp ${_rt}/savedata.cpp
             ${_rt}/audio.cpp ${_rt}/spursjq.cpp ${_rt}/video.cpp ${_rt}/rsxcap.cpp ${_rt}/rsxgl.cpp
             ${_rt}/vpglsl.cpp ${_rt}/fpglsl.cpp)
 target_include_directories(ps3kit_core PUBLIC ${_rt})
