@@ -13,6 +13,18 @@ is your disc's code, translated, and is never part of this repository.
 
 ## Status
 
+Session 36 (2026-10-11). **Playable to character creation, with its music.**
+With a controller the intro movie skips, the title screen and the main menu
+come up, and New Game reaches character creation with the hero's skinned
+model drawn (the menu text, drawn with the system's font library, is still
+missing). The CRI sound jobs run on an SPU recompiler of the kit's own —
+each SPU program translated whole into C++, run by a job manager of the
+runtime's own — and the soundtrack plays through SDL3. Left alone, the
+movie now ends by itself: the scene was waiting for its music to finish.
+
+Session 35 (2026-10-11). **The first movie plays**, through cellSail and an
+MPEG-2 decoder of the runtime's own, after save data that works end to end.
+
 Session 34 (2026-10-11). **The game's own code draws its boot sequence in a
 window: the publishers' logos, with their fades.** Its audio ports are real
 now, consumed by a 48 kHz clock that the game paces its mixer on, so it gets

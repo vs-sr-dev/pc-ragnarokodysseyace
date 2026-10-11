@@ -7,86 +7,76 @@
 
 # Next session
 
-**Session 35 put the game's first movie on screen.** After the publishers'
-logos the game asks for its save, boots its movie player, and plays
-`movie/RHN_advertise.pam` from start to end: 4,440 frames, 148 s, drawn by
-the game itself as a texture, at 29.97 fps. Then it goes back to black, one
-fade quad a flip, and calls nothing more of the player.
+**Session 36 made the game playable to character creation, and audible.**
+With a controller the movie skips, the title screen comes up, Start opens
+the main menu (New Game, Load Game, Options, Install, Cross-Save, Backup,
+Restore, Import Game Data), and New Game reaches character creation with
+the hero's skinned model drawn. The CRI sound jobs run on an SPU
+recompiler of the kit's own, and the music plays; left alone, the movie
+now ends by itself and hands over to the title.
 
 Where it stands:
 
-- **Save data is real** (`savedata.cpp`, `psf.cpp`). One operation serves
-  Auto, ListAuto and Fixed: the saves under the prefix are listed, the
-  game's fixed callback picks a directory, the stat callback sees it (or
-  that it is new), the file callback reads, writes and deletes, and the save
-  is written whole with a PARAM.SFO and moved into place. On a first boot
-  the game lists `NPUB31406-PLY`, picks `NPUB31406-SYS-SAVEDATA`, sees it is
-  new and ends the call with OK_LAST: **the save was never what it waited
-  on.** `PS3KIT_SAVEDATA=1` shows each step. Nothing has been saved yet, so
-  the write path is untested by the game.
-- **The movie player is cellSail as the game drives it** (`sail.cpp`). Its
-  wrapper object (`0x9CB5C0`-`0x9CC858`) was read end to end: the callback
-  records boot completion, the state, stream opened and source end in
-  words at `+0x544`..`+0x554`, and a per-frame update reads them back and
-  moves on - CLOSED, create a descriptor and open the stream, OPENED, set
-  the repeat mode and start, RUNNING, and at the end of the stream EOS in
-  state OPENED, which it takes as finished. The graphics adapter's frame
-  buffers come from the game's own allocator callback (four of 3.6 MB, in
-  local memory); `GetFrame2` hands the frame due now, and the game draws it
-  as a linear A8R8G8B8 texture. One reading worth knowing: the game tests
-  `GetFrame2`'s result as **signed and above 255**, so it cannot be the
-  frame's address (negative in local memory); it is the frame's size.
-- **An MPEG-2 decoder of our own** (`mpeg2.cpp`, `mpegps.h`): frame
-  pictures, I/P/B, frame and field prediction and DCT, both coefficient
-  tables, both scans, the non-linear quantiser. Checked against ffmpeg with
-  `mpeg2test`: a whole disc movie within 3 levels (63 dB), and synthetic
-  streams for each tool the disc does not use (interlaced, B.15, alternate
-  scan, non-linear quantiser, DC precision 9/10) at 70 dB. One bug found
-  that way: a skipped B macroblock is predicted as a frame macroblock from
-  the vector predictors, not with the previous macroblock's field vectors.
-  It runs at 85 fps on the disc's 720p.
-- **A FIFO oddity, now harmless:** three times during the movie a texture
-  unit is set with every register shifted by one byte (offset `77C00000`
-  for `0277C000`, format `01A52902` for `0001A529`). The renderer drew it
-  as an unknown format and crashed the GL driver; it now reports and skips
-  textures it cannot read. The shift itself is not explained.
+- **What the movie waited for is answered.** The scene at `0x7C62B0`
+  alternates `RHN_advertise` (cue `0xCA`) and `RH_movie_fix` (cue `0x27`)
+  on each visit, loads `UN_Title` behind the movie, and after the stream
+  ends polls the soundtrack's player for PLAYEND (`f_009E2008`, status 3).
+  With no sound decoded that never came; now it does. Skipping (any of
+  five buttons) fades the cue out instead, which ends it from the PPU side.
+- **Input** (`pad.cpp`): one controller on port 0 from SDL's first gamepad
+  and a keyboard map; no keyboard connected. `PS3KIT_PAD_PRESS` presses
+  buttons at set times for unattended runs.
+- **Vertex programs that branch** are their reachable basic blocks in a
+  loop; a branch tests its condition regardless of the test-enable bit.
+  Both faults brought the NVIDIA driver down on the first skinned mesh;
+  `PS3KIT_GLSYNC=N` (report and wait for every draw from N on) is what
+  found the draw. Stride-0 vertex attributes are constants now.
+- **The SPU side** (`ps3kit/spu.py`, `ps3kit/recomp/spu.py`,
+  `runtime/spu.h`, `spu.cpp`): each program translated whole for its
+  local-store base; all six CRI jobs found by their JOBCRT header.
+  `spursjq.cpp` is a job manager of the runtime's own that runs a job when
+  it is pushed. AtomDecoder (HCA to PCM) and AsrVoice (the voice mixer) are
+  the two pushed so far; DspPack1/2, DspPitchShifter and HcaMixer are
+  translated and wait for a caller.
+- **Sound out**: the audio clock mixes its ports to stereo and plays them
+  through SDL3. The BGM status stub had muted the game's music (PLAY is 0),
+  and Windows 11's background timer throttling made CRI's 60 Hz writer
+  fall a whole port behind; both are fixed, the second with
+  high-resolution waitable timers for every sleep.
 
-### 1. What the game waits for after the movie.
+### 1. Fonts.
 
-The player ends in OPENED with the EOS flag set, the wrapper's finished
-flag (`+0x536`) becomes 1, and nothing else happens: no CloseStream, no
-Finalize. Find who reads `+0x536` (the movie object's virtual methods are
-the thunks at `0xA470E8` and `0xA51B98`) and what it expects next - a
-different end sequence from the player, the stream closed, or something
-outside it (input, the title screen, its sound). Also settle whether
-RHN_advertise is the boot movie or an attract loop the title falls into;
-`RH_movie_fix.pam` (157 s) is the other candidate for the opening.
+`cellFont*` is all stubs, so character creation's rows are empty and every
+menu that is not pre-rendered will be. The game opens fonts from
+memory (`cellFontOpenFontMemory`, its own) and system font sets
+(`cellFontOpenFontset`, the PS3's own fonts, which the disc does not
+carry), creates a renderer and renders glyphs into a
+surface it then draws as a `G8B8` texture. It needs a TrueType rasterizer
+of the kit's own (outlines, hinting off, the metrics cellFont reports),
+and an answer for the system font set: what the game asks of it, and
+whether a player-supplied firmware font or a substitute declared as one
+serves.
 
-### 2. Input.
+### 2. Past character creation.
 
-`cellPadInit`, `GetInfo2`, `GetData` from SDL's gamepad and keyboard. The game
-polls them every frame already, and whatever screen follows will want them.
+Name entry (`cellOskDialog`?), the save the game writes for a new
+character (the save write path is still untested by the game), and the
+first town. Each screen will say what it needs; the skipped-method and
+stub reports are the to-do list.
 
-### 3. Sound: the two SPU jobs.
-
-An SPU recompiler in ps3kit (the SPU decoder, then SPU programs as C++ the
-way PPU code is), JOBCRT's calling convention, and the job descriptor's DMA
-lists, enough to run AsrVoice and AtomDecoder when they are pushed. Then
-`Port2Sync` waits for real work, and the port's blocks carry sound. Output
-through SDL3's audio stream, from the clock that already consumes the ports.
-The movies have no audio of their own; their soundtrack comes this way.
-
-### 4. Fonts.
-
-`cellFont*` is all stubs, and the game opens three fonts from memory and
-lays text out. The title and every menu will need it.
-
-### 5. The rest of the 3D engine, as the game asks.
+### 3. The rest of the 3D engine, as the game asks.
 
 What the README's known approximations list as written and not acted on
 (fog, clip planes, two-sided colour, flat shading, ...) and the reported
-gaps in the translators, each when a screen needs it. The 676 `CGB` blocks
-remain a possible offline cache of the programs, not the path.
+gaps in the translators, each when a screen needs it.
+
+### 4. The SPU and sync, robustly.
+
+The remaining CRI jobs when the game pushes them; then the things this
+session took on trust: a single lock for every synchronisation object,
+jobs run synchronously on the pushing thread, and the FIFO oddity (a
+texture unit set with every register shifted by a byte, three times
+during the movie) that is still unexplained.
 
 ### Alongside, every session.
 
@@ -305,6 +295,92 @@ remain a possible offline cache of the programs, not the path.
 ---
 
 # Log
+
+## Session 35 - 2026-10-11
+
+*The "next session" section as session 35 left it: save data, the movie
+player and the first movie, and the plan session 36 followed.*
+
+**Session 35 put the game's first movie on screen.** After the publishers'
+logos the game asks for its save, boots its movie player, and plays
+`movie/RHN_advertise.pam` from start to end: 4,440 frames, 148 s, drawn by
+the game itself as a texture, at 29.97 fps. Then it goes back to black, one
+fade quad a flip, and calls nothing more of the player.
+
+Where it stands:
+
+- **Save data is real** (`savedata.cpp`, `psf.cpp`). One operation serves
+  Auto, ListAuto and Fixed: the saves under the prefix are listed, the
+  game's fixed callback picks a directory, the stat callback sees it (or
+  that it is new), the file callback reads, writes and deletes, and the save
+  is written whole with a PARAM.SFO and moved into place. On a first boot
+  the game lists `NPUB31406-PLY`, picks `NPUB31406-SYS-SAVEDATA`, sees it is
+  new and ends the call with OK_LAST: **the save was never what it waited
+  on.** `PS3KIT_SAVEDATA=1` shows each step. Nothing has been saved yet, so
+  the write path is untested by the game.
+- **The movie player is cellSail as the game drives it** (`sail.cpp`). Its
+  wrapper object (`0x9CB5C0`-`0x9CC858`) was read end to end: the callback
+  records boot completion, the state, stream opened and source end in
+  words at `+0x544`..`+0x554`, and a per-frame update reads them back and
+  moves on - CLOSED, create a descriptor and open the stream, OPENED, set
+  the repeat mode and start, RUNNING, and at the end of the stream EOS in
+  state OPENED, which it takes as finished. The graphics adapter's frame
+  buffers come from the game's own allocator callback (four of 3.6 MB, in
+  local memory); `GetFrame2` hands the frame due now, and the game draws it
+  as a linear A8R8G8B8 texture. One reading worth knowing: the game tests
+  `GetFrame2`'s result as **signed and above 255**, so it cannot be the
+  frame's address (negative in local memory); it is the frame's size.
+- **An MPEG-2 decoder of our own** (`mpeg2.cpp`, `mpegps.h`): frame
+  pictures, I/P/B, frame and field prediction and DCT, both coefficient
+  tables, both scans, the non-linear quantiser. Checked against ffmpeg with
+  `mpeg2test`: a whole disc movie within 3 levels (63 dB), and synthetic
+  streams for each tool the disc does not use (interlaced, B.15, alternate
+  scan, non-linear quantiser, DC precision 9/10) at 70 dB. One bug found
+  that way: a skipped B macroblock is predicted as a frame macroblock from
+  the vector predictors, not with the previous macroblock's field vectors.
+  It runs at 85 fps on the disc's 720p.
+- **A FIFO oddity, now harmless:** three times during the movie a texture
+  unit is set with every register shifted by one byte (offset `77C00000`
+  for `0277C000`, format `01A52902` for `0001A529`). The renderer drew it
+  as an unknown format and crashed the GL driver; it now reports and skips
+  textures it cannot read. The shift itself is not explained.
+
+#### 1. What the game waits for after the movie.
+
+The player ends in OPENED with the EOS flag set, the wrapper's finished
+flag (`+0x536`) becomes 1, and nothing else happens: no CloseStream, no
+Finalize. Find who reads `+0x536` (the movie object's virtual methods are
+the thunks at `0xA470E8` and `0xA51B98`) and what it expects next - a
+different end sequence from the player, the stream closed, or something
+outside it (input, the title screen, its sound). Also settle whether
+RHN_advertise is the boot movie or an attract loop the title falls into;
+`RH_movie_fix.pam` (157 s) is the other candidate for the opening.
+
+#### 2. Input.
+
+`cellPadInit`, `GetInfo2`, `GetData` from SDL's gamepad and keyboard. The game
+polls them every frame already, and whatever screen follows will want them.
+
+#### 3. Sound: the two SPU jobs.
+
+An SPU recompiler in ps3kit (the SPU decoder, then SPU programs as C++ the
+way PPU code is), JOBCRT's calling convention, and the job descriptor's DMA
+lists, enough to run AsrVoice and AtomDecoder when they are pushed. Then
+`Port2Sync` waits for real work, and the port's blocks carry sound. Output
+through SDL3's audio stream, from the clock that already consumes the ports.
+The movies have no audio of their own; their soundtrack comes this way.
+
+#### 4. Fonts.
+
+`cellFont*` is all stubs, and the game opens three fonts from memory and
+lays text out. The title and every menu will need it.
+
+#### 5. The rest of the 3D engine, as the game asks.
+
+What the README's known approximations list as written and not acted on
+(fog, clip planes, two-sided colour, flat shading, ...) and the reported
+gaps in the translators, each when a screen needs it. The 676 `CGB` blocks
+remain a possible offline cache of the programs, not the path.
 
 ## Session 33 - 2026-10-11
 
