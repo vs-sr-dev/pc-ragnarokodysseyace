@@ -36,10 +36,9 @@ Where it stands:
   a larger scale.
 - **`ps3boot` opens a window.** SDL3 and OpenGL 4.5 run on the main thread,
   and the game runs on a thread of its own (256 MB host stack, as before).
-  The RSX thread keeps the surface, scissor, colour mask and clear
-  registers, and records each frame for the renderer, which runs at most two
-  flips behind. Render targets are GL textures, found by location, offset,
-  size and format; a flip shows the one at the display buffer's offset.
+  The renderer runs at most two flips behind the game. Render targets are
+  GL textures, found by location, offset, size and format; a flip shows the
+  one at the display buffer's offset.
   `--quit-after`, `--dump DIR` (PNGs) and `--no-video` make runs scriptable,
   and `PS3KIT_RSX_TRACE=N` prints frame N method by method. The colour path
   was checked once with a forced clear colour: channels in order, scissor
@@ -55,13 +54,12 @@ Where it stands:
   swizzles; the first dump of the logos was right on the first try. One bug
   cost a run: `glColorMaski` takes bytes, so `mask & 0x10000` wrote blue only.
   `PS3KIT_DRAWDUMP`, `PS3KIT_SHADERDUMP` and `PS3KIT_TEXDUMP` are the tools.
-- **What a frame held before the draws** (frame 600): a clear of the Resc source buffer
-  to `FF000000` (colour, depth 0xFFFFFF, stencil 0), then twice: a fragment
-  program in main memory (`08E4` = `0x0C4CC202`, then `...C402`), vertex
-  arrays in main memory (`1680`, formats `0x1832`, `0x1844`, `0x1822`), a
-  texture (`1A00` = `0x023F8000`, format word `0x00018529`), and
-  `DRAW_ARRAYS` of six vertices as triangles. That is a picture drawn over
-  black, probably a notice or a loading screen, waiting for something.
+- **What a logo frame is:** a clear to `FF000000`, then two draws of six
+  vertices each, in a 2D orthographic projection. The first is a
+  full-screen untextured quad, the fade, whose colour is multiplied by
+  `vc[464]`. The second is the logo itself, a 512x512 or 1024x512 swizzled
+  A8R8G8B8 texture stored as RGBA (remap `0xAA93`), on a quad centred on
+  the screen. The same two programs serve all three logos.
 - **What it waits for after the logos** is one of the two stubs it called last:
   `cellSaveDataListAutoLoad` returns `CELL_OK` without calling any of its
   callbacks, and `cellSailPlayerBoot` never reports the player booted. The
@@ -73,6 +71,14 @@ Where it stands:
 callbacks raised as the system raises them, and the first-boot answer (no
 save yet) that a fresh `/dev_hdd0` gives. The game asks for its save just
 before it boots `cellSail`, and nothing after that moves.
+
+Start by settling which of the two it waits on: the logos end at about
+flip 630, and `PS3KIT_TRACE=1` around that point, or `gdb_trace.py` on the
+caller of `cellSaveDataListAutoLoad` (`lr=009F91F0`) and of
+`cellSailPlayerBoot` (`lr=009CC640`), will show what the game polls next.
+The savedata calls take a set-up callback, a file callback and a status
+result. On a first boot the system raises the list callback with no
+entries, and the game then decides to create a new save.
 
 ### 2. The intro movie.
 
