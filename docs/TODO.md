@@ -7,78 +7,95 @@
 
 # Next session
 
-**Session 33 changed the road.** [`STRATEGY.md`](STRATEGY.md#the-pivot-static-recompilation-session-33)
-has the reasons and the census behind them: the game is now recompiled from
-its own executable onto a runtime that stands in for the PS3, built as a
+**Session 33 changed the road, and the recompiled game reached its first
+flip the same day.** [`STRATEGY.md`](STRATEGY.md#the-pivot-static-recompilation-session-33)
+has the reasons and the census behind them: the game is recompiled from its
+own executable onto a runtime that stands in for the PS3, built as a
 reusable kit, [`ps3kit`](../ps3kit). The reimplementation in
-[`engine/`](../engine) is not thrown away, it becomes the oracle: the session
-31-32 plan it was following is kept intact in the [Log](#sessions-31-32---2026-08-25),
-parked.
+[`engine/`](../engine) is the oracle now, and the session 31-32 plan it was
+following is kept intact in the [Log](#sessions-31-32---2026-08-25), parked.
 
-What session 33 built, and what it showed:
+Where it stands:
 
 - **`python -m ps3kit.recomp eboot.elf --out build/recomp`** turns the 2.69
-  million PPU instructions into 122 MB of C++ in **12 seconds**: 76,648 units
-  (the 69,691 the `.opd` names and 6,957 that only a `bl` reaches), the code
-  range `0x10200-0xa597e0` found without the section table and equal to it to
-  the byte, **293 switch tables of 293 resolved**, and no instruction
-  unsupported except the 8,105 words of data that sit inside `.text`
-  (constants like `0x3F800000`, which is `1.0f`).
-- **clang builds it in 73 seconds** at `-O1` on 16 cores; all 133 files
-  passed a syntax check on the first generation.
-- **And it runs.** `ps3boot eboot.elf` loads the segments, binds all 306
-  imports by name (12 implemented, 294 reported stubs), builds the primary
-  thread's stack and TLS the way the loader does, and calls `_start`. The
-  game's crt0 and libc come up, and the game then **prints through its own
-  `sys_tty_write`** what it found: `available os memory 0d500000`, a 213 MB
-  user area, and the twenty memory pools it carves out of it (`render`,
-  `sound`, `font`, `adx`, `app_large` ...). It loads its system modules, runs
-  `cellGameBootCheck`, creates its first thread, `"reusable"`, and waits for it
-  forever on `sys_ppu_thread_yield`. That wait is the runtime's one declared
-  limit: one guest thread.
+  million PPU instructions into 122 MB of C++ in 12 seconds: 76,648 units,
+  the code range found without the section table and equal to it to the byte,
+  and **379 switch tables of 379**. Every `bctr` in the binary is one; the 86
+  the census could not place use `lwax` rather than `lwzx`, and some of their
+  cases sit in a neighbouring function. clang builds it in about 73 seconds.
+- **`ps3boot eboot.elf --bdvd extract --hdd0 build/hdd0`** runs it. Guest
+  threads are host threads with their own stacks and TLS; the lightweight
+  mutex and condition and lv2's mutex, condition, semaphore, event flag and
+  event queue are real; `/dev_bdvd` is the extracted disc. The game brings up
+  its libc and its twenty memory pools, starts **CRI's file system threads**
+  (four "File Access", one decompression, the server), scans its disc, sets
+  up SPURS and the CRI audio job queue, opens its audio ports, initialises
+  `cellGcm` and Resc with three 1280x720 display buffers, opens and reads its
+  files, loads fonts, asks for its save data, boots `cellSail` — and
+  **flips**: `rsx: flip 1 to buffer 0`, then 600 more at 59.94 Hz. Nothing is
+  drawn: the RSX consumes the FIFO, executes references, semaphores and
+  flips, and counts the 200 other methods it skips.
+- **It then dies in its own audio code** (`f_00081D10`), reading through the
+  port configuration `cellAudioGetPortConfig` never wrote.
 
-### 1. Threads.
+**The method note is the bug that came first.** The first crash looked like a
+recompilation error: a pool allocation returned NULL with 8 MB free. It was
+not. The pool had 0x16C30 bytes left, its 40 allocations total `0x81A340`
+against a pool of `0x819000` — over by `0x1340` — and the excess came from the
+local-memory page table, whose size follows the space left after Resc's
+colour buffers, whose size was a number this runtime had **invented** for
+`cellRescGetBufferSize`. Sized as the library plausibly does (the largest
+supported, registered destination: 1080 lines at pitch `0x2000`, two
+buffers), the pool fits. The game's memory budget is exact to a few
+kilobytes, so a plausible stand-in fails loudly here — which is the parity
+rule, enforced by the game itself. The reading is declared in
+[`ps3kit/README.md`](../ps3kit/README.md). [`ps3kit/gdb_trace.py`](../ps3kit/gdb_trace.py)
+is the instrument that followed it: any recompiled function under gdb, its
+arguments, result and guest call chain, with no debug build.
 
-Everything next stands on this. `sys_ppu_thread_create` has to start a host
-thread with its own `PPUContext`, its own guest stack (`stack_alloc`), its
-own TLS block, and r2 from the entry's descriptor; `join`, `exit`, `yield`,
-priorities. Then the synchronisation that is real once two threads run:
-`sys_lwmutex` and `sys_lwcond` (now non-blocking placeholders in
-[`sysprx.cpp`](../ps3kit/runtime/sysprx.cpp)), and the lv2 objects the census
-lists by number — mutex 100-104, cond 105-109, semaphore 90-94, event flag
-82-87, event queue and port 128-138. The design choice to make first is
-whether guest threads are host threads (natural, and the
-`lwarx`/`stwcx.` CAS in `ppu.h` is already written for it) or fibres on one
-host thread (deterministic, which a regression sweep would like).
+### 1. Audio, enough to go on.
 
-### 2. The file system.
+`cellAudioInit`, `PortOpen` (the port's buffer in guest memory, its block
+count and channels), `GetPortConfig` (where the game reads the read index),
+`PortStart`, and a host thread advancing the read index at 48 kHz, 256
+samples a block, with `cellAudioSetNotifyEventQueue`-style events if the game
+asks. Output can wait; the timing cannot, because the game paces its mixer on
+it. Then `cellSpursJq`: the CRI jobs are pushed into a queue nobody serves.
+First answer them as done (silence), then decide between lifting the six SPU
+jobs and running their PPU-side fallbacks, if CRI has any.
 
-`cellFsOpen` and its 18 siblings, and the lv2 `sys_fs_*` calls behind them:
-`/dev_bdvd/PS3_GAME/USRDIR` maps onto the player's extracted disc,
-`/dev_hdd0` onto a save directory. `cellFsAioInit` is already called three
-times at boot. Then `cellGame*` with real answers (it boots from disc, the
-content is permitted), and `cellSysutilCheckCallback`.
+### 2. Something on screen.
 
-### 3. Run until the first frame.
+The push is waiting for this. A window (SDL3, OpenGL, as the other kits)
+that presents the display buffer each flip names, then the RSX methods in
+the order the counts give them: the surface (colour and depth targets),
+`NV4097_CLEAR_SURFACE` — a cleared frame in the game's own colour is the first
+picture — then vertex state, shaders (the 676 `CGB` blocks, translated to
+GLSL), textures and draws. The skipped-method report every 1,800 flips is
+the to-do list; the heaviest so far are `0A20`-`0A3C` (1,682 each),
+`1714` (1,479), `0394`/`0398`/`0A00` (841).
 
-Keep running and implementing what the run asks for, in the order it asks.
-The next walls are known: `cellGcmSys` (24 functions, and the command buffer
-behind `_cellGcmSetFlipCommand`), `cellResc`, `cellSpurs`/`cellSpursJq` for
-the CRI audio jobs (stub first, so that sound fails quietly), `cellAudio`,
-pad input. The milestone is **the game reaching its first flip**: boot,
-threads and files working, whatever is on screen.
+### 3. The intro movie.
 
-### 4. Things to keep doing alongside.
+`cellSail` plays PAMF, which [`pam.py`](../tools/pam.py) already reads: a Sony header over an MPEG-2 program stream with no audio. A
+player HLE plus an MPEG-2 video decoder of our own is a bounded job, and it
+puts the game's own first frames on screen independently of the renderer.
 
-- **Every invention declared**, in [`ps3kit/README.md`](../ps3kit/README.md)'s
-  "known approximations" the way `parity.md` does it for the engine.
-- **Read others' work, write our own.** RPCS3's HLE modules are the best
-  description of what each system call does; they are read, never copied —
-  this repository is MIT and RPCS3 is GPLv2.
+### 4. Input.
+
+`cellPadInit`, `GetInfo2`, `GetData` from SDL's gamepad and keyboard. The game
+polls them every frame already.
+
+### Alongside, every session.
+
+- **Every invention declared**, in `ps3kit/README.md`'s known
+  approximations, the way `parity.md` does it for the engine.
+- **Read others' work, write our own.** RPCS3's HLE modules describe what the
+  system does; they are read, never copied.
 - **Nothing generated is committed.** `build/` holds the C++ and is ignored.
 - **Keep the kit free of the game.** Anything Ragnarok-specific goes in a
-  port layer outside `ps3kit/`, so that extracting the kit for *3D Dot Game
-  Heroes* is a move, not a refactor.
+  port layer outside `ps3kit/`.
+
 ## Deferred, with reasons
 
 - **EBOOT decryption** (Phase 3) — **no longer deferred: done, session 30.**

@@ -25,10 +25,12 @@ PS3 port: `python -m ps3kit.recomp` turns the executable into C++ in **12
 seconds** (76,648 functions, **293 of 293 switch tables**), clang builds it in
 73, and `ps3boot` loads it, binds every import and calls `_start`. The game's
 libc comes up and the game reports, **through its own debug output**, the 213
-MB it was given and the twenty memory pools it carves out of them; it loads
-its system modules, checks how it was booted, starts its first thread and
-waits for it. Threads are the next session — see
-[`docs/TODO.md`](docs/TODO.md).
+MB it was given and the twenty memory pools it carves out of them. With
+threads, synchronisation, the file system and the command buffer behind it,
+it then starts CRI's file system, reads its disc, sets up its audio and its
+three 1280x720 display buffers and **reaches its first flip** — then six
+hundred more at 59.94 Hz, with nothing drawn yet. Audio, a window and the RSX
+are next — see [`docs/TODO.md`](docs/TODO.md).
 
 The reimplementation below is not retired: it is the oracle the recompiled
 game can now be checked against, function by function.
