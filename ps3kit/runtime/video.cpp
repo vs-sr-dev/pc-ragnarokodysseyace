@@ -1,16 +1,12 @@
-// ps3kit runtime — the renderer: a window, and the RSX's record (rsx.h)
-// executed with OpenGL 4.5.
+// ps3kit runtime — the renderer's window: the queue of records from the
+// game, OpenGL 4.5, and the flips shown.
 //
 // It runs on the host's main thread, which owns the window and the GL
 // context; the game runs on its own threads and hands over a record on each
-// flip, at most frames_ahead flips ahead.
-//
-// Render targets live on the host GPU: each colour or depth surface the game
-// names is a texture, found again by where it is in RSX memory (location and
-// offset) and its size and format. Rows are stored top first, as the RSX
-// stores them. A flip shows the colour surface at the display buffer's
-// offset; a display buffer no surface has been drawn to is read from guest
-// memory, as the RSX would scan it out.
+// flip, at most frames_ahead flips ahead. rsxgl.cpp executes the records.
+// A flip shows the colour surface at the display buffer's offset; a display
+// buffer no surface has been drawn to is read from guest memory, as the RSX
+// would scan it out.
 #include "rsx.h"
 #include "gl.h"
 #include "rt.h"
@@ -30,107 +26,8 @@
 PS3KIT_GL_FUNCS(PS3KIT_GL_DEFINE)
 #undef PS3KIT_GL_DEFINE
 
-namespace {
-VideoOptions opt;
-using Clock = std::chrono::steady_clock;
-
-// ---- the queue from the game ------------------------------------------------------------------
-struct Chunk { std::vector<uint8_t> data; int flips = 0; };
-std::mutex qmx;
-std::condition_variable q_space;
-std::deque<Chunk> q;
-int q_flips = 0;
-SDL_Semaphore* wake = nullptr;
-
-// ---- surfaces -----------------------------------------------------------------------------------
-struct Surface { GLuint tex = 0, fbo = 0; int w = 0, h = 0; GLenum fmt = 0; };
-std::unordered_map<uint64_t, Surface> colors, depths;     // by location << 32 | offset
-Surface scanout;                                          // a display buffer read from guest memory
-RsxSurface surf{};
-SDL_Window* win = nullptr;
-
-struct Counters { uint64_t flips, presents, clears, surfaces; } cnt;
-
-uint64_t key(uint32_t dma, uint32_t offset) { return (uint64_t)(dma == 0xFEED0001u) << 32 | offset; }
-
-GLenum color_format(uint32_t f) {
-    switch (f & 0x1F) {
-    case 3: return GL_RGB565;
-    case 9: return GL_R8;
-    case 10: return GL_RG8;
-    case 11: return GL_RGBA16F;
-    case 12: return GL_RGBA32F;
-    case 13: return GL_R32F;
-    default: return GL_RGBA8;                             // the 5551s, the 8888s
-    }
-}
-
-Surface& surface(std::unordered_map<uint64_t, Surface>& m, uint64_t k, int w, int h, GLenum fmt, GLenum attach) {
-    Surface& s = m[k];
-    if (s.tex && s.w == w && s.h == h && s.fmt == fmt) return s;
-    if (s.tex) { glDeleteTextures(1, &s.tex); glDeleteFramebuffers(1, &s.fbo); }
-    s = Surface{0, 0, w, h, fmt};
-    glCreateTextures(GL_TEXTURE_2D, 1, &s.tex);
-    glTextureStorage2D(s.tex, 1, fmt, w, h);
-    glCreateFramebuffers(1, &s.fbo);
-    glNamedFramebufferTexture(s.fbo, attach, s.tex, 0);
-    ++cnt.surfaces;
-    rt_log("video: %s surface %s:%X, %dx%d, format %X", attach == GL_COLOR_ATTACHMENT0 ? "colour" : "depth",
-           (k >> 32) ? "main" : "local", (uint32_t)k, w, h, fmt);
-    return s;
-}
-
-int surf_w() { return surf.clip_x + surf.clip_w; }
-int surf_h() { return surf.clip_y + surf.clip_h; }
-
-// The colour targets the surface registers enable, as indices 0..3 (A..D).
-int targets(int out[4]) {
-    switch (surf.target) {
-    case 0x01: out[0] = 0; return 1;
-    case 0x02: out[0] = 1; return 1;
-    case 0x13: out[0] = 0; out[1] = 1; return 2;
-    case 0x17: out[0] = 0; out[1] = 1; out[2] = 2; return 3;
-    case 0x1F: out[0] = 0; out[1] = 1; out[2] = 2; out[3] = 3; return 4;
-    default: return 0;
-    }
-}
-
-void clear(const RsxClear& c) {
-    ++cnt.clears;
-    int w = surf_w(), h = surf_h();
-    if (w <= 0 || h <= 0) return;
-    glEnable(GL_SCISSOR_TEST);
-    glScissor(c.x, c.y, c.w, c.h);                        // rows top first: y counts from the top
-    if (c.mask & 0xF0) {
-        float col[4] = {(c.color >> 16 & 0xFF) / 255.0f, (c.color >> 8 & 0xFF) / 255.0f, (c.color & 0xFF) / 255.0f,
-                        (c.color >> 24) / 255.0f};
-        glColorMask(c.mask & 0x10, c.mask & 0x20, c.mask & 0x40, c.mask & 0x80);
-        int t[4], n = targets(t);
-        for (int i = 0; i < n; ++i) {
-            Surface& s = surface(colors, key(surf.color_dma[t[i]], surf.color_offset[t[i]]), w, h,
-                                 color_format(surf.format), GL_COLOR_ATTACHMENT0);
-            glClearNamedFramebufferfv(s.fbo, GL_COLOR, 0, col);
-        }
-        glColorMask(1, 1, 1, 1);
-    }
-    if (c.mask & 3) {
-        bool z16 = (surf.format >> 5 & 7) == 1;
-        Surface& s = surface(depths, key(surf.zeta_dma, surf.zeta_offset), w, h,
-                             z16 ? GL_DEPTH_COMPONENT16 : GL_DEPTH24_STENCIL8,
-                             z16 ? GL_DEPTH_ATTACHMENT : GL_DEPTH_STENCIL_ATTACHMENT);
-        float depth = z16 ? (c.zstencil & 0xFFFF) / 65535.0f : (c.zstencil >> 8) / 16777215.0f;
-        glDepthMask(c.mask & 1);
-        glStencilMask((c.mask & 2) ? 0xFF : 0);
-        if (z16) glClearNamedFramebufferfv(s.fbo, GL_DEPTH, 0, &depth);
-        else glClearNamedFramebufferfi(s.fbo, GL_DEPTH_STENCIL, 0, depth, (GLint)(c.zstencil & 0xFF));
-        glDepthMask(1);
-        glStencilMask(0xFF);
-    }
-    glDisable(GL_SCISSOR_TEST);
-}
-
 // ---- frames to PNG (stored deflate: no compression, no dependency) ------------------------------
-uint32_t crc32(const uint8_t* p, size_t n, uint32_t c = 0) {
+static uint32_t crc32(const uint8_t* p, size_t n, uint32_t c = 0) {
     static uint32_t t[256];
     if (!t[1]) for (uint32_t i = 0; i < 256; ++i) { uint32_t v = i; for (int k = 0; k < 8; ++k) v = v & 1 ? 0xEDB88320u ^ v >> 1 : v >> 1; t[i] = v; }
     c = ~c;
@@ -138,11 +35,11 @@ uint32_t crc32(const uint8_t* p, size_t n, uint32_t c = 0) {
     return ~c;
 }
 
-void write_png(const std::string& path, int w, int h, const std::vector<uint8_t>& rgb) {
+void write_png(const std::string& path, int w, int h, const std::vector<uint8_t>& px, int channels) {
     std::vector<uint8_t> raw, z, out;
     for (int y = 0; y < h; ++y) {
         raw.push_back(0);
-        raw.insert(raw.end(), rgb.begin() + (size_t)y * w * 3, rgb.begin() + (size_t)(y + 1) * w * 3);
+        raw.insert(raw.end(), px.begin() + (size_t)y * w * channels, px.begin() + (size_t)(y + 1) * w * channels);
     }
     z = {0x78, 0x01};
     uint32_t a = 1, b = 0;
@@ -166,12 +63,31 @@ void write_png(const std::string& path, int w, int h, const std::vector<uint8_t>
     out.insert(out.end(), sig, sig + 8);
     std::vector<uint8_t> ihdr;
     for (uint32_t v : {(uint32_t)w, (uint32_t)h}) for (int s = 24; s >= 0; s -= 8) ihdr.push_back(v >> s & 0xFF);
-    ihdr.insert(ihdr.end(), {8, 2, 0, 0, 0});            // 8-bit RGB
+    ihdr.insert(ihdr.end(), {8, (uint8_t)(channels == 4 ? 6 : 2), 0, 0, 0});   // 8-bit RGB or RGBA
     chunk("IHDR", ihdr);
     chunk("IDAT", z);
     chunk("IEND", {});
     if (FILE* f = std::fopen(path.c_str(), "wb")) { std::fwrite(out.data(), 1, out.size(), f); std::fclose(f); }
 }
+
+
+namespace {
+VideoOptions opt;
+using Clock = std::chrono::steady_clock;
+
+// ---- the queue from the game ------------------------------------------------------------------
+struct Chunk { std::vector<uint8_t> data; int flips = 0; };
+std::mutex qmx;
+std::condition_variable q_space;
+std::deque<Chunk> q;
+int q_flips = 0;
+SDL_Semaphore* wake = nullptr;
+
+struct Surface { GLuint tex = 0, fbo = 0; int w = 0, h = 0; };
+Surface scanout;                                          // a display buffer read from guest memory
+SDL_Window* win = nullptr;
+
+struct Counters { uint64_t flips, presents; } cnt;
 
 void dump(const Surface& s) {
     std::vector<uint8_t> rgba((size_t)s.w * s.h * 4), rgb((size_t)s.w * s.h * 3);
@@ -181,7 +97,7 @@ void dump(const Surface& s) {
     char name[64];
     std::snprintf(name, sizeof name, "/flip%06llu.png", (unsigned long long)cnt.flips);
     std::filesystem::create_directories(opt.dump_dir);
-    write_png(std::string(opt.dump_dir) + name, s.w, s.h, rgb);
+    write_png(std::string(opt.dump_dir) + name, s.w, s.h, rgb, 3);
 }
 
 // A flip: the colour surface at the display buffer, or the buffer as guest
@@ -189,12 +105,12 @@ void dump(const Surface& s) {
 void flip(const RsxFlip& f) {
     ++cnt.flips;
     const Surface* src = nullptr;
-    auto it = colors.find(key(0xFEED0000u, f.offset));
-    if (it != colors.end()) src = &it->second;
+    Surface drawn;
+    if (rsxgl_display(f.offset, drawn.tex, drawn.fbo, drawn.w, drawn.h)) src = &drawn;
     else if (f.width && f.height) {
         if (scanout.w != (int)f.width || scanout.h != (int)f.height) {
             if (scanout.tex) { glDeleteTextures(1, &scanout.tex); glDeleteFramebuffers(1, &scanout.fbo); }
-            scanout = Surface{0, 0, (int)f.width, (int)f.height, GL_RGBA8};
+            scanout = Surface{0, 0, (int)f.width, (int)f.height};
             glCreateTextures(GL_TEXTURE_2D, 1, &scanout.tex);
             glTextureStorage2D(scanout.tex, 1, GL_RGBA8, scanout.w, scanout.h);
             glCreateFramebuffers(1, &scanout.fbo);
@@ -224,20 +140,7 @@ void flip(const RsxFlip& f) {
     }
     SDL_GL_SwapWindow(win);
     ++cnt.presents;
-}
-
-void exec(const std::vector<uint8_t>& d) {
-    size_t i = 0;
-    auto take = [&](void* p, size_t n) { std::memcpy(p, d.data() + i, n); i += n; };
-    while (i < d.size()) {
-        uint8_t op = d[i++];
-        switch (op) {
-        case RC_SURFACE: take(&surf, sizeof surf); break;
-        case RC_CLEAR: { RsxClear c; take(&c, sizeof c); clear(c); break; }
-        case RC_FLIP: { RsxFlip f; take(&f, sizeof f); flip(f); break; }
-        default: rt_log("video: bad record byte %02X at %zu", op, i - 1); return;
-        }
-    }
+    if (cnt.flips == 60 || cnt.flips % 1800 == 0) rsxgl_report();
 }
 
 bool gl_load() {
@@ -256,8 +159,8 @@ void APIENTRY gl_debug(GLenum, GLenum type, GLuint, GLenum severity, GLsizei, co
 }
 
 [[noreturn]] void quit() {
-    rt_log("video: %llu flips, %llu presents, %llu clears, %llu surfaces", (unsigned long long)cnt.flips,
-           (unsigned long long)cnt.presents, (unsigned long long)cnt.clears, (unsigned long long)cnt.surfaces);
+    rt_log("video: %llu flips, %llu presents", (unsigned long long)cnt.flips, (unsigned long long)cnt.presents);
+    rsxgl_report();
     std::fflush(stdout);
     std::fflush(stderr);
     std::_Exit(0);
@@ -300,6 +203,7 @@ void video_run(const char* title) {
         glDebugMessageCallback(gl_debug, nullptr);
     }
     wake = SDL_CreateSemaphore(0);
+    rsxgl_init();
 
     auto t0 = Clock::now(), t_title = t0;
     uint64_t flips_then = 0;
@@ -329,7 +233,7 @@ void video_run(const char* title) {
             if (!q.empty()) { c = std::move(q.front()); q.pop_front(); }
         }
         if (c.flips || !c.data.empty()) {
-            exec(c.data);
+            rsxgl_exec(c.data.data(), c.data.size(), flip);
             {
                 std::lock_guard<std::mutex> lk(qmx);
                 q_flips -= c.flips;

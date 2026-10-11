@@ -7,11 +7,12 @@
 
 # Next session
 
-**Session 34 put the first frame in a window, and it is black, because black
-is the colour the game clears to.** The recompiled game now runs past the
-audio crash session 33 ended on, and it settles into a loop it does not
-leave: sixty flips a second, a clear and two textured quads each, with the
-mixer feeding its port in step.
+**Session 34 put the game's own boot sequence on screen.** The recompiled
+game runs past the audio crash session 33 ended on. The RSX now draws, with
+its vertex and fragment programs translated to GLSL, and the game shows its
+publishers' logos with their fades: XSEED Games, Marvelous, Gravity. Then it
+goes to black and stays there, sixty flips a second, a clear and two quads
+each, waiting.
 
 Where it stands:
 
@@ -43,37 +44,37 @@ Where it stands:
   and `PS3KIT_RSX_TRACE=N` prints frame N method by method. The colour path
   was checked once with a forced clear colour: channels in order, scissor
   rows from the top.
-- **What a frame holds now** (frame 600): a clear of the Resc source buffer
+- **The RSX draws** (`rsxcap.cpp` on the FIFO thread, `rsxgl.cpp` on the
+  renderer's). The FIFO thread passes every method write on, and when a draw
+  ends it copies what the draw reads from guest memory: vertices, indices,
+  the fragment program, textures. The renderer keeps its own registers,
+  uploads the transform program and constants as the hardware does, and
+  translates both kinds of program to GLSL when first seen (`vpglsl.cpp`,
+  `fpglsl.cpp`), cached by their code with the fragment constants as
+  uniforms. Textures are deswizzled and their channels remapped with GL
+  swizzles; the first dump of the logos was right on the first try. One bug
+  cost a run: `glColorMaski` takes bytes, so `mask & 0x10000` wrote blue only.
+  `PS3KIT_DRAWDUMP`, `PS3KIT_SHADERDUMP` and `PS3KIT_TEXDUMP` are the tools.
+- **What a frame held before the draws** (frame 600): a clear of the Resc source buffer
   to `FF000000` (colour, depth 0xFFFFFF, stencil 0), then twice: a fragment
   program in main memory (`08E4` = `0x0C4CC202`, then `...C402`), vertex
   arrays in main memory (`1680`, formats `0x1832`, `0x1844`, `0x1822`), a
   texture (`1A00` = `0x023F8000`, format word `0x00018529`), and
   `DRAW_ARRAYS` of six vertices as triangles. That is a picture drawn over
   black, probably a notice or a loading screen, waiting for something.
-- **What it waits for** is one of the two stubs it called last:
+- **What it waits for after the logos** is one of the two stubs it called last:
   `cellSaveDataListAutoLoad` returns `CELL_OK` without calling any of its
   callbacks, and `cellSailPlayerBoot` never reports the player booted. The
   files stop at `menu.cpk`, just before both.
 
-### 1. The two quads.
-
-This is what the push is waiting for. Draw them: vertex arrays (`1680`
-offsets, `1740` formats, from main or local memory), the vertex program
-(uploaded through `0B80`-`0B9C`, constants through `1EFC`/`1F00`), the
-fragment program (microcode at the `08E4` address, read from memory), the
-texture (`1A00`-`1A1C`), blending and `DRAW_ARRAYS`. Both kinds of program
-are translated to GLSL when first seen and cached by their bytes. The 676
-`CGB` blocks remain a possible offline cache, not the path. The skipped-method
-report and `PS3KIT_RSX_TRACE` are the to-do list.
-
-### 2. Save data.
+### 1. Save data.
 
 `cellSaveDataListAutoLoad` and the other `cellSaveData*` calls, with their
 callbacks raised as the system raises them, and the first-boot answer (no
 save yet) that a fresh `/dev_hdd0` gives. The game asks for its save just
 before it boots `cellSail`, and nothing after that moves.
 
-### 3. The intro movie.
+### 2. The intro movie.
 
 `cellSail` plays PAMF, which [`pam.py`](../tools/pam.py) already reads: a
 Sony header over an MPEG-2 program stream with no audio. A player HLE (its
@@ -81,18 +82,25 @@ state events first, since the game may be waiting on `PlayerBoot`) plus an
 MPEG-2 video decoder of our own is a bounded job, and it puts the game's own
 first frames on screen independently of the renderer.
 
-### 4. Input.
+### 3. Input.
 
 `cellPadInit`, `GetInfo2`, `GetData` from SDL's gamepad and keyboard. The game
 polls them every frame already.
 
-### 5. Sound: the two SPU jobs.
+### 4. Sound: the two SPU jobs.
 
 An SPU recompiler in ps3kit (the SPU decoder, then SPU programs as C++ the
 way PPU code is), JOBCRT's calling convention, and the job descriptor's DMA
 lists, enough to run AsrVoice and AtomDecoder when they are pushed. Then
 `Port2Sync` waits for real work, and the port's blocks carry sound. Output
 through SDL3's audio stream, from the clock that already consumes the ports.
+
+### 5. The rest of the 3D engine, as the game asks.
+
+What the README's known approximations list as written and not acted on
+(fog, clip planes, two-sided colour, flat shading, ...) and the reported
+gaps in the translators, each when a screen needs it. The 676 `CGB` blocks
+remain a possible offline cache of the programs, not the path.
 
 ### Alongside, every session.
 

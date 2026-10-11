@@ -13,13 +13,14 @@ is your disc's code, translated, and is never part of this repository.
 
 ## Status
 
-Session 34 (2026-10-11). **The game runs in a window, and its first frame is
-the colour it clears to: black.** Its audio ports are real now, consumed by a
-48 kHz clock that the game paces its mixer on, so it gets past the crash
-session 33 ended on and settles into a steady loop: sixty flips a second, a
-clear and two textured quads each. `ps3boot` opens an SDL3/OpenGL 4.5 window,
-keeps the game's render targets on the GPU and clears them as the RSX would;
-the quads are the renderer's next job. The audio job queue settled a question
+Session 34 (2026-10-11). **The game's own code draws its boot sequence in a
+window: the publishers' logos, with their fades.** Its audio ports are real
+now, consumed by a 48 kHz clock that the game paces its mixer on, so it gets
+past the crash session 33 ended on. `ps3boot` opens an SDL3/OpenGL 4.5
+window, and the RSX draws: the game's vertex and fragment programs are
+translated to GLSL as they are first seen, its textures deswizzled and
+remapped, its render targets kept on the GPU. After the logos it waits on
+its save data. The audio job queue settled a question
 too: the game hands two CRI programs to the SPUs, and the one that decodes
 HCA, the format of 7,659 of its 7,756 waveforms, exists only as SPU code, so
 the sound will come from lifting it.

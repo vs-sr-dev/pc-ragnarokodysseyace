@@ -19,7 +19,7 @@ the second one starts.
 
 | Port | Game | What it asked of ps3kit |
 |---|---|---|
-| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start, threads, files, the command buffer to its first flip, the audio ports and their clock, the window and the first cleared frame |
+| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start, threads, files, the command buffer to its first flip, the audio ports and their clock, the window, the RSX's draws: the publishers' logos |
 | *next* | 3D Dot Game Heroes (2009) | the SPUs: 26 SPU programs on SPURS task sets and raw thread groups |
 
 ## Using it
@@ -55,8 +55,10 @@ PS3KIT_TRACE_FUNCS=81BEE8 PS3KIT_TRACE_CHAIN=1 gdb -q -batch -x ps3kit/gdb_trace
 
 `PS3KIT_TRACE=1` reports every import call (by default each one's first
 three), `PS3KIT_FS=1` every file opened, `PS3KIT_RSX_TRACE=N` every RSX
-method of frame N with its argument, and `PS3KIT_GLDEBUG=1` the OpenGL
-driver's complaints.
+method of frame N with its argument, `PS3KIT_DRAWDUMP=N` draw N's vertices,
+constants and state, `PS3KIT_SHADERDUMP=1` every program pair as GLSL,
+`PS3KIT_TEXDUMP=DIR` every texture as first decoded (PNG), and
+`PS3KIT_GLDEBUG=1` the OpenGL driver's complaints.
 
 Building needs SDL3, CMake, Ninja and clang (the generated code's tail jumps are
 `[[clang::musttail]]`; clang 22 from MSYS2 is what is used here). The Python
@@ -94,7 +96,7 @@ from [`nids.txt`](nids.txt); a NID is computed from its name, never stored.
 | 1. Recognise | What is in this executable? | `elf`: segments, process parameters, TLS, the descriptor table, imports by name | the SPU programs embedded in it, the middleware it links |
 | 2. Read code | What does this function do? | `ppu`: the PPU decoder, disassembly, census | cross-references through the TOC |
 | 3. Recompile | The PPU code as C++ | `recomp`: discovery, switch tables, the whole user-mode PPU set and the VMX operations games use | SPU code |
-| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start; PPU threads, lightweight and lv2 synchronisation, event queues; the file system (cellFs and sys_fs); cellGame; cellGcmSys and cellResc with a FIFO consumer, labels, flips and a 59.94 Hz vblank; the renderer (SDL3, OpenGL 4.5): a window, render targets on the host GPU, clears, flips; video out; cellAudio and the audio output, with the 48 kHz clock that consumes the ports; SPURS job queue ports | drawing (vertex arrays, the vertex and fragment programs, textures, blending), sound out (the SPU jobs that make it), input, cellSail, SPURS |
+| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start; PPU threads, lightweight and lv2 synchronisation, event queues; the file system (cellFs and sys_fs); cellGame; cellGcmSys and cellResc with a FIFO consumer, labels, flips and a 59.94 Hz vblank; the renderer (SDL3, OpenGL 4.5): a window, render targets on the host GPU, clears, draws with vertex and fragment programs translated to GLSL, textures, blending, flips; video out; cellAudio and the audio output, with the 48 kHz clock that consumes the ports; SPURS job queue ports | the rest of the 3D engine's state (fog, clip planes, two-sided colour, point sprites), sound out (the SPU jobs that make it), input, cellSail, SPURS |
 
 ## Known approximations
 
@@ -108,10 +110,22 @@ Declared here as they are made, so that the list is the cost:
 - Guest threads are host threads and the host schedules them: guest
   priorities are kept, not honoured. Every synchronisation object shares one
   lock and one condition variable; waiters race rather than queue.
-- The RSX draws nothing yet. It clears: the render targets the surface
-  registers name are kept on the host GPU, and `CLEAR_SURFACE` clears them
-  inside the scissor with the colour mask applied. Every other method is
-  counted and skipped.
+- The RSX's 3D engine is the registers a draw reads so far: surfaces,
+  clears, viewport, scissor, blending, colour masks, depth, stencil,
+  culling, logic op, alpha test, vertex arrays, both programs, textures.
+  Fog, user clip planes, two-sided colour, flat shading, point sprites,
+  polygon offset and depth bounds are written and not acted on.
+- Fragment programs keep their 16-bit H registers apart from the 32-bit R
+  registers instead of aliasing two H onto one R, and compute everything at
+  full precision; only the fixed-point and saturating clamps are applied.
+- Not translated yet, and reported when met: a vertex program's branch
+  through the address register (BRA) and its texture fetches, `CAL` in a
+  fragment program, indexed fragment inputs, texture expansion (`_bx2`),
+  unnormalised texture coordinates and packed (`CMP`) vertex attributes.
+- A texture is copied and hashed whole on every draw that binds it, and the
+  renderer keeps each distinct one until 512 MB have been sent; then it
+  forgets them all. A render target the game samples is found on the GPU by
+  its address, before guest memory is read.
 - A render target found again at the same address with another size or
   format is made anew, and what it held is lost.
 - A display buffer no render target was drawn to is read from guest memory
