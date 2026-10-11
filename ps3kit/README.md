@@ -19,7 +19,7 @@ the second one starts.
 
 | Port | Game | What it asked of ps3kit |
 |---|---|---|
-| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start, threads, files, the command buffer to its first flip, the audio ports and their clock, the window, the RSX's draws: the publishers' logos; save data; cellSail and an MPEG-2 decoder: the first movie; the controller: the title screen, the main menu and character creation; the SPU recompiler and a job manager: CRI's sound, heard |
+| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start, threads, files, the command buffer to its first flip, the audio ports and their clock, the window, the RSX's draws: the publishers' logos; save data; cellSail and an MPEG-2 decoder: the first movie; the controller: the title screen, the main menu and character creation; the SPU recompiler and a job manager: CRI's sound, heard; cellFont with an OpenType/CFF reader and a rasterizer of its own: character creation's text |
 | *next* | 3D Dot Game Heroes (2009) | the SPUs: 26 SPU programs on SPURS task sets and raw thread groups |
 
 ## Using it
@@ -77,6 +77,13 @@ what the audio output plays.
 buttons for a fifth of a second at those times (seconds from the window's
 first poll), so that a run nobody plays can still get past a screen.
 
+`PS3KIT_FONT=1` reports each font call and every glyph drawn, with where it
+lands on the surface.
+
+`fonttest FONT SIZE TEXT OUT.pgm` (`ninja fonttest`) lays a string out with
+the font reader and the rasterizer alone, so that it can be set beside
+another renderer's image of the same string.
+
 `mpeg2test MOVIE OUT.yuv [--offset BYTES]` (`ninja mpeg2test`) runs the MPEG-2
 decoder alone, on a program stream or an elementary stream, so that its
 frames can be compared with another decoder's.
@@ -129,7 +136,7 @@ position-independent and relocate themselves.
 | 1. Recognise | What is in this executable? | `elf`: segments, process parameters, TLS, the descriptor table, imports by name; SPURS job binaries by their job-runtime header | SPU ELFs, task sets, the middleware it links |
 | 2. Read code | What does this function do? | `ppu`: the PPU decoder, disassembly, census; `spu`: the same for the SPU | cross-references through the TOC |
 | 3. Recompile | The code as C++ | `recomp`: discovery, switch tables, the whole user-mode PPU set and the VMX operations games use; each SPU program whole, every SPU instruction but `bisled` and the double compares by magnitude | SPU ELFs and task sets |
-| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start; PPU threads, lightweight and lv2 synchronisation, event queues; the file system (cellFs and sys_fs); cellGame; cellGcmSys and cellResc with a FIFO consumer, labels, flips and a 59.94 Hz vblank; the renderer (SDL3, OpenGL 4.5): a window, render targets on the host GPU, clears, draws with vertex and fragment programs translated to GLSL, textures, blending, flips; video out; cellAudio and the audio output, with the 48 kHz clock that consumes the ports and plays them through SDL3; SPURS job queues with a job manager running recompiled SPU programs: the SPU's channels, its DMA and atomic unit; save data (Auto, ListAuto, Fixed) with PARAM.SFO; cellSail playing PAMF through the runtime's own MPEG-2 decoder; cellPad from the host's gamepad and keyboard | the rest of the 3D engine's state (fog, clip planes, two-sided colour, point sprites), fonts, the list save dialogs, SPURS task sets and SPU thread groups |
+| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start; PPU threads, lightweight and lv2 synchronisation, event queues; the file system (cellFs and sys_fs); cellGame; cellGcmSys and cellResc with a FIFO consumer, labels, flips and a 59.94 Hz vblank; the renderer (SDL3, OpenGL 4.5): a window, render targets on the host GPU, clears, draws with vertex and fragment programs translated to GLSL, textures, blending, flips; video out; cellAudio and the audio output, with the 48 kHz clock that consumes the ports and plays them through SDL3; SPURS job queues with a job manager running recompiled SPU programs: the SPU's channels, its DMA and atomic unit; save data (Auto, ListAuto, Fixed) with PARAM.SFO; cellSail playing PAMF through the runtime's own MPEG-2 decoder; cellPad from the host's gamepad and keyboard; cellFont over the runtime's own OpenType reader (CFF outlines, name- or CID-keyed) and coverage rasterizer | the rest of the 3D engine's state (fog, clip planes, two-sided colour, point sprites), TrueType outlines and the system's font sets, the list save dialogs, SPURS task sets and SPU thread groups |
 
 ## Known approximations
 
@@ -251,5 +258,26 @@ Declared here as they are made, so that the list is the cost:
   per instruction brought the NVIDIA driver down). A branch tests its
   condition whether or not the instruction's test-enable bit is set; read
   the other way, every branch was taken and a skinning loop never ended.
+- Fonts are drawn unhinted, each pixel's coverage the exact area of the
+  flattened outline in it (nonzero rule, 256 levels clamped to 255, as
+  FreeType's smooth renderer counts them). The system library is FreeType,
+  but which version, and whether it hints, is not known; the shapes match
+  FreeType 2.14's on the disc's font. Glyph metrics are the outline's control
+  box and its hmtx advance at the scale set, unrounded; vertical metrics come
+  from vmtx and VORG, with the vertical bearing X centred. The library's
+  record of a font set's type is all zeros.
+- `cellFontRenderCharGlyphImage` places the baseline one em (the render
+  scale's height) below `y`: a reading of the one game's arithmetic, which
+  its font cannot tell from the font's ascent-to-descent height (see
+  `font.cpp`). The pen's x is taken to whole pixels. The glyph image lives
+  in a buffer of the runtime's heap, not one allocated through the game's
+  memory interface; a surface of one byte per pixel is drawn into, a wider
+  one is left to the caller, who copies the image the transfer record
+  points at. `GetHorizontalLayout` reports hhea's ascender as the baseline
+  and ascender to descender plus line gap as the line's height, unconfirmed
+  (the game reads neither).
+- The system's font sets are not installed. `cellFontOpenFontset` succeeds,
+  and every glyph asked of such a font is refused with `NO_SUPPORT_GLYPH` and
+  reported once per character.
 - An import with no implementation returns `CELL_OK`; an lv2 call with none
   returns `CELL_ENOSYS`. Both are reported.
