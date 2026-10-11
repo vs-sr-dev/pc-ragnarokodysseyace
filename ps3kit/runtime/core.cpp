@@ -3,6 +3,13 @@
 // and the reports a run dies with.
 #include "rt.h"
 #include <chrono>
+#include <thread>
+#ifdef _WIN32
+#include <windows.h>
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+#endif
+#endif
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -51,6 +58,23 @@ void ppu_trap(PPUContext& c, uint32_t addr) {
 
 void ppu_unimplemented(PPUContext& c, uint32_t addr, const char* what) {
     rt_fatal(c, "unimplemented at %08X: %s", addr, what);
+}
+
+void host_sleep_until(std::chrono::steady_clock::time_point t) {
+    using namespace std::chrono;
+#ifdef _WIN32
+    thread_local HANDLE timer = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
+                                                       TIMER_ALL_ACCESS);
+    auto now = steady_clock::now();
+    if (t <= now) return;
+    LARGE_INTEGER due;
+    due.QuadPart = -(LONGLONG)(duration_cast<nanoseconds>(t - now).count() / 100);   // relative, 100 ns units
+    if (timer && SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE)) {
+        WaitForSingleObject(timer, INFINITE);
+        return;
+    }
+#endif
+    std::this_thread::sleep_until(t);
 }
 
 uint64_t ppu_timebase() {

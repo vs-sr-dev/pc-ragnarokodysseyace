@@ -3,6 +3,7 @@
 // system calls to C++.
 #pragma once
 #include "ppu.h"
+#include <chrono>
 #include <cstddef>
 #include <string>
 
@@ -51,6 +52,12 @@ void rt_log(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 [[noreturn]] void rt_fatal(PPUContext& c, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
 void rt_dump(PPUContext& c);
 
+// ---- host time -------------------------------------------------------------------------
+// Sleeps to a point of the steady clock, to within a fraction of a millisecond
+// on Windows too (a high-resolution waitable timer, which needs no global
+// timer resolution and is not throttled with the window in the background).
+void host_sleep_until(std::chrono::steady_clock::time_point t);
+
 // ---- calls ---------------------------------------------------------------------------
 PPUFunc ppu_lookup(uint32_t addr);
 // Call a guest function through its descriptor, as the game's own code
@@ -64,7 +71,7 @@ struct PPUExit { int code; };
 struct PPUThreadExit { uint64_t value; };
 
 // ---- threads -------------------------------------------------------------------------
-void     ppu_thread_register_main(PPUContext& c, const char* name);
+void     ppu_thread_register_main(PPUContext& c, const char* name, int prio);
 uint32_t ppu_thread_spawn(uint32_t entry_desc, uint64_t arg, int prio, uint32_t stacksize,
                           const char* name, bool joinable);
 void     ppu_thread_wait_all();                     // until every spawned thread has ended

@@ -92,6 +92,16 @@ int main(int argc, char** argv) {
 #ifdef _WIN32
     AddVectoredExceptionHandler(1, on_fault);
     timeBeginPeriod(1);                  // the system's clocks (vblank, audio) sleep in milliseconds
+    {
+        // and Windows 11 drops a background window's timer resolution unless told not to
+        PROCESS_POWER_THROTTLING_STATE pt{};
+        pt.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+        pt.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED | 0x4;   // ..._IGNORE_TIMER_RESOLUTION
+        pt.StateMask = 0;
+        typedef BOOL(WINAPI * SetInfo)(HANDLE, int, LPVOID, DWORD);     // Windows 8 and later
+        if (auto set = (SetInfo)(void*)GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "SetProcessInformation"))
+            set(GetCurrentProcess(), 4 /* ProcessPowerThrottling */, &pt, sizeof pt);
+    }
 #endif
     if (!mem_init()) { std::fprintf(stderr, "ps3kit: cannot reserve guest memory\n"); return 1; }
     ElfInfo& info = g_info;
@@ -133,7 +143,7 @@ static void* game_main(void*) {
     st64((uint32_t)c.r[1], 0);                           // the back chain ends here
 
     tls_init(c, info.tls_addr, info.tls_filesz, info.tls_memsz);
-    ppu_thread_register_main(c, "main");
+    ppu_thread_register_main(c, "main", (int)info.primary_prio);
 
     c.r[3] = 1;
     c.r[4] = args;

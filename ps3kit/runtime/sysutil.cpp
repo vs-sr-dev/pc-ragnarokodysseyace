@@ -78,3 +78,27 @@ PS3_HLE(cellSysutilRegisterCallback) {   // (slot, func, userdata)
 }
 
 PS3_HLE(cellSysutilCheckCallback) { c.r[3] = CELL_OK; }
+
+// ---- the system's background music ----------------------------------------------------
+// The user can play their own music over a game from the XMB; a game that
+// allows it (EnableBgmPlayback) asks whether it is playing and lowers its own
+// music while it is. Nothing is ever playing here: the player is stopped and
+// at no volume. PLAY is 0 in this structure, so an unwritten status reads as
+// music playing, and the game mutes itself.
+namespace {
+uint8_t g_bgm_enable = 1;               // CELL_SYSUTIL_BGMPLAYBACK_STATUS_DISABLE until enabled
+}
+
+PS3_HLE(cellSysutilEnableBgmPlayback) { g_bgm_enable = 0; c.r[3] = CELL_OK; }
+PS3_HLE(cellSysutilDisableBgmPlayback) { g_bgm_enable = 1; c.r[3] = CELL_OK; }
+
+// (CellSysutilBgmPlaybackStatus*): playerState, enableState, contentId[16],
+// currentFadeRatio, reserved[13]
+PS3_HLE(cellSysutilGetBgmPlaybackStatus) {
+    uint32_t p = arg_u32(c, 0);
+    if (!p) { c.r[3] = 0x8002B101u; return; }   // CELL_SYSUTIL_BGMPLAYBACK_ERROR_PARAM
+    std::memset(g_mem + p, 0, 32);
+    st8(p, 1);                                  // CELL_SYSUTIL_BGMPLAYBACK_STATUS_STOP
+    st8(p + 1, g_bgm_enable);
+    c.r[3] = CELL_OK;
+}

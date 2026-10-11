@@ -159,7 +159,7 @@ void* vblank_main(void*) {
     const auto period = nanoseconds(16683350);                      // 59.94 Hz
     for (;;) {
         next += period;
-        std::this_thread::sleep_until(next);
+        host_sleep_until(next);
         {
             std::lock_guard<std::mutex> lk(g_vblank_mx);
             ++g_vblank_count;

@@ -3,13 +3,25 @@
 // of 256 samples per port every 256/48000 s: it takes the block at the
 // port's read index, clears it, and advances the index, which the game finds
 // through cellAudioGetPortConfig and reads to know how far ahead it may
-// write. The game paces its mixer on that index, so the clock is exact even
-// though nothing is played yet.
+// write. The game paces its mixer on that index.
+//
+// What the clock takes is what is heard: each started port's block, at the
+// port's level, mixed down to two channels (an eight-channel port is
+// L R C LFE Ls Rs Lb Rb; centre and surrounds go in at -3 dB, the LFE is
+// dropped), the ports summed and sent to the host's audio device through an
+// SDL3 stream once the window has started SDL's audio. When more than a
+// fifth of a second is already queued there a block is dropped, so that the
+// host device's clock and this one cannot drift apart into latency.
+// PS3KIT_AUDIODUMP=FILE.wav also writes the mix to a WAV file.
 //
 // The output (cellAudioOut, a cellSysutil function) is what a PS3 on a
 // television reports: HDMI, two-channel linear PCM at 48 kHz.
 #include "rt.h"
+#include <SDL3/SDL.h>
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <vector>
 #include <cmath>
 #include <mutex>
 #include <thread>
@@ -40,21 +52,91 @@ uint32_t g_area = 0, g_indices = 0;     // allocated once, kept across cellAudio
 
 uint32_t block_bytes(const AudioPort& p) { return p.channels * kSamples * 4; }
 
+// ---- what is heard ----
+SDL_AudioStream* g_stream = nullptr;
+FILE* g_dump = nullptr;
+uint32_t g_dump_frames = 0;
+
+void dump_header() {
+    uint32_t data = g_dump_frames * 8;
+    uint8_t h[44];
+    auto w32 = [&](int at, uint32_t v) { std::memcpy(h + at, &v, 4); };
+    auto w16 = [&](int at, uint16_t v) { std::memcpy(h + at, &v, 2); };
+    std::memcpy(h, "RIFF", 4); w32(4, 36 + data); std::memcpy(h + 8, "WAVEfmt ", 8);
+    w32(16, 16); w16(20, 3); w16(22, 2); w32(24, 48000); w32(28, 48000 * 8); w16(32, 8); w16(34, 32);
+    std::memcpy(h + 36, "data", 4); w32(40, data);
+    std::fseek(g_dump, 0, SEEK_SET);
+    std::fwrite(h, 1, sizeof h, g_dump);
+    std::fseek(g_dump, 0, SEEK_END);
+}
+
+void output(const float* mix) {                                 // kSamples stereo frames
+    if (!g_stream && SDL_WasInit(SDL_INIT_AUDIO)) {
+        SDL_AudioSpec spec{SDL_AUDIO_F32, 2, 48000};
+        g_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+        if (g_stream) {
+            SDL_ResumeAudioStreamDevice(g_stream);
+            rt_log("audio: playing on the host's default device");
+        } else {
+            rt_log("audio: no output device: %s", SDL_GetError());
+        }
+    }
+    if (g_stream && SDL_GetAudioStreamQueued(g_stream) < 48000 * 8 / 5)
+        SDL_PutAudioStreamData(g_stream, mix, kSamples * 8);
+    if (g_dump) {
+        std::fwrite(mix, 8, kSamples, g_dump);
+        g_dump_frames += kSamples;
+        if (g_dump_frames % 48000 < kSamples) dump_header();
+    }
+}
+
+// One port's block into the stereo mix, at the port's level.
+void mix_block(const AudioPort& p, const uint8_t* block, float* mix) {
+    const float k = 0.70710678f;
+    for (uint32_t i = 0; i < kSamples; ++i) {
+        float ch[8];
+        for (uint32_t c = 0; c < p.channels; ++c) {
+            uint32_t u;
+            std::memcpy(&u, block + 4 * (i * p.channels + c), 4);
+            ch[c] = as_f32(PPU_BSWAP32(u)) * p.level;
+        }
+        float l = ch[0], r = ch[1];
+        if (p.channels == 8) {
+            l += k * (ch[2] + ch[4] + ch[6]);
+            r += k * (ch[2] + ch[5] + ch[7]);
+        }
+        mix[2 * i] += l;
+        mix[2 * i + 1] += r;
+    }
+}
+
 // The audio system's period: every started port's current block is consumed
 // and cleared, and its read index moves on.
 void clock_main() {
     using namespace std::chrono;
     const auto t0 = steady_clock::now();
+    if (const char* path = std::getenv("PS3KIT_AUDIODUMP")) {
+        g_dump = std::fopen(path, "wb");
+        if (g_dump) dump_header();
+    }
+    std::vector<float> mix(kSamples * 2);
     for (uint64_t n = 1;; ++n) {
-        std::this_thread::sleep_until(t0 + nanoseconds(n * kSamples * 1000000000ull / 48000));
-        std::lock_guard<std::mutex> lk(g_mx);
-        if (!g_init) continue;
-        for (AudioPort& p : g_port) {
-            if (p.state != Port::started) continue;
-            std::memset(g_mem + p.addr + (uint32_t)p.pos * block_bytes(p), 0, block_bytes(p));
-            p.pos = (p.pos + 1) % p.blocks;
-            st64(p.index, p.pos);
+        host_sleep_until(t0 + nanoseconds(n * kSamples * 1000000000ull / 48000));
+        std::fill(mix.begin(), mix.end(), 0.0f);
+        {
+            std::lock_guard<std::mutex> lk(g_mx);
+            if (!g_init) continue;
+            for (AudioPort& p : g_port) {
+                if (p.state != Port::started) continue;
+                uint8_t* block = g_mem + p.addr + (uint32_t)p.pos * block_bytes(p);
+                mix_block(p, block, mix.data());
+                std::memset(block, 0, block_bytes(p));
+                p.pos = (p.pos + 1) % p.blocks;
+                st64(p.index, p.pos);
+            }
         }
+        for (float& v : mix) v = std::fmin(std::fmax(v, -1.0f), 1.0f);
+        output(mix.data());
     }
 }
 }  // namespace

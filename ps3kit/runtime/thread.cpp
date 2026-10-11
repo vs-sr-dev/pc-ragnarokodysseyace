@@ -2,8 +2,11 @@
 // PPUContext, its own guest stack (in the stack area) and its own TLS block,
 // started at its entry descriptor with r3 = the argument, as lv2 starts it.
 //
-// Scheduling is the host's: guest priorities are kept and reported but do
-// not order anything. A game that relies on a high-priority thread never
+// Scheduling is the host's. Guest priorities order nothing among themselves;
+// the one use made of them is that a thread more urgent than the primary
+// thread (a lower number) runs at the host's above-normal priority, so that
+// the middleware's audio and file threads keep their timing while the game's
+// own threads are busy. A game that relies on a high-priority thread never
 // being preempted by a low one will show it here first.
 #include "rt.h"
 #include <condition_variable>
@@ -14,6 +17,9 @@
 #include <pthread.h>
 #include <string>
 #include <thread>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace {
 struct Thread {
@@ -28,6 +34,7 @@ std::mutex g_mx;
 std::condition_variable g_cv;
 std::map<uint32_t, Thread*> g_threads;
 uint32_t g_next_id = 0x01000001;
+int g_primary_prio = 1001;
 constexpr size_t kHostStack = 256u << 20;   // recompiled code recurses as deeply as the game does
 
 void finish(Thread* t, uint64_t value) {
@@ -40,6 +47,9 @@ void finish(Thread* t, uint64_t value) {
 void* thread_main(void* p) {
     Thread* t = static_cast<Thread*>(p);
     PPUContext& c = *t->ctx;
+#ifdef _WIN32
+    if (t->prio < g_primary_prio) SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+#endif
     try {
         ppu_call_indirect(c, ld32(t->entry_desc));
         finish(t, c.r[3]);
@@ -55,7 +65,8 @@ void* thread_main(void* p) {
 }
 }  // namespace
 
-void ppu_thread_register_main(PPUContext& c, const char* name) {
+void ppu_thread_register_main(PPUContext& c, const char* name, int prio) {
+    g_primary_prio = prio;
     Thread* t = new Thread;
     t->id = c.thread_id;
     t->ctx = &c;

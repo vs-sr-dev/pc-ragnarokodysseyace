@@ -183,7 +183,7 @@ void video_submit(std::vector<uint8_t>& rec, int flips) {
 }
 
 void video_run(const char* title) {
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) { rt_log("video: SDL_Init: %s", SDL_GetError()); std::_Exit(1); }
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO)) { rt_log("video: SDL_Init: %s", SDL_GetError()); std::_Exit(1); }
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);

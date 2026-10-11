@@ -2,6 +2,7 @@
 // game makes directly (its statically linked liblv2 and libc) are dispatched
 // by number; one with no implementation is reported and returns CELL_ENOSYS.
 #include "rt.h"
+#include <cstdlib>
 #include <chrono>
 #include <cstdio>
 #include <thread>
@@ -125,8 +126,14 @@ void ppu_syscall(PPUContext& c, uint32_t addr) {
 // ---- process, time, tty ------------------------------------------------------------------
 LV2_SYSCALL(22, sys_process_exit) { throw PPUExit{(int)arg_u32(c, 0)}; }
 
+// On time to a fraction of a millisecond (host_sleep_until): a middleware
+// loop that sleeps out a 60 Hz period keeps its rate, and the audio it feeds
+// keeps ahead of the ports.
 LV2_SYSCALL(141, sys_timer_usleep) {
-    std::this_thread::sleep_for(std::chrono::microseconds(arg_u64(c, 0)));
+    using namespace std::chrono;
+    uint64_t us = arg_u64(c, 0);
+    auto end = steady_clock::now() + microseconds(us);
+    host_sleep_until(end);
     c.r[3] = CELL_OK;
 }
 
