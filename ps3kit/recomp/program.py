@@ -13,10 +13,13 @@ of them (69,691 on Ragnarok Odyssey ACE). Discovery starts there:
   point) every backward branch out of such an extra entry's body. An extra
   entry gets its own C++ function from the entry to the end of its unit.
 - **Switch tables.** The compiler's pattern is `lwz rT, off(r2)` (the table's
-  address, from the TOC), `lwzx` of the scaled index, `extsw`, `add` of the
+  address, from the TOC), `lwzx` or `lwax` of the scaled index, `add` of the
   table base, `mtctr`, `bctr`: entries are offsets from the table. The TOC
   a unit runs with is its descriptor's; a unit no descriptor names inherits
-  its first caller's. The bound is the `cmplwi` on the index before it.
+  its first caller's. The bound is the `cmplwi` on the index before it. A
+  case may lie outside the unit that holds the `bctr` (the compiler shares
+  blocks between functions): such a target becomes an entry, reached by a
+  tail call.
 
 Discovery works on raw words, never on a decoded program held in memory:
 two and a half million instructions do not fit as Python objects.
@@ -145,7 +148,7 @@ class Program:
                     continue
                 back = [(a - 4 * k, self.decode(a - 4 * k)) for k in range(1, 13)
                         if a - 4 * k >= u.start]
-                lwzx = next((i for _, i in back if i.op == "lwzx"), None)
+                lwzx = next((i for _, i in back if i.op in ("lwzx", "lwax")), None)
                 if lwzx is None:
                     continue
                 base_reg = None
@@ -185,7 +188,7 @@ class Program:
             except KeyError:
                 break
             t = (table + (v - (1 << 32) if v & 0x80000000 else v)) & 0xFFFFFFFF if relative else v
-            if t not in u or t % 4:
+            if not self.lo <= t < self.hi or t % 4 or self.unit_at(t) is None:
                 if bound is not None:
                     return None
                 break
@@ -217,6 +220,9 @@ class Program:
                     self.bad_targets.append((a, t))
                 elif t not in entries:
                     new.add(t)
+        for a, ts in self.tables.items():
+            u = self.unit_at(a)
+            new.update(t for t in ts if t not in u and t not in entries)
         done = set()
         while new - entries:
             entries |= new
@@ -267,7 +273,7 @@ class Program:
             if t is not None and not i.f.get("LK") and entry <= t < u.end:
                 out.add(t)
             if a in self.tables:
-                out.update(x for x in self.tables[a] if x >= entry)
+                out.update(x for x in self.tables[a] if entry <= x < u.end)
         return out
 
 

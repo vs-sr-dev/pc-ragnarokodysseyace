@@ -125,11 +125,6 @@ void ppu_syscall(PPUContext& c, uint32_t addr) {
 // ---- process, time, tty ------------------------------------------------------------------
 LV2_SYSCALL(22, sys_process_exit) { throw PPUExit{(int)arg_u32(c, 0)}; }
 
-LV2_SYSCALL(43, sys_ppu_thread_yield) {
-    std::this_thread::yield();
-    c.r[3] = CELL_OK;
-}
-
 LV2_SYSCALL(141, sys_timer_usleep) {
     std::this_thread::sleep_for(std::chrono::microseconds(arg_u64(c, 0)));
     c.r[3] = CELL_OK;

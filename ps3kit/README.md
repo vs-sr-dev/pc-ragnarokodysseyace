@@ -19,7 +19,7 @@ the second one starts.
 
 | Port | Game | What it asked of ps3kit |
 |---|---|---|
-| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start |
+| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start, threads, files, the command buffer to its first flip |
 | *next* | 3D Dot Game Heroes (2009) | the SPUs: 26 SPU programs on SPURS task sets and raw thread groups |
 
 ## Using it
@@ -37,8 +37,20 @@ python -m ps3kit.recomp GAME.elf --out build/recomp
 cmake -S build/recomp -B build/recomp-build -G Ninja -DCMAKE_CXX_COMPILER=clang++ \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS_RELEASE=-O1
 ninja -C build/recomp-build
-build/recomp-build/ps3boot GAME.elf
+build/recomp-build/ps3boot GAME.elf --bdvd DISC --hdd0 DIR   # DISC holds PS3_GAME
 ```
+
+Debugging a run: `ps3boot` reports a host fault with the guest address it
+touched, and [`gdb_trace.py`](gdb_trace.py) traces any recompiled function
+under gdb (arguments, result, the guest call chain) with no debug build:
+
+```sh
+PS3KIT_TRACE_FUNCS=81BEE8 PS3KIT_TRACE_CHAIN=1 gdb -q -batch -x ps3kit/gdb_trace.py \
+    --args build/recomp-build/ps3boot GAME.elf --bdvd DISC
+```
+
+`PS3KIT_TRACE=1` reports every import call (by default each one's first
+three), `PS3KIT_FS=1` every file opened.
 
 Building needs CMake, Ninja and clang (the generated code's tail jumps are
 `[[clang::musttail]]`; clang 22 from MSYS2 is what is used here). The Python
@@ -76,7 +88,7 @@ from [`nids.txt`](nids.txt); a NID is computed from its name, never stored.
 | 1. Recognise | What is in this executable? | `elf`: segments, process parameters, TLS, the descriptor table, imports by name | the SPU programs embedded in it, the middleware it links |
 | 2. Read code | What does this function do? | `ppu`: the PPU decoder, disassembly, census | cross-references through the TOC |
 | 3. Recompile | The PPU code as C++ | `recomp`: discovery, switch tables, the whole user-mode PPU set and the VMX operations games use | SPU code |
-| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start | threads and their synchronisation, the file system, RSX, audio, input |
+| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start; PPU threads, lightweight and lv2 synchronisation, event queues; the file system (cellFs and sys_fs); cellGame; cellGcmSys and cellResc with a FIFO consumer, labels, flips and a 59.94 Hz vblank; video out | drawing (RSX methods to OpenGL), audio, input, cellSail, SPURS |
 
 ## Known approximations
 
@@ -87,7 +99,15 @@ Declared here as they are made, so that the list is the cost:
 - The word divides write zero into the undefined high word.
 - `lwarx`/`stwcx.` is a compare-and-swap against the value the reservation
   saw: a store of the same value in between goes unnoticed.
-- One guest thread so far: the lightweight mutex never blocks and
-  `sys_ppu_thread_create` does not start the thread.
+- Guest threads are host threads and the host schedules them: guest
+  priorities are kept, not honoured. Every synchronisation object shares one
+  lock and one condition variable; waiters race rather than queue.
+- The RSX draws nothing yet: the FIFO is consumed, references, semaphores
+  and flips are executed, every other method is counted and skipped.
+- `cellRescGetBufferSize`'s colour-buffer size is a reading: the largest
+  supported, registered destination times its buffer count. Its vertex-array
+  and fragment-shader sizes are the runtime's own.
+- The video output is fixed: one HDMI display, 1280x720, 59.94 Hz. System
+  callbacks are registered and never raised.
 - An import with no implementation returns `CELL_OK`; an lv2 call with none
   returns `CELL_ENOSYS`. Both are reported.

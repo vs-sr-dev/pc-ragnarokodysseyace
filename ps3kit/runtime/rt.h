@@ -58,6 +58,22 @@ uint64_t ppu_call_guest(PPUContext& c, uint32_t desc, uint64_t a0 = 0, uint64_t 
                         uint64_t a2 = 0, uint64_t a3 = 0);
 // Thrown by sys_process_exit and friends; caught by the boot.
 struct PPUExit { int code; };
+// Thrown by sys_ppu_thread_exit; ends the guest thread, not the process.
+struct PPUThreadExit { uint64_t value; };
+
+// ---- threads -------------------------------------------------------------------------
+void     ppu_thread_register_main(PPUContext& c, const char* name);
+uint32_t ppu_thread_spawn(uint32_t entry_desc, uint64_t arg, int prio, uint32_t stacksize,
+                          const char* name, bool joinable);
+void     ppu_thread_wait_all();                     // until every spawned thread has ended
+// A guest context of the runtime's own (stack, TLS, a thread id), for a host
+// thread that runs guest callbacks.
+PPUContext* ppu_context_new(uint32_t stacksize, const char* name);
+// Run a guest callback (a descriptor) with one argument on the runtime's
+// interrupt thread, in order, as lv2 runs vblank and flip handlers.
+void     ppu_intr_post(uint32_t desc, uint64_t arg);
+uint32_t tls_new_block();                           // a thread's TLS block; r13 = it + 0x7000
+bool     lv2_event_queue_push(uint32_t queue, uint64_t source, uint64_t d1, uint64_t d2, uint64_t d3);
 
 // ---- imported functions (HLE) ----------------------------------------------------------
 typedef void (*HleFunc)(PPUContext&);
@@ -68,6 +84,9 @@ struct HleReg { HleReg(const char* name, HleFunc f); };
     static HleReg hle_reg_##name(#name, hle_##name); \
     static void hle_##name(PPUContext& c)
 void hle_bind_imports();
+// A function of the runtime's own that the game will call through a pointer:
+// returns the descriptor to hand it.
+uint32_t hle_internal(const char* name, HleFunc f);
 bool hle_dispatch(PPUContext& c, uint32_t addr);    // false if addr is not an import's
 
 // ---- lv2 system calls ------------------------------------------------------------------

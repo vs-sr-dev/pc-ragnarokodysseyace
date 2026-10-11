@@ -20,6 +20,11 @@ namespace {
 std::map<std::string, HleFunc>& registry() { static std::map<std::string, HleFunc> m; return m; }
 struct Bound { HleFunc fn; uint32_t calls; };
 std::vector<Bound> g_bound;
+// The runtime's own functions the game calls through a pointer (the
+// command buffer's callback, ...): code addresses after the imports'.
+struct Internal { const char* name; HleFunc fn; };
+std::vector<Internal> g_internal;
+std::mutex g_internal_mx;
 std::mutex g_trace_mx;
 const bool g_trace_all = std::getenv("PS3KIT_TRACE") != nullptr;
 constexpr uint32_t kTraceFirst = 3;
@@ -29,6 +34,7 @@ HleReg::HleReg(const char* name, HleFunc f) { registry()[name] = f; }
 
 void hle_bind_imports() {
     g_bound.assign(g_ppu_nimports, Bound{nullptr, 0});
+    g_internal.reserve(1024);            // never reallocated: dispatch reads it without the lock
     size_t bound = 0;
     for (size_t i = 0; i < g_ppu_nimports; ++i) {
         const PPUImport& im = g_ppu_imports[i];
@@ -42,9 +48,23 @@ void hle_bind_imports() {
     rt_log("ps3kit: %zu imports, %zu implemented, %zu stubbed", g_ppu_nimports, bound, g_ppu_nimports - bound);
 }
 
+uint32_t hle_internal(const char* name, HleFunc f) {
+    std::lock_guard<std::mutex> lk(g_internal_mx);
+    uint32_t i = (uint32_t)(g_ppu_nimports + g_internal.size());
+    g_internal.push_back({name, f});
+    uint32_t desc = mm::HLE_DESC + 8 * i;
+    st32(desc, mm::HLE_CODE + 4 * i);
+    st32(desc + 4, 0);
+    return desc;
+}
+
 bool hle_dispatch(PPUContext& c, uint32_t addr) {
-    if (addr < mm::HLE_CODE || addr >= mm::HLE_CODE + 4 * g_ppu_nimports) return false;
+    if (addr < mm::HLE_CODE || addr >= mm::HLE_CODE + 4 * (g_ppu_nimports + g_internal.size())) return false;
     size_t i = (addr - mm::HLE_CODE) / 4;
+    if (i >= g_ppu_nimports) {
+        g_internal[i - g_ppu_nimports].fn(c);
+        return true;
+    }
     const PPUImport& im = g_ppu_imports[i];
     Bound& b = g_bound[i];
     uint32_t n = __atomic_fetch_add(&b.calls, 1, __ATOMIC_RELAXED);

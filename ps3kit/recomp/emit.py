@@ -166,8 +166,8 @@ def emit(ins, addr, fn):
             act = f"{{ c.lr = {_h(nxt)}; ppu_call_indirect(c, (uint32_t)c.ctr); }}"
         elif not cond and addr in fn.tables:
             cases = " ".join(f"case {_h32(t)}: goto L_{t:08X};" for t in sorted(set(fn.tables[addr]))
-                             if fn.entry <= t)
-            outside = sorted(t for t in set(fn.tables[addr]) if t < fn.entry)
+                             if fn.entry <= t < fn.end)
+            outside = sorted(t for t in set(fn.tables[addr]) if not fn.entry <= t < fn.end)
             cases += "".join(f" case {_h32(t)}: {fn.tail(t)}" for t in outside)
             return [f"switch ((uint32_t)c.ctr) {{ {cases} default: PPU_TAIL(ppu_bctr); }}"]
         else:
