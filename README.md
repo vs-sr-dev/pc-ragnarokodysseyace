@@ -1,14 +1,37 @@
 # PC-ROA
 
-Documentation and tooling towards a native PC reimplementation of
-**Ragnarok Odyssey ACE** (PS3, 2013 — the expanded edition of *Ragnarok
-Odyssey* for PS Vita).
+Documentation and tooling towards a native PC port of **Ragnarok Odyssey
+ACE** (PS3, 2013 — the expanded edition of *Ragnarok Odyssey* for PS Vita):
+a static recompilation of the game's own executable onto a runtime that
+stands in for the PS3, [`ps3kit`](ps3kit), built on 32 sessions of reading
+the disc.
 
 This repository contains **no game content**. It contains a disc reader, format
-documentation, and the tools that produced it. To use any of it you supply your
-own copy of the disc.
+documentation, the tools that produced it, and a recompiler and runtime. To use
+any of it you supply your own copy of the disc; the C++ the recompiler writes
+is your disc's code, translated, and is never part of this repository.
 
 ## Status
+
+Session 33 (2026-10-11). **The game now runs its own code.** A census of the
+decrypted EBOOT came first — 27 libraries and **306 imports, all named**; 2.69
+million PPU instructions of which about 2,000 are vector code; **the only SPU
+code is CRI's audio**; the shaders a finite set of precompiled microcode —
+and it said that a recompilation is the shorter road to the original game
+than rewriting 69,691 functions one ledger item at a time. The reasons are in
+[`docs/STRATEGY.md`](docs/STRATEGY.md#the-pivot-static-recompilation-session-33).
+[`ps3kit`](ps3kit) is the kit that does it, written to be reused by the next
+PS3 port: `python -m ps3kit.recomp` turns the executable into C++ in **12
+seconds** (76,648 functions, **293 of 293 switch tables**), clang builds it in
+73, and `ps3boot` loads it, binds every import and calls `_start`. The game's
+libc comes up and the game reports, **through its own debug output**, the 213
+MB it was given and the twenty memory pools it carves out of them; it loads
+its system modules, checks how it was booted, starts its first thread and
+waits for it. Threads are the next session — see
+[`docs/TODO.md`](docs/TODO.md).
+
+The reimplementation below is not retired: it is the oracle the recompiled
+game can now be checked against, function by function.
 
 Sessions 1-31 (2026-08-25). **Everything this engine invents, in one list —
 and then the list started shrinking.** After eight milestones the places where

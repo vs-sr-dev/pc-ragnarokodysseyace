@@ -2,6 +2,11 @@
   "$schema": "https://recomp.fyi/schema/v1.json",
   "game": "Ragnarok Odyssey ACE",
   "system": "PS3",
-  "type": "port",
-  "status": "in-progress"
+  "type": "recomp",
+  "toolchain": "ps3kit",
+  "status": "in-progress",
+  "targets": [
+    "Windows"
+  ],
+  "approach": "our own PPU recompiler and runtime; ps3kit grows in this repository"
 }

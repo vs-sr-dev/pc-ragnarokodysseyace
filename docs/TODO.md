@@ -7,376 +7,78 @@
 
 # Next session
 
-Session 31 opened the binary as a program and took the first thing out of it.
-The document is [`eboot.md`](eboot.md) and the tools are
-[`tools/ppc.py`](../tools/ppc.py) and the two Ghidra scripts under
-[`tools/ghidra`](../tools/ghidra). What to carry:
+**Session 33 changed the road.** [`STRATEGY.md`](STRATEGY.md#the-pivot-static-recompilation-session-33)
+has the reasons and the census behind them: the game is now recompiled from
+its own executable onto a runtime that stands in for the PS3, built as a
+reusable kit, [`ps3kit`](../ps3kit). The reimplementation in
+[`engine/`](../engine) is not thrown away, it becomes the oracle: the session
+31-32 plan it was following is kept intact in the [Log](#sessions-31-32---2026-08-25),
+parked.
 
-- **the damage expression is read.** It is `FUN_00622fe4`, and it is an attack
-  term, a defence term, a subtraction and a floor of 1. Every `add` is zero
-  and every `rate` is one on a bare hit, because they exist for
-  `MdDamageCalcEventListener` — the class is named in the binary — which is
-  handed the attack structure over the attacker's listener list and the
-  defence structure over the target's, in between the build and the
-  arithmetic. That is where a card or an ability gets to move a term, and it
-  is why the expression looks so plain;
-- **and it came with item 5's sign for free.** The defence term is subtracted
-  and clamped to zero first, so a weak point's `-450` makes the subtraction
-  smaller. [`combat_loop.md`](combat_loop.md) had said nothing on the disc
-  proves it is subtracted rather than added; now something does;
-- **the way in was the `.opd`, not the disassembler.** Ghidra, handed this
-  file with every default on, ran for **16 seconds and found no functions**;
-  its PowerPC64 ELF importer actually throws on it, because this build's
-  function descriptors are **8 bytes and not the ABI's 24**. `ppc.py opd`
-  walks them from `e_entry` with nothing but their own arithmetic — **165,596
-  descriptors over 69,691 functions**, in four TOC windows — and the same
-  Ghidra run then takes 233 seconds and has all of them;
-- **and 274 of the 291 names came off the TOC.** The registration calls leave
-  a descriptor pointer, a name and a Squirrel typemask in adjacent slots in
-  source order, so a descriptor followed by a name the disc calls *is* a
-  registration. `ppc.py natives` joins that to `psq.py api` — the disc says
-  which names the engine must provide, the binary says where each one is;
-- **`ppc.py refs` is the instrument the rest of this phase runs on.** Every
-  global in this build is reached as `lwz rN, d(r2)` and the descriptor names
-  the `r2`, so a cross-reference is two steps of arithmetic over four million
-  instructions and takes about a second. No disassembler is involved. It is
-  what turned every string below into a function;
-- **and the binary names its own types.** 1,271 length-prefixed C++ RTTI
-  names, `8MdDamage` and `25MdDamageCalcEventListener` among them, each
-  reachable from its class's vtables by two word searches. That is how the
-  damage module was found at all;
-- **and then ledger item 2 fell as well, on the disc.** The attack term asks
-  the attacker through a virtual call, and the one implementation all 67
-  `CH*` classes share returns `parameters + 0x2b8` — the same `atk` an actor
-  JSON parses. So a player's attack is *written* into that field from a
-  sixteen-byte record indexed by job and level, and one scan of every file on
-  the disc for that shape returns six hits in one file:
-  **`misc.cpk/ccparamobj.bin`**, an `ELBN` this repository has been able to
-  open since session 19 and never looked inside. `python tools/elbn.py levels
-  extract/tree`. The level is **story progress**, on the same thresholds a
-  reward block uses, and `job_par` explains the disc's 0, 1, 3, 4, 5, 7 —
-  eight jobs alphabetically, `gunner` and `ninja` cut. **The method note is
-  the finding**: what found it was not a better search of the disc but the
-  binary saying what shape to look for;
-- **and then the damage was written.** [`damage.py`](../engine/damage.py) is
-  `FUN_00622fe4` line for line, [`mission.py`](../engine/mission.py) takes a
-  monster's own `hp` down with it, and [`parity.md`](parity.md)'s **S1 and S2
-  are retired** — `BLOWS` and `BREAKS` survive only as the fallback for an
-  actor whose tables will not read, and the run counts that. Two decisions had
-  to be made and both are filed as readings, R4 and R5: where a region's flat
-  modifier and its six multipliers arrive in the defence structure;
-- **and the hit's ratio is `+0x30`, not `+0x35`.** Before writing anything,
-  `FUN_0060fe50` — which copies a 116-byte `.anmcmd` record into the
-  0x130-byte runtime one — settled it: it assigns `+0x103` from `+0x35`, and
-  `+0x103` is the hit level's input, while the runtime record's **first
-  float**, which is the attack builder's first argument, comes from `+0x30`.
-  [`format_anmcmd.md`](format_anmcmd.md) had already measured `+0x30` as *"a
-  ratio, near 1 whatever the actor's size"*, r = −0.04, without knowing what
-  it was for. The two fields swap jobs and `combat_loop.md`'s chain diagram
-  was corrected.
+What session 33 built, and what it showed:
 
-**And the sweep ran, at last.** All 431 quests against the written damage
-expression, and the numbers are in item 1 with what they turned out to mean —
-which is not what this section predicted.
+- **`python -m ps3kit.recomp eboot.elf --out build/recomp`** turns the 2.69
+  million PPU instructions into 122 MB of C++ in **12 seconds**: 76,648 units
+  (the 69,691 the `.opd` names and 6,957 that only a `bl` reaches), the code
+  range `0x10200-0xa597e0` found without the section table and equal to it to
+  the byte, **293 switch tables of 293 resolved**, and no instruction
+  unsupported except the 8,105 words of data that sit inside `.text`
+  (constants like `0x3F800000`, which is `1.0f`).
+- **clang builds it in 73 seconds** at `-O1` on 16 cores; all 133 files
+  passed a syntax check on the first generation.
+- **And it runs.** `ps3boot eboot.elf` loads the segments, binds all 306
+  imports by name (12 implemented, 294 reported stubs), builds the primary
+  thread's stack and TLS the way the loader does, and calls `_start`. The
+  game's crt0 and libc come up, and the game then **prints through its own
+  `sys_tty_write`** what it found: `available os memory 0d500000`, a 213 MB
+  user area, and the twenty memory pools it carves out of it (`render`,
+  `sound`, `font`, `adx`, `app_large` ...). It loads its system modules, runs
+  `cellGameBootCheck`, creates its first thread, `"reusable"`, and waits for it
+  forever on `sys_ppu_thread_yield`. That wait is the runtime's one declared
+  limit: one guest thread.
 
-### 1. The sweep ran, and it found a spawn path the engine does not have.
+### 1. Threads.
 
-Everything went down, as it had to, and one number went to zero:
+Everything next stands on this. `sys_ppu_thread_create` has to start a host
+thread with its own `PPUContext`, its own guest stack (`stack_alloc`), its
+own TLS block, and r2 from the entry's descriptor; `join`, `exit`, `yield`,
+priorities. Then the synchronisation that is real once two threads run:
+`sys_lwmutex` and `sys_lwcond` (now non-blocking placeholders in
+[`sysprx.cpp`](../ps3kit/runtime/sysprx.cpp)), and the lv2 objects the census
+lists by number — mutex 100-104, cond 105-109, semaphore 90-94, event flag
+82-87, event queue and port 128-138. The design choice to make first is
+whether guest threads are host threads (natural, and the
+`lwarx`/`stwcx.` CAS in `ppu.h` is already written for it) or fibres on one
+host thread (deterministic, which a regression sweep would like).
 
-```
-                          session 30    session 32
-  quests finished              284          268
-  walked the whole list        287          274
-  arenas armed                 344          299
-  closed by the kill count     322          240
-  monsters spawned           3,105        2,177
-  killed                     3,017        1,963
-  zeny                     689,375      588,575
-  items                5,661 of 398   3,732 of 336
+### 2. The file system.
 
-  and the new line:  40,483 volumes landed for 2,654,745 damage,
-                     1,225 critical, 441 landings whose hp would not read,
-                     and 0 parts broken off.
-```
+`cellFsOpen` and its 18 siblings, and the lv2 `sys_fs_*` calls behind them:
+`/dev_bdvd/PS3_GAME/USRDIR` maps onto the player's extracted disc,
+`/dev_hdd0` onto a save directory. `cellFsAioInit` is already called three
+times at boot. Then `cellGame*` with real answers (it boots from disc, the
+content is permitted), and `cellSysutilCheckCallback`.
 
-**Read the zero first.** `region_data_brk`'s pools are 500 to 60,000 and a
-part should come off a boss long before the boss dies, so zero in 431 quests
-is not a tuning problem. It is this: **the engine has one way to start a
-fight and the disc has at least two.** Everything in
-[`mission.py`](../engine/mission.py) spawns through a `piecelock` — the arena
-— and on the disc:
+### 3. Run until the first frame.
 
-```
-  430 quests carry a generator in enemy_gen.bin
-  156 of them carry a piecelock
-  274 do not, and 116 of those 274 field a boss
-```
+Keep running and implementing what the run asks for, in the order it asks.
+The next walls are known: `cellGcmSys` (24 functions, and the command buffer
+behind `_cellGcmSetFlipCommand`), `cellResc`, `cellSpurs`/`cellSpursJq` for
+the CRI audio jobs (stub first, so that sound fails quietly), `cellAudio`,
+pad input. The milestone is **the game reaching its first flip**: boot,
+threads and files working, whatever is on screen.
 
-So **the 2,177 monsters this sweep spawned contain no bosses at all**, no
-volume ever lands on a breakable part, and 274 quests finish by walking their
-stage list with nothing in it. That also explains the two counts that fell
-without the damage touching them: fewer arenas armed and fewer closed, because
-a quest that never fights never reaches the rooms behind the fight.
+### 4. Things to keep doing alongside.
 
-**The worked example is `q00109`, which is one boss and nothing else.** Its
-`enemy_gen.bin` has a single row — `emgen02` at `emgen_pos02` of `010_02_03`,
-slot 1, `b01_00`, the Orc King — with **no kill callback and no end
-callback**, and the quest has **no `piecelock` at all**. It pays an *Orc King
-Card*, an *Orc King's Claw* and a *King's Breastplate*, so the fight is
-certainly meant to happen. `python engine/mission.py run extract/tree q00109`
-walks both stages in 269 frames, spawns nothing, and reports *the quest
-finished*.
-
-**What starts that generator is the next session's first question**, and the
-evidence is already narrow:
-
-- **it is not `cfSetEnableEmGen`.** That call exists, the host implements it,
-  and `psq.py sites` puts all 240 of its calls in **29 distinct stage
-  scripts** — a minority mechanism, and `q00109` is not among them;
-- **it is not the stage's own trigger, in this quest.** `010_02_03` carries
-  exactly two trigger volumes, and the one that runs
-  `callQuestScript("sfEnmGenStart()")` is named **`pl_q00207`** — it belongs
-  to a different quest, the quest's own copy of `010_02_03.psq` does not
-  define `sfEnmGenStart` at all, and nothing turns that volume on;
-- **the demo is the candidate.** `010_02_03.psq`'s `sfQuestDemoInit` calls
-  `setDemoID(10120, 0)` or `10110` according to `cmnIsQuestClear()`, and a
-  boss quest is introduced by a cutscene. If the demo's end is what enables
-  the generator, the engine needs the demo table, not another script call;
-- **and `enemy_gen.bin` says something itself.** That histogram was the cheap
-  test and it was run: 8,024 rows, 5,355 covered by a lock and 2,669 not, and
-  **two of the unread lanes separate the two populations cleanly**:
-
-  ```
-                        covered by a lock      no lock
-    +0x29   the 8..80     12   46.9 %           80   47.6 %
-                          64   34.3 %           64   19.5 %
-    +0x2b   the 0..90      0   41.7 %            0   86.1 %
-                          30   39.6 %           30    5.0 %
-    +0x31   the 1..255     1   68.8 %          100   31.2 %
-                           2   19.7 %          255   20.5 %
-  ```
-
-  **The reading that fits is a field spawner against an arena spawner.** A
-  lock's generator makes **one or two** monsters within a **12-metre** radius
-  after a **30**-unit delay; a generator with no lock makes **a hundred or
-  255** of them within **80 metres** and **no delay** — which is a respawning
-  populator armed by the player's own approach, not by a script. If that is
-  right, the engine's missing path is *proximity*, and it is in
-  [`host.py`](../engine/host.py) rather than in the quest tables.
-
-  **It is a reading and it is not proven**: what settles it is the code that
-  reads those lanes, and `ppc.py refs` on `enemy_gen`'s loader is the way in.
-  Note it does not explain `q00109`, whose single boss generator should then
-  spawn on approach and is one row of 2,669 — check that one first.
-
-### 1a. And 441 landings could not read a monster's hit points.
-
-A separate gap, and a small one, but it is the last thing keeping `BLOWS`
-alive: 441 of the 40,483 landings fell back on the three-volume policy because
-the actor's `hp` would not read. That is about one landing in ninety, and
-`parity.md` counts the fallback rather than hiding it. Which actors, and why —
-a missing `objbin.bin`, a missing `region_lv`, or a monster with no parameter
-block at all — is one grouped count away.
-
-
-### 1b. The three EBOOT items still open.
-
-Each has a function to start from. `Query.java` answers `decomp`, `xrefs`,
-`callers` and `info` without a window; `ppc.py refs` finds a global's users in
-a second.
-
-- ~~**what computes the hit level**~~ **(ledger 4) — read in session 32.**
-  `FUN_006235fc` is `level = (int)((hit[+0x103] + add) * rate)`, floored at
-  **zero**, and the answer corrects the question: **the hit level never sees
-  the damage**. The input is the byte `FUN_0060fe50` copies out of `.anmcmd`'s
-  `+0x35`, `add` and `rate` are walked over both listener lists at
-  `vtable + 0x14` and `+0x18`, and the target then gets a **whole level** back
-  through one more virtual call returning a `char` that is subtracted from
-  `add` — an integer of levels, the shape a stagger resistance has, with
-  ability 8 the candidate on the disc. Ledger 3 keeps only its last clause:
-  whether that value also indexes `stg_p`;
-- **`se_hitlevel_tbl`'s third word** (ledger 7) — **the six references are
-  one.** Session 32 read the five *"accessors around `0x003ec7fc`"* and they
-  are Boost exception constructors: each carries two descriptors with
-  different TOCs, and the name only appears under the window the code does not
-  run with. That is the folding caveat in [`eboot.md`](eboot.md) biting for
-  real, and the cheap guard is to read what a reference is used *as* — three
-  assignments of `v`, `v+0x1c`, `v+0x38` into an object is a vtable, not a
-  table. The real reference is the loader at `0x006587c8`, and it caches
-  **three sibling tables**: `se_vari_tbl` at `+0x24`, `se_hitlevel_tbl` at
-  `+0x28`, `se_parts_tbl2` at `+0x2c`. **Start from whatever reads `+0x28` of
-  that owner.** The siblings also joined on the disc: `se_parts_tbl2` is in
-  exactly the 23 objbins that carry `region_data_brk`, set against set, so it
-  is the sound a breakable part makes coming off, and `se_vari_tbl`'s 21 are
-  every one of them a variant record;
-- **`react_p`** (ledger 8) — **half done in session 32.** It is a `u32` at
-  `+0x20` of the `+0x244` record, so `+0x264` of the parameter object, and the
-  way that was read is now a tool: `python tools/ppc.py params <elf>` walks the
-  reader's own instructions and prints **46 field names against their offsets
-  and types**, reproducing the five `eboot.md` had. What is left is the
-  *consumer*: 37 functions touch `+0x264` off a non-stack base and nothing yet
-  says which of them holds a parameter object. The pair at `0x005f8bbc` and
-  `0x005fa37c` is the first place to look — they touch `atk` and `cri`'s
-  offsets too, and `0x005fa940` is the shield call in the damage path. And the
-  vectors are a second reader, `FUN_0064af4c`, in a different shape — the
-  destination as `addi r5, off(r31)`, the name in `r7`, an element count in
-  `r6` — which is where `stg_p[4]` lands at `+0x100`; teaching `params` that
-  shape maps the rest of the object.
-
-~~And the two cosmetic ones are still cheap~~ — **one is left**: the table
-that maps `.anmcmd` opcode 10's effect id to a `PTB` slot. **The seven
-`checkBnnTerm` bodies were read in session 32** and they are one function
-seven times: two integers off the Squirrel stack, a manager asked for the live
-AI object of one boss class *by RTTI type*, a call to its `vtable + 0x1c`, and
-false if that boss is not on the field. The seven types are seven consecutive
-TOC slots and they carry the disc's own `ai.pac` names. The one that looked
-wrong — `MdAIHjahanir` where the disc says `AI_B05_Fafnir` — is a **variant**,
-not a disagreement: `dc_db_monster.bin` against its text file gives `b05_00`
-*Fafnir* and `b05_01` *Hjahanir*, so the script is named for the first variant
-and the engine class for the second, and `b09`/`MdAIHraesvelgr` does the same
-with *Kona Hraesvelgr*. **A hatch is per boss family, which is what a downcast
-to one class can express.** See [`eboot.md`](eboot.md) and
-[`format_self.md`](format_self.md).
-
-~~**One loose end priced at an hour.**~~ **Closed in session 32, and it cost
-twenty minutes.** The damage path queries the disc's ability table by row
-number, and the three ids now have the game's own English:
-
-- **`0x70` is the extra hit's damage share, `0x71` the chance it lands** — the
-  `Double Attack` family holds the first at 1.0 and walks the second from 0.10
-  to 0.55, and an untranslated TGS 2011 skill names the pair outright;
-- **`0xcc` is a rate on the damage its holder takes** — `Mold Armor`'s −0.25
-  against *"Lessens damage received"*.
-
-**What paid for it was fixing the join, not searching harder.** A card skill
-carries **sixteen** `(ability, magnitude)` slots and `combat.py abilities` was
-reading the first, so the disc's vocabulary covered 162 of the 233 rows; it
-now covers **225**, and the three above were in the 63 that had been invisible
-all along. `it_db_skill.bin` columns 5..36, `-1` for an empty slot and not a
-terminator — row 550 leaves a gap and fills a later slot, which is the proof.
-See [`combat_loop.md`](combat_loop.md) §3 and [`eboot.md`](eboot.md).
-
-**And it sent one question to the decompiler, which answered it in a minute.**
-`eboot.md` had the `0xcc` query going to the **attacker's** ability holder;
-all six values on the disc only make sense on the **target's**. The function
-settles it in its own structure — the attack term is built from `param_2` and
-walked over `param_2 + 0x1c0`, the defence term from `param_4` over
-`param_4 + 0x1c0`, and the `0xcc` query reads `param_4 + 0x248`. **The disc
-was right and the EBOOT note was wrong**, which is the first time round that
-way in this project. Both documents are corrected, and the same read gave two
-more lines free: the target's `+0x26c` shield is handed the damage by address
-and its share is reported in the result record's own field, and the finished
-record goes back over the *attacker's* listeners at `vtable + 0x1c`, which is
-where a drain or an on-hit counter would live.
-
-### 2. The tier's other half.
-
-`+0x57` is a real second tier — `item_reward_region.bin` blocks both — and
-**what selects it is not read**. The party is the candidate: `cfIsMulti()`
-exists and every quest with rewards ships an `item_reward_multi.bin` beside
-its `item_reward.bin`. The correlation is real and not clean: 199 of the 233
-reward-carrying quests name a second tier, 34 do not, and 6 quests name one
-with no reward table at all. So this wants either the EBOOT or a table nobody
-has opened.
-
-**Session 32 opened the EBOOT half and left the address.** The predicate
-behind `cfIsMulti` is **`FUN_006af784`** and it has **48 callers** in the game
-code — the party flag is consulted everywhere, so its mere existence proves
-nothing and the question is *which* caller reads a room's `+0x37` against its
-`+0x57`. Start from `enemy.bin`'s reader rather than from the flag. Getting
-there cost three queries because the name sits three hops up: `cfIsMulti`
-(`0x009d9440`, a Squirrel binding) → `FUN_009cecc8` → `FUN_00a553cc`, a
-16-byte thunk → `FUN_006af784`. **Ask `callers` of the bottom function, never
-of the planted name** — the top of that chain answers `4` and the bottom `48`.
-See [`eboot.md`](eboot.md).
-
-### 3. The walk, again — the three that are left.
-
-Unchanged from session 29, and `run.py nav` still says exactly where:
-
-- **`070_01_02`'s exit.** The first riser out of its spawn room is 0.61 m over
-  a 0.21 m gap, a 71-degree slope, and a wall by the mesh's own walkability
-  test. **The body has never jumped** — `jp_speed_y` 0.42 against
-  `fall_gravity_y` −0.035 is an apex of 2.5 m — and a jump is the disc's own
-  answer to a ledge;
-- **an unreachable exit is still chosen.** Preferring a reachable one was
-  tried, measured and reverted; making A\* less conservative about a fence is
-  the real item;
-- **`_goal` is still the run's and not the disc's** — and
-  [`parity.md`](parity.md) files it as scaffolding rather than a stand-in,
-  which is the right place for it: it is a robot playing with no hands.
-
-### 4. The effects now have a consumer that can show them.
-
-`.PTP` and `effect.bin` have been read for seven sessions with nothing able to
-draw them. The renderer has additive blending and a draw order, which is
-exactly what an effect needs, and [`format_ptp.md`](format_ptp.md)'s
-`(category, slot)` pair, the 69 `effect.bin` tables and `.mkc`'s emitter all
-have somewhere to go. Its one reading item — which `.anmcmd` opcode spawns one
-— is item 1 above, now that the binary is open.
-
-### 5. Two lanes the renderer still ignores, both declared.
-
-- **fog.** Every stage declares one to three fog records and none is drawn.
-  The colour and the near/far are legible; the density word is not a float on
-  every stage, so the mode byte selects something and nobody knows what.
-  **This is the likelier of the two to change a picture**: 29 of 124 stages
-  render below a mean luminance of 15, `st_amb_1` is white at 0.9 on all 154
-  so the darkness is all in the bake, and `170_01_01` declares two fogs of a
-  warm brown at full strength, which in a cave is not haze but light;
-- **vertex alpha.** The bake's fourth byte is not always `0xff` — 6 % of
-  vertices carry something else, and `010_01_01`'s `mizuumi_kiwa` uses it on
-  127 of its 237 vertices, which is a lake edge fading out. The rasteriser
-  interpolates three channels and would have to interpolate four.
-
-### 6. The three entries beside `s_combo_graph`.
-
-Unchanged and still the cheapest well-posed reading item. `s_combo_finish_inf`
-(132 bytes on the warrior), `s_just_combo_inf` (8) and `s_combo_motA` (64) sit
-in the same `objbin.bin` and none is read. A finisher is a node with no
-outgoing edge, and a just window is a byte pair on an edge.
-
-### 7. A generator's counts and timers, now that one runs.
-
-`enemy_gen.bin` `+0x14`, `+0x18`, `+0x20`, `+0x24`, `+0x28` and `+0x30`.
-`+0x28`'s `k` is 0, 5, 10, 15, 30, 60 or 90 — halves and multiples of a second
-at 30 fps — and a respawn delay is testable the moment a monster can die.
-
-### 8. The endless dungeon, which is now half-read for free.
-
-`yggdrasill.cpk`'s twenty tables include **the same three reward records** —
-277 of 277, 278 of 278 and 326 of 326 of its columns already fit the reading.
-The head's first word descends 176, 152, 127, 102, 77, 52 down the file, which
-is a floor number. The other seventeen tables — the floors, the monster sets,
-the fever mechanic — are unopened, and the tower is 170 of the stage list the
-quests already walk.
-
-### Then
-
-9. **The rest of the material record.** `+0x10` is a specular colour, named by
-   the company it keeps — the 34 materials that are not black there are
-   weapons, a shield, armour, a monster's plates and four birds. What is not
-   read: byte 1 of `+0x04` (`0x80` on all but 17), `+0x14`, `+0x18`, `+0x1c`
-   and `+0x2c`. See [`format_cmdl.md`](format_cmdl.md).
-10. **`stageparam.bin` past its lights**: `shadow_param`, and the two unnamed
-    blocks `stage_param` points at from `+0x20` and `+0x24` — `(80, 0.7, 1.7,
-    2)` and `(1, 0.6, 0.98)` on `010_01_01`. Both names are strings in the
-    EBOOT, which is a new way in. And `mot_param.bin` past its motion id.
-11. **Where the minimap's scale is declared.** The band is 1.31 to 1.33 px/m
-    and it is not in `stageparam.bin` — which is now read field by field, so
-    that is settled rather than assumed.
-12. **The `CCLS` surface codes 1 to 13.** Session 29 ruled them out as a
-    walkability flag — all thirteen have a median slope under four degrees.
-    Session 30 found **`AIT_FLOOR_ATTR`** in the AI's own term enum, which is
-    the first thing anywhere that suggests something reads them at all.
-13. **What picks between reward kinds 0, 2 and 3**, and what an `it_drop_db`
-    column's kind is — [`parity.md`](parity.md)'s stand-in S3, and the only
-    one of the seven that is plainly ordinary disc work.
-14. **`se_hitlevel_tbl`'s third word** is no longer here; it is ledger item 7
-    and it is in the binary. See above.
-
----
-
+- **Every invention declared**, in [`ps3kit/README.md`](../ps3kit/README.md)'s
+  "known approximations" the way `parity.md` does it for the engine.
+- **Read others' work, write our own.** RPCS3's HLE modules are the best
+  description of what each system call does; they are read, never copied —
+  this repository is MIT and RPCS3 is GPLv2.
+- **Nothing generated is committed.** `build/` holds the C++ and is ignored.
+- **Keep the kit free of the game.** Anything Ragnarok-specific goes in a
+  port layer outside `ps3kit/`, so that extracting the kit for *3D Dot Game
+  Heroes* is a move, not a refactor.
 ## Deferred, with reasons
 
 - **EBOOT decryption** (Phase 3) — **no longer deferred: done, session 30.**
@@ -584,6 +286,383 @@ quests already walk.
 ---
 
 # Log
+
+## Sessions 31-32 - 2026-08-25
+
+*The "next session" section as it stood before the pivot: the record of
+sessions 31 and 32 and the plan they left for the reimplementation, parked
+when session 33 moved the project to recompilation.*
+
+Session 31 opened the binary as a program and took the first thing out of it.
+The document is [`eboot.md`](eboot.md) and the tools are
+[`tools/ppc.py`](../tools/ppc.py) and the two Ghidra scripts under
+[`tools/ghidra`](../tools/ghidra). What to carry:
+
+- **the damage expression is read.** It is `FUN_00622fe4`, and it is an attack
+  term, a defence term, a subtraction and a floor of 1. Every `add` is zero
+  and every `rate` is one on a bare hit, because they exist for
+  `MdDamageCalcEventListener` — the class is named in the binary — which is
+  handed the attack structure over the attacker's listener list and the
+  defence structure over the target's, in between the build and the
+  arithmetic. That is where a card or an ability gets to move a term, and it
+  is why the expression looks so plain;
+- **and it came with item 5's sign for free.** The defence term is subtracted
+  and clamped to zero first, so a weak point's `-450` makes the subtraction
+  smaller. [`combat_loop.md`](combat_loop.md) had said nothing on the disc
+  proves it is subtracted rather than added; now something does;
+- **the way in was the `.opd`, not the disassembler.** Ghidra, handed this
+  file with every default on, ran for **16 seconds and found no functions**;
+  its PowerPC64 ELF importer actually throws on it, because this build's
+  function descriptors are **8 bytes and not the ABI's 24**. `ppc.py opd`
+  walks them from `e_entry` with nothing but their own arithmetic — **165,596
+  descriptors over 69,691 functions**, in four TOC windows — and the same
+  Ghidra run then takes 233 seconds and has all of them;
+- **and 274 of the 291 names came off the TOC.** The registration calls leave
+  a descriptor pointer, a name and a Squirrel typemask in adjacent slots in
+  source order, so a descriptor followed by a name the disc calls *is* a
+  registration. `ppc.py natives` joins that to `psq.py api` — the disc says
+  which names the engine must provide, the binary says where each one is;
+- **`ppc.py refs` is the instrument the rest of this phase runs on.** Every
+  global in this build is reached as `lwz rN, d(r2)` and the descriptor names
+  the `r2`, so a cross-reference is two steps of arithmetic over four million
+  instructions and takes about a second. No disassembler is involved. It is
+  what turned every string below into a function;
+- **and the binary names its own types.** 1,271 length-prefixed C++ RTTI
+  names, `8MdDamage` and `25MdDamageCalcEventListener` among them, each
+  reachable from its class's vtables by two word searches. That is how the
+  damage module was found at all;
+- **and then ledger item 2 fell as well, on the disc.** The attack term asks
+  the attacker through a virtual call, and the one implementation all 67
+  `CH*` classes share returns `parameters + 0x2b8` — the same `atk` an actor
+  JSON parses. So a player's attack is *written* into that field from a
+  sixteen-byte record indexed by job and level, and one scan of every file on
+  the disc for that shape returns six hits in one file:
+  **`misc.cpk/ccparamobj.bin`**, an `ELBN` this repository has been able to
+  open since session 19 and never looked inside. `python tools/elbn.py levels
+  extract/tree`. The level is **story progress**, on the same thresholds a
+  reward block uses, and `job_par` explains the disc's 0, 1, 3, 4, 5, 7 —
+  eight jobs alphabetically, `gunner` and `ninja` cut. **The method note is
+  the finding**: what found it was not a better search of the disc but the
+  binary saying what shape to look for;
+- **and then the damage was written.** [`damage.py`](../engine/damage.py) is
+  `FUN_00622fe4` line for line, [`mission.py`](../engine/mission.py) takes a
+  monster's own `hp` down with it, and [`parity.md`](parity.md)'s **S1 and S2
+  are retired** — `BLOWS` and `BREAKS` survive only as the fallback for an
+  actor whose tables will not read, and the run counts that. Two decisions had
+  to be made and both are filed as readings, R4 and R5: where a region's flat
+  modifier and its six multipliers arrive in the defence structure;
+- **and the hit's ratio is `+0x30`, not `+0x35`.** Before writing anything,
+  `FUN_0060fe50` — which copies a 116-byte `.anmcmd` record into the
+  0x130-byte runtime one — settled it: it assigns `+0x103` from `+0x35`, and
+  `+0x103` is the hit level's input, while the runtime record's **first
+  float**, which is the attack builder's first argument, comes from `+0x30`.
+  [`format_anmcmd.md`](format_anmcmd.md) had already measured `+0x30` as *"a
+  ratio, near 1 whatever the actor's size"*, r = −0.04, without knowing what
+  it was for. The two fields swap jobs and `combat_loop.md`'s chain diagram
+  was corrected.
+
+**And the sweep ran, at last.** All 431 quests against the written damage
+expression, and the numbers are in item 1 with what they turned out to mean —
+which is not what this section predicted.
+
+#### 1. The sweep ran, and it found a spawn path the engine does not have.
+
+Everything went down, as it had to, and one number went to zero:
+
+```
+                          session 30    session 32
+  quests finished              284          268
+  walked the whole list        287          274
+  arenas armed                 344          299
+  closed by the kill count     322          240
+  monsters spawned           3,105        2,177
+  killed                     3,017        1,963
+  zeny                     689,375      588,575
+  items                5,661 of 398   3,732 of 336
+
+  and the new line:  40,483 volumes landed for 2,654,745 damage,
+                     1,225 critical, 441 landings whose hp would not read,
+                     and 0 parts broken off.
+```
+
+**Read the zero first.** `region_data_brk`'s pools are 500 to 60,000 and a
+part should come off a boss long before the boss dies, so zero in 431 quests
+is not a tuning problem. It is this: **the engine has one way to start a
+fight and the disc has at least two.** Everything in
+[`mission.py`](../engine/mission.py) spawns through a `piecelock` — the arena
+— and on the disc:
+
+```
+  430 quests carry a generator in enemy_gen.bin
+  156 of them carry a piecelock
+  274 do not, and 116 of those 274 field a boss
+```
+
+So **the 2,177 monsters this sweep spawned contain no bosses at all**, no
+volume ever lands on a breakable part, and 274 quests finish by walking their
+stage list with nothing in it. That also explains the two counts that fell
+without the damage touching them: fewer arenas armed and fewer closed, because
+a quest that never fights never reaches the rooms behind the fight.
+
+**The worked example is `q00109`, which is one boss and nothing else.** Its
+`enemy_gen.bin` has a single row — `emgen02` at `emgen_pos02` of `010_02_03`,
+slot 1, `b01_00`, the Orc King — with **no kill callback and no end
+callback**, and the quest has **no `piecelock` at all**. It pays an *Orc King
+Card*, an *Orc King's Claw* and a *King's Breastplate*, so the fight is
+certainly meant to happen. `python engine/mission.py run extract/tree q00109`
+walks both stages in 269 frames, spawns nothing, and reports *the quest
+finished*.
+
+**What starts that generator is the next session's first question**, and the
+evidence is already narrow:
+
+- **it is not `cfSetEnableEmGen`.** That call exists, the host implements it,
+  and `psq.py sites` puts all 240 of its calls in **29 distinct stage
+  scripts** — a minority mechanism, and `q00109` is not among them;
+- **it is not the stage's own trigger, in this quest.** `010_02_03` carries
+  exactly two trigger volumes, and the one that runs
+  `callQuestScript("sfEnmGenStart()")` is named **`pl_q00207`** — it belongs
+  to a different quest, the quest's own copy of `010_02_03.psq` does not
+  define `sfEnmGenStart` at all, and nothing turns that volume on;
+- **the demo is the candidate.** `010_02_03.psq`'s `sfQuestDemoInit` calls
+  `setDemoID(10120, 0)` or `10110` according to `cmnIsQuestClear()`, and a
+  boss quest is introduced by a cutscene. If the demo's end is what enables
+  the generator, the engine needs the demo table, not another script call;
+- **and `enemy_gen.bin` says something itself.** That histogram was the cheap
+  test and it was run: 8,024 rows, 5,355 covered by a lock and 2,669 not, and
+  **two of the unread lanes separate the two populations cleanly**:
+
+  ```
+                        covered by a lock      no lock
+    +0x29   the 8..80     12   46.9 %           80   47.6 %
+                          64   34.3 %           64   19.5 %
+    +0x2b   the 0..90      0   41.7 %            0   86.1 %
+                          30   39.6 %           30    5.0 %
+    +0x31   the 1..255     1   68.8 %          100   31.2 %
+                           2   19.7 %          255   20.5 %
+  ```
+
+  **The reading that fits is a field spawner against an arena spawner.** A
+  lock's generator makes **one or two** monsters within a **12-metre** radius
+  after a **30**-unit delay; a generator with no lock makes **a hundred or
+  255** of them within **80 metres** and **no delay** — which is a respawning
+  populator armed by the player's own approach, not by a script. If that is
+  right, the engine's missing path is *proximity*, and it is in
+  [`host.py`](../engine/host.py) rather than in the quest tables.
+
+  **It is a reading and it is not proven**: what settles it is the code that
+  reads those lanes, and `ppc.py refs` on `enemy_gen`'s loader is the way in.
+  Note it does not explain `q00109`, whose single boss generator should then
+  spawn on approach and is one row of 2,669 — check that one first.
+
+#### 1a. And 441 landings could not read a monster's hit points.
+
+A separate gap, and a small one, but it is the last thing keeping `BLOWS`
+alive: 441 of the 40,483 landings fell back on the three-volume policy because
+the actor's `hp` would not read. That is about one landing in ninety, and
+`parity.md` counts the fallback rather than hiding it. Which actors, and why —
+a missing `objbin.bin`, a missing `region_lv`, or a monster with no parameter
+block at all — is one grouped count away.
+
+
+#### 1b. The three EBOOT items still open.
+
+Each has a function to start from. `Query.java` answers `decomp`, `xrefs`,
+`callers` and `info` without a window; `ppc.py refs` finds a global's users in
+a second.
+
+- ~~**what computes the hit level**~~ **(ledger 4) — read in session 32.**
+  `FUN_006235fc` is `level = (int)((hit[+0x103] + add) * rate)`, floored at
+  **zero**, and the answer corrects the question: **the hit level never sees
+  the damage**. The input is the byte `FUN_0060fe50` copies out of `.anmcmd`'s
+  `+0x35`, `add` and `rate` are walked over both listener lists at
+  `vtable + 0x14` and `+0x18`, and the target then gets a **whole level** back
+  through one more virtual call returning a `char` that is subtracted from
+  `add` — an integer of levels, the shape a stagger resistance has, with
+  ability 8 the candidate on the disc. Ledger 3 keeps only its last clause:
+  whether that value also indexes `stg_p`;
+- **`se_hitlevel_tbl`'s third word** (ledger 7) — **the six references are
+  one.** Session 32 read the five *"accessors around `0x003ec7fc`"* and they
+  are Boost exception constructors: each carries two descriptors with
+  different TOCs, and the name only appears under the window the code does not
+  run with. That is the folding caveat in [`eboot.md`](eboot.md) biting for
+  real, and the cheap guard is to read what a reference is used *as* — three
+  assignments of `v`, `v+0x1c`, `v+0x38` into an object is a vtable, not a
+  table. The real reference is the loader at `0x006587c8`, and it caches
+  **three sibling tables**: `se_vari_tbl` at `+0x24`, `se_hitlevel_tbl` at
+  `+0x28`, `se_parts_tbl2` at `+0x2c`. **Start from whatever reads `+0x28` of
+  that owner.** The siblings also joined on the disc: `se_parts_tbl2` is in
+  exactly the 23 objbins that carry `region_data_brk`, set against set, so it
+  is the sound a breakable part makes coming off, and `se_vari_tbl`'s 21 are
+  every one of them a variant record;
+- **`react_p`** (ledger 8) — **half done in session 32.** It is a `u32` at
+  `+0x20` of the `+0x244` record, so `+0x264` of the parameter object, and the
+  way that was read is now a tool: `python tools/ppc.py params <elf>` walks the
+  reader's own instructions and prints **46 field names against their offsets
+  and types**, reproducing the five `eboot.md` had. What is left is the
+  *consumer*: 37 functions touch `+0x264` off a non-stack base and nothing yet
+  says which of them holds a parameter object. The pair at `0x005f8bbc` and
+  `0x005fa37c` is the first place to look — they touch `atk` and `cri`'s
+  offsets too, and `0x005fa940` is the shield call in the damage path. And the
+  vectors are a second reader, `FUN_0064af4c`, in a different shape — the
+  destination as `addi r5, off(r31)`, the name in `r7`, an element count in
+  `r6` — which is where `stg_p[4]` lands at `+0x100`; teaching `params` that
+  shape maps the rest of the object.
+
+~~And the two cosmetic ones are still cheap~~ — **one is left**: the table
+that maps `.anmcmd` opcode 10's effect id to a `PTB` slot. **The seven
+`checkBnnTerm` bodies were read in session 32** and they are one function
+seven times: two integers off the Squirrel stack, a manager asked for the live
+AI object of one boss class *by RTTI type*, a call to its `vtable + 0x1c`, and
+false if that boss is not on the field. The seven types are seven consecutive
+TOC slots and they carry the disc's own `ai.pac` names. The one that looked
+wrong — `MdAIHjahanir` where the disc says `AI_B05_Fafnir` — is a **variant**,
+not a disagreement: `dc_db_monster.bin` against its text file gives `b05_00`
+*Fafnir* and `b05_01` *Hjahanir*, so the script is named for the first variant
+and the engine class for the second, and `b09`/`MdAIHraesvelgr` does the same
+with *Kona Hraesvelgr*. **A hatch is per boss family, which is what a downcast
+to one class can express.** See [`eboot.md`](eboot.md) and
+[`format_self.md`](format_self.md).
+
+~~**One loose end priced at an hour.**~~ **Closed in session 32, and it cost
+twenty minutes.** The damage path queries the disc's ability table by row
+number, and the three ids now have the game's own English:
+
+- **`0x70` is the extra hit's damage share, `0x71` the chance it lands** — the
+  `Double Attack` family holds the first at 1.0 and walks the second from 0.10
+  to 0.55, and an untranslated TGS 2011 skill names the pair outright;
+- **`0xcc` is a rate on the damage its holder takes** — `Mold Armor`'s −0.25
+  against *"Lessens damage received"*.
+
+**What paid for it was fixing the join, not searching harder.** A card skill
+carries **sixteen** `(ability, magnitude)` slots and `combat.py abilities` was
+reading the first, so the disc's vocabulary covered 162 of the 233 rows; it
+now covers **225**, and the three above were in the 63 that had been invisible
+all along. `it_db_skill.bin` columns 5..36, `-1` for an empty slot and not a
+terminator — row 550 leaves a gap and fills a later slot, which is the proof.
+See [`combat_loop.md`](combat_loop.md) §3 and [`eboot.md`](eboot.md).
+
+**And it sent one question to the decompiler, which answered it in a minute.**
+`eboot.md` had the `0xcc` query going to the **attacker's** ability holder;
+all six values on the disc only make sense on the **target's**. The function
+settles it in its own structure — the attack term is built from `param_2` and
+walked over `param_2 + 0x1c0`, the defence term from `param_4` over
+`param_4 + 0x1c0`, and the `0xcc` query reads `param_4 + 0x248`. **The disc
+was right and the EBOOT note was wrong**, which is the first time round that
+way in this project. Both documents are corrected, and the same read gave two
+more lines free: the target's `+0x26c` shield is handed the damage by address
+and its share is reported in the result record's own field, and the finished
+record goes back over the *attacker's* listeners at `vtable + 0x1c`, which is
+where a drain or an on-hit counter would live.
+
+#### 2. The tier's other half.
+
+`+0x57` is a real second tier — `item_reward_region.bin` blocks both — and
+**what selects it is not read**. The party is the candidate: `cfIsMulti()`
+exists and every quest with rewards ships an `item_reward_multi.bin` beside
+its `item_reward.bin`. The correlation is real and not clean: 199 of the 233
+reward-carrying quests name a second tier, 34 do not, and 6 quests name one
+with no reward table at all. So this wants either the EBOOT or a table nobody
+has opened.
+
+**Session 32 opened the EBOOT half and left the address.** The predicate
+behind `cfIsMulti` is **`FUN_006af784`** and it has **48 callers** in the game
+code — the party flag is consulted everywhere, so its mere existence proves
+nothing and the question is *which* caller reads a room's `+0x37` against its
+`+0x57`. Start from `enemy.bin`'s reader rather than from the flag. Getting
+there cost three queries because the name sits three hops up: `cfIsMulti`
+(`0x009d9440`, a Squirrel binding) → `FUN_009cecc8` → `FUN_00a553cc`, a
+16-byte thunk → `FUN_006af784`. **Ask `callers` of the bottom function, never
+of the planted name** — the top of that chain answers `4` and the bottom `48`.
+See [`eboot.md`](eboot.md).
+
+#### 3. The walk, again — the three that are left.
+
+Unchanged from session 29, and `run.py nav` still says exactly where:
+
+- **`070_01_02`'s exit.** The first riser out of its spawn room is 0.61 m over
+  a 0.21 m gap, a 71-degree slope, and a wall by the mesh's own walkability
+  test. **The body has never jumped** — `jp_speed_y` 0.42 against
+  `fall_gravity_y` −0.035 is an apex of 2.5 m — and a jump is the disc's own
+  answer to a ledge;
+- **an unreachable exit is still chosen.** Preferring a reachable one was
+  tried, measured and reverted; making A\* less conservative about a fence is
+  the real item;
+- **`_goal` is still the run's and not the disc's** — and
+  [`parity.md`](parity.md) files it as scaffolding rather than a stand-in,
+  which is the right place for it: it is a robot playing with no hands.
+
+#### 4. The effects now have a consumer that can show them.
+
+`.PTP` and `effect.bin` have been read for seven sessions with nothing able to
+draw them. The renderer has additive blending and a draw order, which is
+exactly what an effect needs, and [`format_ptp.md`](format_ptp.md)'s
+`(category, slot)` pair, the 69 `effect.bin` tables and `.mkc`'s emitter all
+have somewhere to go. Its one reading item — which `.anmcmd` opcode spawns one
+— is item 1 above, now that the binary is open.
+
+#### 5. Two lanes the renderer still ignores, both declared.
+
+- **fog.** Every stage declares one to three fog records and none is drawn.
+  The colour and the near/far are legible; the density word is not a float on
+  every stage, so the mode byte selects something and nobody knows what.
+  **This is the likelier of the two to change a picture**: 29 of 124 stages
+  render below a mean luminance of 15, `st_amb_1` is white at 0.9 on all 154
+  so the darkness is all in the bake, and `170_01_01` declares two fogs of a
+  warm brown at full strength, which in a cave is not haze but light;
+- **vertex alpha.** The bake's fourth byte is not always `0xff` — 6 % of
+  vertices carry something else, and `010_01_01`'s `mizuumi_kiwa` uses it on
+  127 of its 237 vertices, which is a lake edge fading out. The rasteriser
+  interpolates three channels and would have to interpolate four.
+
+#### 6. The three entries beside `s_combo_graph`.
+
+Unchanged and still the cheapest well-posed reading item. `s_combo_finish_inf`
+(132 bytes on the warrior), `s_just_combo_inf` (8) and `s_combo_motA` (64) sit
+in the same `objbin.bin` and none is read. A finisher is a node with no
+outgoing edge, and a just window is a byte pair on an edge.
+
+#### 7. A generator's counts and timers, now that one runs.
+
+`enemy_gen.bin` `+0x14`, `+0x18`, `+0x20`, `+0x24`, `+0x28` and `+0x30`.
+`+0x28`'s `k` is 0, 5, 10, 15, 30, 60 or 90 — halves and multiples of a second
+at 30 fps — and a respawn delay is testable the moment a monster can die.
+
+#### 8. The endless dungeon, which is now half-read for free.
+
+`yggdrasill.cpk`'s twenty tables include **the same three reward records** —
+277 of 277, 278 of 278 and 326 of 326 of its columns already fit the reading.
+The head's first word descends 176, 152, 127, 102, 77, 52 down the file, which
+is a floor number. The other seventeen tables — the floors, the monster sets,
+the fever mechanic — are unopened, and the tower is 170 of the stage list the
+quests already walk.
+
+#### Then
+
+9. **The rest of the material record.** `+0x10` is a specular colour, named by
+   the company it keeps — the 34 materials that are not black there are
+   weapons, a shield, armour, a monster's plates and four birds. What is not
+   read: byte 1 of `+0x04` (`0x80` on all but 17), `+0x14`, `+0x18`, `+0x1c`
+   and `+0x2c`. See [`format_cmdl.md`](format_cmdl.md).
+10. **`stageparam.bin` past its lights**: `shadow_param`, and the two unnamed
+    blocks `stage_param` points at from `+0x20` and `+0x24` — `(80, 0.7, 1.7,
+    2)` and `(1, 0.6, 0.98)` on `010_01_01`. Both names are strings in the
+    EBOOT, which is a new way in. And `mot_param.bin` past its motion id.
+11. **Where the minimap's scale is declared.** The band is 1.31 to 1.33 px/m
+    and it is not in `stageparam.bin` — which is now read field by field, so
+    that is settled rather than assumed.
+12. **The `CCLS` surface codes 1 to 13.** Session 29 ruled them out as a
+    walkability flag — all thirteen have a median slope under four degrees.
+    Session 30 found **`AIT_FLOOR_ATTR`** in the AI's own term enum, which is
+    the first thing anywhere that suggests something reads them at all.
+13. **What picks between reward kinds 0, 2 and 3**, and what an `it_drop_db`
+    column's kind is — [`parity.md`](parity.md)'s stand-in S3, and the only
+    one of the seven that is plainly ordinary disc work.
+14. **`se_hitlevel_tbl`'s third word** is no longer here; it is ledger item 7
+    and it is in the binary. See above.
+
+---
+
 
 ## Session 30 - 2026-08-25
 

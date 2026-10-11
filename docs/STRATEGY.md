@@ -1,13 +1,19 @@
 # PC-ROA — strategy
 
-*Aligned to the end of session 28 (2026-08-24). Detail and priorities live in
-[`TODO.md`](TODO.md); this document is the frame.*
+*Phases 1-5 aligned to the end of session 28 (2026-08-24); the pivot below to
+session 33 (2026-10-11). Detail and priorities live in [`TODO.md`](TODO.md);
+this document is the frame.*
 
-Goal: a **native PC reimplementation** of *Ragnarok Odyssey ACE*, the PS3
-edition of the PS Vita game *Ragnarok Odyssey*. Distribution is BYOA — the
-player supplies their own disc, the repository ships code and documentation.
+Goal: *Ragnarok Odyssey ACE*, the PS3 edition of the PS Vita game *Ragnarok
+Odyssey*, running natively on PC **as the original game, before anything
+else**. Distribution is BYOA — the player supplies their own disc, the
+repository ships code and documentation.
 
-Model: Ship of Harkinian, OpenGOAL, devilutionX.
+Since session 33 the road there is a **static recompilation** of the game's
+own executable onto a runtime that stands in for the PS3, built as a
+reusable kit, [`ps3kit`](../ps3kit). Sessions 1-32 were a reimplementation
+from the disc's data and scripts, and everything they read stays: see
+[the pivot](#the-pivot-static-recompilation-session-33).
 
 ## The shape of the problem, and how it differs from the sister project
 
@@ -44,11 +50,71 @@ native functions off their own call sites, so they are no longer waiting on it
 either. See [`format_api.md`](format_api.md). Every rule that turns out to be table-driven or
 script-driven is a rule nobody has to read out of PPC64 assembly.
 
-**Why not static recompilation.** Same answer as the sister project: the RSX
-would need substantial HLE, and the result would be an opaque, unmoddable
-binary. Here there is a second reason — a Vita-era engine with its parameters in
-JSON is a good candidate for honest reimplementation, and a bad one for
-translation.
+**Why not static recompilation**, as this document said until session 32.
+Same answer as the sister project: the RSX would need substantial HLE, and the
+result would be an opaque, unmoddable binary. Here there is a second reason — a
+Vita-era engine with its parameters in JSON is a good candidate for honest
+reimplementation, and a bad one for translation. The next section is why that
+stopped being true.
+
+## The pivot: static recompilation (session 33)
+
+**The reimplementation was paying for parity one function at a time, and the
+bill was 69,691 functions long.** [`parity.md`](parity.md) is the honest
+ledger of it: the interface is a stub that returns zero (S5), a monster asks
+47 questions and gets 19 answers (S6), and session 32's sweep found that the
+engine has one way to start a fight where the disc has at least two — so
+**274 quests never spawn their boss**. Each session closed one gap and found
+the next, which is what it costs to rewrite a 16 MB executable by hand. A
+recompilation is the original by construction: the Squirrel VM, the CRI
+middleware and libc are inside the EBOOT and come with it, and the questions
+move from *what does the game do*, which is per game, to *what does the
+console do*, which is shared by every PS3 game and belongs in a kit.
+
+**The three reasons above, measured.** Session 33 took a census of the
+decrypted EBOOT before deciding anything:
+
+- **the system interface is small and closed.** 27 libraries, **306
+  imported functions, all 306 named** (the NID is SHA-1 of the name and a
+  fixed suffix, so a name list is checkable), about 75 of them online
+  services that can answer "offline", and 152 direct `sc` sites over 68 lv2
+  call numbers. That is the whole surface the game touches;
+- **the CPU is a 64-bit PowerPC that barely uses its vector unit.** 2.69
+  million instructions; about 2,000 VMX ones, 65 `lwarx`, one `dcbz`, and
+  **293 switch tables, all of the compiler's one shape**. The `.opd` that
+  [`tools/ppc.py`](../tools/ppc.py) walked in session 31 is exactly the
+  function-boundary problem a recompiler has to solve, already solved;
+- **the SPUs only play sound.** The one piece of SPU code in the EBOOT is CRI's
+  audio — six SPURS jobs (`AtomDecoder`, `AsrVoice`, `DspPack1`, `DspPack2`,
+  `DspPitchShifter`, `HcaMixer`) and their `JOBCRT` runtime. Nothing of the
+  renderer, the animation or the game runs there;
+- **the shaders are a finite, precompiled set**: 676 `CGB` blocks in the
+  data segment and six `.gasl` files in `misc.cpk`, RSX microcode with no Cg
+  source anywhere, so they translate offline, one at a time;
+- **and "unmoddable" was a Beyond Parity argument**, which this project has
+  said since session 29 comes second. Any recompiled function can still be
+  replaced by C++ written by hand.
+
+**What the first 32 sessions become.** Phases 1 and 2 are the BYOA tooling and
+the documentation of every format, and the asset path a mod would use.
+`self.py` produces the recompiler's input and `ppc.py`'s descriptor walk is its
+function discovery. [`engine/`](../engine) becomes an **oracle that can now be
+checked**: `damage.py` is `FUN_00622fe4` line for line, and a recompiled
+`FUN_00622fe4` can be run against it on the same inputs. `parity.md`'s method
+— declare every invention at its site, keep the ledger — carries over to the
+runtime, where the inventions are now the console's and not the game's.
+
+**How the kit grows.** As the author's other console kits did (wiikit,
+ps2kit and their siblings): `ps3kit/` lives in this repository and grows with
+this game, kept free of anything Ragnarok-specific, and is extracted into its
+own repository — and taken back as a submodule — when the second game arrives.
+That second game is *3D Dot Game Heroes*, whose census is the complement of
+this one: a quarter of the PPU functions (20,672) and ten times the SPU code
+(26 SPU programs, Bullet physics and FMOD among them). This game teaches the
+kit the PPU and the system; that one teaches it the SPUs.
+
+**The generated C++ is the game's code, translated, and is never committed.**
+It is built from the player's own disc like everything else here.
 
 ---
 
