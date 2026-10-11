@@ -71,8 +71,10 @@ Left to settle:
   (the labels start right at the bar's edge).
 - **The system font set.** `#rom0` opens but in this run nothing asked it
   for a glyph; every request is reported (`font: system font set 100 asked
-  for U+...`). Watch for it on every new screen: if it stays silent, option
-  (c) holds and no firmware fonts are needed.
+  for U+...`). It stayed silent through character creation, the name
+  entry, the town, the Kafra's quest window and the first map. Keep
+  watching on new screens: if it stays silent, option (c) holds and no
+  firmware fonts are needed.
 - **Hinting and the exact antialiasing** of the system's FreeType are
   unknown; ours is unhinted exact area. Only a hardware capture can say.
 
