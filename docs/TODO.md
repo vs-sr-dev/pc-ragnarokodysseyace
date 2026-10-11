@@ -47,15 +47,36 @@ Where it stands:
 ### 1. Fonts.
 
 `cellFont*` is all stubs, so character creation's rows are empty and every
-menu that is not pre-rendered will be. The game opens fonts from
-memory (`cellFontOpenFontMemory`, its own) and system font sets
-(`cellFontOpenFontset`, the PS3's own fonts, which the disc does not
-carry), creates a renderer and renders glyphs into a
-surface it then draws as a `G8B8` texture. It needs a TrueType rasterizer
-of the kit's own (outlines, hinting off, the metrics cellFont reports),
-and an answer for the system font set: what the game asks of it, and
-whether a player-supplied firmware font or a substitute declared as one
-serves.
+menu that is not pre-rendered will be. The game opens fonts from memory
+(`cellFontOpenFontMemory`) and system font sets (`cellFontOpenFontset`),
+creates a renderer and renders glyphs into a surface it then draws as a
+linear `G8B8` texture. Its own font is on the disc,
+`misc.cpk/rh_font_en.otf` (1.9 MB): **OpenType with CFF outlines**
+(`OTTO`; tables BASE, CFF, GPOS, GSUB, OS/2, VORG, cmap, head, hhea, hmtx,
+maxp, name, post, vhea, vmtx), so the rasterizer has to read Type 2
+charstrings and fill cubic outlines, not TrueType's quadratic `glyf`.
+
+First, read before building: which font each call opens (the memory
+font's address against the file the game loaded), what the game asks of
+the system font sets and whether it ever draws with them, and which
+metrics it uses (glyph metrics, horizontal layout, the render-scale calls).
+
+Then the options, to settle at the start of the session:
+
+- **The rasterizer is ours** (the kit's rule): a CFF/OpenType reader
+  (cmap, hmtx, CFF INDEXes, charstrings with subroutines, hints ignored)
+  and a coverage rasterizer for cubic outlines, behind the cellFont calls
+  the game makes. A TrueType `glyf` path can follow when a game needs it.
+- **System font sets, three ways.** (a) The player supplies the PS3's own
+  fonts, taken from their firmware (`dev_flash/data/font`) by a tool of
+  ours, as the disc is: exact, and needs a PUP/dev_flash reader. (b) A
+  substitute font, declared as a stand-in, which the parity rule argues
+  against. (c) None needed, if the reading shows the game draws only with
+  its own font, or uses the system sets only as a fallback; the cheapest
+  outcome, so the reading comes first.
+- **Antialiasing and hinting** as the system library does them are not
+  known; the first comparison is the game's own pre-rendered menu text
+  against what our renderer makes of the same strings.
 
 ### 2. Past character creation.
 
