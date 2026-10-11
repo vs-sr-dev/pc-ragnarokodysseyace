@@ -305,7 +305,7 @@ GLFmt gl_format(uint32_t base) {
     case 0x86: return {0x83F1, 0, 0, 0, {GL_ALPHA, GL_RED, GL_GREEN, GL_BLUE}, true};   // COMPRESSED_RGBA_S3TC_DXT1
     case 0x87: return {0x83F2, 0, 0, 0, {GL_ALPHA, GL_RED, GL_GREEN, GL_BLUE}, true};   // DXT3
     case 0x88: return {0x83F3, 0, 0, 0, {GL_ALPHA, GL_RED, GL_GREEN, GL_BLUE}, true};   // DXT5
-    default: return {GL_RGBA8, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8, 0, {GL_ALPHA, GL_RED, GL_GREEN, GL_BLUE}, false};
+    default: return {0, 0, 0, 0, {GL_ALPHA, GL_RED, GL_GREEN, GL_BLUE}, false};   // not a format the renderer knows
     }
 }
 
@@ -350,6 +350,15 @@ Texture& texture(const RsxTexture& t, const uint8_t* data) {
     std::snprintf(what, sizeof what, "texture format %02X%s%s", l.base, l.linear ? " linear" : "", l.cube ? " cube" : "");
     report_once(what);
     if (l.unnormalized) report_once("unnormalised texture coordinates");
+    // A format the renderer does not know, or rows longer than their pitch:
+    // reported with the unit's registers, and the unit left without an image.
+    if (!f.internal || (l.linear && !f.compressed && l.pitch && l.pitch < l.w * l.bpp)) {
+        char bad[160];
+        std::snprintf(bad, sizeof bad, "%s not drawn: offset %08X format %08X rect %08X control3 %08X",
+                      what, t.regs[0], t.regs[1], t.regs[6], t.control3);
+        report_once(bad);
+        return x;
+    }
     x.target = l.cube ? GL_TEXTURE_CUBE_MAP : l.dims == 3 ? GL_TEXTURE_3D : l.dims == 1 ? GL_TEXTURE_1D : GL_TEXTURE_2D;
     std::memcpy(x.src, f.src, sizeof x.src);
     glCreateTextures(x.target, 1, &x.tex);

@@ -36,6 +36,8 @@ void     mem_write(uint32_t addr, const void* src, size_t n);
 void     mem_read(uint32_t addr, void* dst, size_t n);
 std::string mem_cstr(uint32_t addr, size_t max = 1024);
 
+std::string fs_host_path(const std::string& guest);        // "" when the runtime maps nothing there
+
 // ---- the executable ----------------------------------------------------------------
 struct ElfInfo {
     uint32_t entry_desc;                // e_entry: a descriptor, not code

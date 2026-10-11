@@ -7,99 +7,79 @@
 
 # Next session
 
-**Session 34 put the game's own boot sequence on screen.** The recompiled
-game runs past the audio crash session 33 ended on. The RSX now draws, with
-its vertex and fragment programs translated to GLSL, and the game shows its
-publishers' logos with their fades: XSEED Games, Marvelous, Gravity. Then it
-goes to black and stays there, sixty flips a second, a clear and two quads
-each, waiting.
+**Session 35 put the game's first movie on screen.** After the publishers'
+logos the game asks for its save, boots its movie player, and plays
+`movie/RHN_advertise.pam` from start to end: 4,440 frames, 148 s, drawn by
+the game itself as a texture, at 29.97 fps. Then it goes back to black, one
+fade quad a flip, and calls nothing more of the player.
 
 Where it stands:
 
-- **Audio is real enough to go on.** `cellAudio`'s ports live in the
-  runtime's heap and report themselves the way the game reads them back: a
-  u64 read index, status RUN, the buffer's address. A 48 kHz clock clears
-  each started port's current block every 256 samples and moves the index
-  on. The game opens one port, 8 channels and 8 blocks, mixes 0x2000 bytes a
-  block, and paces on that index. `cellAudioOut` answers as a television
-  would, HDMI stereo LPCM at 48 kHz, and the game asks for downmixer A (8
-  channels to 2). On Windows the host's timer resolution is now 1 ms, which
-  both clocks need.
-- **The job queue answers, and that settled the open question.** Every
-  pushed job completes at once and runs nothing. The game pushes exactly two
-  CRI programs, **AsrVoice** (`0xF4D080`, 0x7400 bytes) and **AtomDecoder**
-  (`0xF3D200`, 0xFE20 bytes), each synchronously, several times a frame.
-  7,659 of the disc's 7,756 waveforms are HCA (`format_awb.md`), and the
-  only HCA decoder in the executable is the SPU one: the PPU side has an ADX
-  decoder and no HCA decoder. **CRI has no PPU fallback to run, so sound
-  comes from lifting SPU code.** That is the same work 3D Dot will need, on
-  a larger scale.
-- **`ps3boot` opens a window.** SDL3 and OpenGL 4.5 run on the main thread,
-  and the game runs on a thread of its own (256 MB host stack, as before).
-  The renderer runs at most two flips behind the game. Render targets are
-  GL textures, found by location, offset, size and format; a flip shows the
-  one at the display buffer's offset.
-  `--quit-after`, `--dump DIR` (PNGs) and `--no-video` make runs scriptable,
-  and `PS3KIT_RSX_TRACE=N` prints frame N method by method. The colour path
-  was checked once with a forced clear colour: channels in order, scissor
-  rows from the top.
-- **The RSX draws** (`rsxcap.cpp` on the FIFO thread, `rsxgl.cpp` on the
-  renderer's). The FIFO thread passes every method write on, and when a draw
-  ends it copies what the draw reads from guest memory: vertices, indices,
-  the fragment program, textures. The renderer keeps its own registers,
-  uploads the transform program and constants as the hardware does, and
-  translates both kinds of program to GLSL when first seen (`vpglsl.cpp`,
-  `fpglsl.cpp`), cached by their code with the fragment constants as
-  uniforms. Textures are deswizzled and their channels remapped with GL
-  swizzles; the first dump of the logos was right on the first try. One bug
-  cost a run: `glColorMaski` takes bytes, so `mask & 0x10000` wrote blue only.
-  `PS3KIT_DRAWDUMP`, `PS3KIT_SHADERDUMP` and `PS3KIT_TEXDUMP` are the tools.
-- **What a logo frame is:** a clear to `FF000000`, then two draws of six
-  vertices each, in a 2D orthographic projection. The first is a
-  full-screen untextured quad, the fade, whose colour is multiplied by
-  `vc[464]`. The second is the logo itself, a 512x512 or 1024x512 swizzled
-  A8R8G8B8 texture stored as RGBA (remap `0xAA93`), on a quad centred on
-  the screen. The same two programs serve all three logos.
-- **What it waits for after the logos** is one of the two stubs it called last:
-  `cellSaveDataListAutoLoad` returns `CELL_OK` without calling any of its
-  callbacks, and `cellSailPlayerBoot` never reports the player booted. The
-  files stop at `menu.cpk`, just before both.
+- **Save data is real** (`savedata.cpp`, `psf.cpp`). One operation serves
+  Auto, ListAuto and Fixed: the saves under the prefix are listed, the
+  game's fixed callback picks a directory, the stat callback sees it (or
+  that it is new), the file callback reads, writes and deletes, and the save
+  is written whole with a PARAM.SFO and moved into place. On a first boot
+  the game lists `NPUB31406-PLY`, picks `NPUB31406-SYS-SAVEDATA`, sees it is
+  new and ends the call with OK_LAST: **the save was never what it waited
+  on.** `PS3KIT_SAVEDATA=1` shows each step. Nothing has been saved yet, so
+  the write path is untested by the game.
+- **The movie player is cellSail as the game drives it** (`sail.cpp`). Its
+  wrapper object (`0x9CB5C0`-`0x9CC858`) was read end to end: the callback
+  records boot completion, the state, stream opened and source end in
+  words at `+0x544`..`+0x554`, and a per-frame update reads them back and
+  moves on - CLOSED, create a descriptor and open the stream, OPENED, set
+  the repeat mode and start, RUNNING, and at the end of the stream EOS in
+  state OPENED, which it takes as finished. The graphics adapter's frame
+  buffers come from the game's own allocator callback (four of 3.6 MB, in
+  local memory); `GetFrame2` hands the frame due now, and the game draws it
+  as a linear A8R8G8B8 texture. One reading worth knowing: the game tests
+  `GetFrame2`'s result as **signed and above 255**, so it cannot be the
+  frame's address (negative in local memory); it is the frame's size.
+- **An MPEG-2 decoder of our own** (`mpeg2.cpp`, `mpegps.h`): frame
+  pictures, I/P/B, frame and field prediction and DCT, both coefficient
+  tables, both scans, the non-linear quantiser. Checked against ffmpeg with
+  `mpeg2test`: a whole disc movie within 3 levels (63 dB), and synthetic
+  streams for each tool the disc does not use (interlaced, B.15, alternate
+  scan, non-linear quantiser, DC precision 9/10) at 70 dB. One bug found
+  that way: a skipped B macroblock is predicted as a frame macroblock from
+  the vector predictors, not with the previous macroblock's field vectors.
+  It runs at 85 fps on the disc's 720p.
+- **A FIFO oddity, now harmless:** three times during the movie a texture
+  unit is set with every register shifted by one byte (offset `77C00000`
+  for `0277C000`, format `01A52902` for `0001A529`). The renderer drew it
+  as an unknown format and crashed the GL driver; it now reports and skips
+  textures it cannot read. The shift itself is not explained.
 
-### 1. Save data.
+### 1. What the game waits for after the movie.
 
-`cellSaveDataListAutoLoad` and the other `cellSaveData*` calls, with their
-callbacks raised as the system raises them, and the first-boot answer (no
-save yet) that a fresh `/dev_hdd0` gives. The game asks for its save just
-before it boots `cellSail`, and nothing after that moves.
+The player ends in OPENED with the EOS flag set, the wrapper's finished
+flag (`+0x536`) becomes 1, and nothing else happens: no CloseStream, no
+Finalize. Find who reads `+0x536` (the movie object's virtual methods are
+the thunks at `0xA470E8` and `0xA51B98`) and what it expects next - a
+different end sequence from the player, the stream closed, or something
+outside it (input, the title screen, its sound). Also settle whether
+RHN_advertise is the boot movie or an attract loop the title falls into;
+`RH_movie_fix.pam` (157 s) is the other candidate for the opening.
 
-Start by settling which of the two it waits on: the logos end at about
-flip 630, and `PS3KIT_TRACE=1` around that point, or `gdb_trace.py` on the
-caller of `cellSaveDataListAutoLoad` (`lr=009F91F0`) and of
-`cellSailPlayerBoot` (`lr=009CC640`), will show what the game polls next.
-The savedata calls take a set-up callback, a file callback and a status
-result. On a first boot the system raises the list callback with no
-entries, and the game then decides to create a new save.
-
-### 2. The intro movie.
-
-`cellSail` plays PAMF, which [`pam.py`](../tools/pam.py) already reads: a
-Sony header over an MPEG-2 program stream with no audio. A player HLE (its
-state events first, since the game may be waiting on `PlayerBoot`) plus an
-MPEG-2 video decoder of our own is a bounded job, and it puts the game's own
-first frames on screen independently of the renderer.
-
-### 3. Input.
+### 2. Input.
 
 `cellPadInit`, `GetInfo2`, `GetData` from SDL's gamepad and keyboard. The game
-polls them every frame already.
+polls them every frame already, and whatever screen follows will want them.
 
-### 4. Sound: the two SPU jobs.
+### 3. Sound: the two SPU jobs.
 
 An SPU recompiler in ps3kit (the SPU decoder, then SPU programs as C++ the
 way PPU code is), JOBCRT's calling convention, and the job descriptor's DMA
 lists, enough to run AsrVoice and AtomDecoder when they are pushed. Then
 `Port2Sync` waits for real work, and the port's blocks carry sound. Output
 through SDL3's audio stream, from the clock that already consumes the ports.
+The movies have no audio of their own; their soundtrack comes this way.
+
+### 4. Fonts.
+
+`cellFont*` is all stubs, and the game opens three fonts from memory and
+lays text out. The title and every menu will need it.
 
 ### 5. The rest of the 3D engine, as the game asks.
 

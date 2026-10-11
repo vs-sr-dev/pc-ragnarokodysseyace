@@ -19,7 +19,7 @@ the second one starts.
 
 | Port | Game | What it asked of ps3kit |
 |---|---|---|
-| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start, threads, files, the command buffer to its first flip, the audio ports and their clock, the window, the RSX's draws: the publishers' logos |
+| PC-ROA (this repository) | Ragnarok Odyssey ACE (2013) | everything so far: the descriptor table, the imports, the PPU recompiler, the process start, threads, files, the command buffer to its first flip, the audio ports and their clock, the window, the RSX's draws: the publishers' logos; save data; cellSail and an MPEG-2 decoder: the first movie |
 | *next* | 3D Dot Game Heroes (2009) | the SPUs: 26 SPU programs on SPURS task sets and raw thread groups |
 
 ## Using it
@@ -58,7 +58,13 @@ three), `PS3KIT_FS=1` every file opened, `PS3KIT_RSX_TRACE=N` every RSX
 method of frame N with its argument, `PS3KIT_DRAWDUMP=N` draw N's vertices,
 constants and state, `PS3KIT_SHADERDUMP=1` every program pair as GLSL,
 `PS3KIT_TEXDUMP=DIR` every texture as first decoded (PNG), and
-`PS3KIT_GLDEBUG=1` the OpenGL driver's complaints.
+`PS3KIT_GLDEBUG=1` the OpenGL driver's complaints, `PS3KIT_SAVEDATA=1` each save
+data step and callback result, `PS3KIT_SAIL=1` each movie player call and
+event and every 30th frame shown.
+
+`mpeg2test MOVIE OUT.yuv [--offset BYTES]` (`ninja mpeg2test`) runs the MPEG-2
+decoder alone, on a program stream or an elementary stream, so that its
+frames can be compared with another decoder's.
 
 Building needs SDL3, CMake, Ninja and clang (the generated code's tail jumps are
 `[[clang::musttail]]`; clang 22 from MSYS2 is what is used here). The Python
@@ -96,7 +102,7 @@ from [`nids.txt`](nids.txt); a NID is computed from its name, never stored.
 | 1. Recognise | What is in this executable? | `elf`: segments, process parameters, TLS, the descriptor table, imports by name | the SPU programs embedded in it, the middleware it links |
 | 2. Read code | What does this function do? | `ppu`: the PPU decoder, disassembly, census | cross-references through the TOC |
 | 3. Recompile | The PPU code as C++ | `recomp`: discovery, switch tables, the whole user-mode PPU set and the VMX operations games use | SPU code |
-| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start; PPU threads, lightweight and lv2 synchronisation, event queues; the file system (cellFs and sys_fs); cellGame; cellGcmSys and cellResc with a FIFO consumer, labels, flips and a 59.94 Hz vblank; the renderer (SDL3, OpenGL 4.5): a window, render targets on the host GPU, clears, draws with vertex and fragment programs translated to GLSL, textures, blending, flips; video out; cellAudio and the audio output, with the 48 kHz clock that consumes the ports; SPURS job queue ports | the rest of the 3D engine's state (fog, clip planes, two-sided colour, point sprites), sound out (the SPU jobs that make it), input, cellSail, SPURS |
+| 4. Run | The PS3 under the game | `runtime`: memory map, dispatch, loader, imports, lv2 calls, the process start; PPU threads, lightweight and lv2 synchronisation, event queues; the file system (cellFs and sys_fs); cellGame; cellGcmSys and cellResc with a FIFO consumer, labels, flips and a 59.94 Hz vblank; the renderer (SDL3, OpenGL 4.5): a window, render targets on the host GPU, clears, draws with vertex and fragment programs translated to GLSL, textures, blending, flips; video out; cellAudio and the audio output, with the 48 kHz clock that consumes the ports; SPURS job queue ports; save data (Auto, ListAuto, Fixed) with PARAM.SFO; cellSail playing PAMF through the runtime's own MPEG-2 decoder | the rest of the 3D engine's state (fog, clip planes, two-sided colour, point sprites), sound out (the SPU jobs that make it), input, the list save dialogs, SPURS |
 
 ## Known approximations
 
@@ -147,5 +153,35 @@ Declared here as they are made, so that the list is the cost:
 - A SPURS job queue runs no job. A pushed job is complete at once and its
   outputs stay as they were; each distinct SPU program is reported when it
   is first pushed.
+- Save data: no dialog is drawn. A Fixed operation's confirmation is
+  answered yes; a callback's error ends the call with
+  `CELL_SAVEDATA_ERROR_CBRESULT` and no message. The List operations, whose
+  list dialog is the user's, are not implemented. Files are stored as written:
+  secure files are not encrypted and no `PARAM.PFD` is made; the runtime's
+  `PS3KIT.LST` keeps the files' order and which are secure. `ACCOUNT_ID`,
+  `PARAMS` and `PARAMS2` in a save's PARAM.SFO are zeros. The system's own
+  files are reported as 35 KB, and the free space as `cellGameBootCheck`
+  reports it.
+- cellSail plays the first video stream of a PAMF file; audio streams,
+  MP4 and AVI are not supported. The order of its events is a reading of
+  what the one caller so far polls for (see `sail.cpp`); the state the
+  player passes through at the end of a stream (straight to OPENED) is the
+  runtime's. It allocates nothing through the game's allocator; it asks the
+  graphics adapter for four frame buffers. Frames are shown on the host's
+  clock from the first one decoded, never dropped.
+- `cellSailGraphicsAdapterGetFrame2` returns the frame's size in bytes: its
+  caller takes any result above 255 as a frame. `PtsToTimePosition` answers
+  in microseconds from the first picture; the caller only tests it against
+  zero, so the unit is unconfirmed.
+- Movie frames are converted to ARGB with the stream's matrix (BT.709 here)
+  from limited range, chroma interpolated linearly; how the system's
+  converter filters is not known.
+- The MPEG-2 decoder uses the floating-point reference IDCT. On the disc's
+  movies it is within 3 levels of ffmpeg's (63 dB and above), which is the
+  difference between two IDCTs. Field pictures and dual-prime prediction
+  are reported and not decoded; nothing on this disc uses them.
+- A texture whose format the renderer does not know, or whose linear rows
+  are longer than their pitch, is reported with its registers and drawn
+  with no image.
 - An import with no implementation returns `CELL_OK`; an lv2 call with none
   returns `CELL_ENOSYS`. Both are reported.

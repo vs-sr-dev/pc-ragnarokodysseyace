@@ -338,3 +338,6 @@ LV2_SYSCALL(813, sys_fs_rmdir) {
     if (!fs::is_empty(h, ec)) { c.r[3] = ENOTEMPTY_; return; }
     c.r[3] = fs::remove(h, ec) ? CELL_OK : EIO_;
 }
+
+// The host path of a guest path, for the system libraries that open files themselves.
+std::string fs_host_path(const std::string& guest) { return host_path(guest); }
