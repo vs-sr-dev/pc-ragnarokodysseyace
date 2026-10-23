@@ -5,7 +5,7 @@ structure, the Cell PPU, a static recompiler from PPU code to C++, and a
 runtime that replaces the PS3's system software under the recompiled game.
 
 The same idea as [wiikit](https://github.com/vs-sr-dev/wiikit) and
-[ps2kit](https://github.com/vs-sr-dev/pc-extermination/tree/main/ps2kit),
+[ps2kit](https://github.com/vs-sr-dev/ps2kit),
 for the PS3. Each PS3 game has its own engine and formats, but a large part
 of every port is the *same* work: the same executable format, CPU, system
 calls, libraries and GPU. ps3kit collects that shared part. It grows inside
