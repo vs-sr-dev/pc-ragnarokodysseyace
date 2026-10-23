@@ -1,0 +1,3 @@
+[submodule "ps3kit"]
+	path = ps3kit
+	url = https://github.com/vs-sr-dev/ps3kit.git

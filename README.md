@@ -3,8 +3,13 @@
 Documentation and tooling towards a native PC port of **Ragnarok Odyssey
 ACE** (PS3, 2013 — the expanded edition of *Ragnarok Odyssey* for PS Vita):
 a static recompilation of the game's own executable onto a runtime that
-stands in for the PS3, [`ps3kit`](ps3kit), built on 32 sessions of reading
-the disc.
+stands in for the PS3, [`ps3kit`](https://github.com/vs-sr-dev/ps3kit), built
+on 32 sessions of reading the disc.
+
+`ps3kit/` is a submodule: clone with `git clone --recurse-submodules`, or run
+`git submodule update --init` in an existing clone. The kit grew here and has
+its own repository since 2026-10-23, when the second port on it started
+([pc-3ddotgameheroes](https://github.com/vs-sr-dev/pc-3ddotgameheroes)).
 
 This repository contains **no game content**. It contains a disc reader, format
 documentation, the tools that produced it, and a recompiler and runtime. To use

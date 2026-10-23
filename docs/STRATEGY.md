@@ -113,6 +113,13 @@ this one: a quarter of the PPU functions (20,672) and ten times the SPU code
 (26 SPU programs, Bullet physics and FMOD among them). This game teaches the
 kit the PPU and the system; that one teaches it the SPUs.
 
+**And it did, on 2026-10-23.** When 3D Dot started on the kit, `ps3kit/` was
+split out with its history (`git subtree split --prefix=ps3kit`) into
+[vs-sr-dev/ps3kit](https://github.com/vs-sr-dev/ps3kit) and came back here as a
+submodule at the same path. Every change to it is now checked on this game
+as well as on 3D Dot: the logos, the movie, the title, character creation,
+the town and the first quest, at 30 frames.
+
 **The generated C++ is the game's code, translated, and is never committed.**
 It is built from the player's own disc like everything else here.
 

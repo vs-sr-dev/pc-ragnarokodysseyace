@@ -8,5 +8,5 @@
   "targets": [
     "Windows"
   ],
-  "approach": "our own PPU recompiler and runtime; ps3kit grows in this repository"
+  "approach": "our own PPU recompiler and runtime; ps3kit, which grew in this repository and is now its own (a submodule)"
 }
